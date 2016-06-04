@@ -52,14 +52,14 @@ Each individual job in Spread has a:
  
  * **Suite** - A couple more lines and you have a group of tasks which can
    share some settings. Defining this and all the above is done in
-   `.spread.yaml` in your project base directory.
+   `spread.yaml` or `.spread.yaml` in your project base directory.
 
- * **Task** - What to run, effectively. All tasks for a suite live in the same
+ * **Task** - What to run, effectively. All tasks for a suite live under the same
    directory. One directory per suite, one directory per task, and `task.yaml`
-   inside it.
+   inside the latter.
 
- * **Variants** - All of the above is nice, but this is the reason you might
-   fall in love. Variants are a mechanism that replicates tasks with minor
+ * **Variants** - All of the above is nice, but this is the reason of much
+   rejoice.  Variants are a mechanism that replicates tasks with minor
    variations with no copy & paste and no trouble. See below for details.
 
 Again, each job in spread has _a single one of each of these._ If you have two
@@ -92,6 +92,9 @@ backend:
 suites:
     examples:
         summary: Simple examples
+
+
+install: /home/spread
 ```
 
 _$PROJECT/examples/hello/task.yaml_
@@ -104,7 +107,7 @@ execute:
 
 Run the example with `$ spread` for instant gratification. The echo will happen
 on the remote machine and system specified, and you'll see the output locally
-becaused the tasks have failed (`-vv` to see the output nevertheless).
+since the task failed (`-vv` to see the output nevertheless).
 
 <a name="environments"/>
 Environments
@@ -161,16 +164,6 @@ for finding it out.
 
 For instance, an alternative spelling for the previous example might be:
 
-_$PROJECT/examples/hello/task.yaml_
-```
-summary: Greet the planet
-environment:
-    SUBJECT: $(echo world)
-execute:
-    - echo "$[GREETING]"
-    - exit 1
-```
-
 _$PROJECT/spread.yaml_
 ```
 (...)
@@ -180,6 +173,16 @@ suites:
         summary: Simple examples
         environment:
 	    GREETING: "Hello $[SUBJECT]!"
+```
+
+_$PROJECT/examples/hello/task.yaml_
+```
+summary: Greet the planet
+environment:
+    SUBJECT: $(echo world)
+execute:
+    - echo "$[GREETING]"
+    - exit 1
 ```
 
 Note that the evaluation of such variables actually happens after cascading
@@ -234,7 +237,7 @@ following outputs:
 
 Some key takeaways here:
 
- * Each variant key produces a single job, even when cascading.
+ * Each variant key produces a single job per task.
  * It's okay to declare the same variable with and without a variant suffix.
    The bare one becomes the default.  
  * The variant key suffix may be comma-separated for multiple definitions at
@@ -263,14 +266,14 @@ variants:
     - -bar
 ```
 Alternatively, let's reach the same effect by explicitly stating which variants
-to use for the task:
+to use for the task (no `-` or `+` prefix):
 ```
 variants:
     - foo
     - baz
 ```
-Finally, this last case won't make much sense on this scenario, but we can also
-append another key to current set of variants without replacing it:
+Finally, we can also append another key to current set of variants without
+replacing the existing ones:
 ```
 variants:
     - +buz
@@ -284,11 +287,10 @@ semantics:
  * `systems: [...]` (suite and task)
  * `variants: [...]` (project, backend, suite, and task)
 
-So what if you don't want to run a specific task on ubuntu-14.04? Just add this
-to the task:
+So what if you don't want to run a specific task or whole suite on ubuntu-14.04?
+Just add this to the task or suite body:
 ```
-systems:
-    - -ubuntu-14.04
+systems: [-ubuntu-14.04]
 ```
 
 Cascading also takes place for these settings - each level can
@@ -301,7 +303,7 @@ Preparing and restoring
 -----------------------
 
 A similar group of tasks will often depend on a similar setup of the system.
-Instead of copying & pasting logic, suites can define scripts for tests under
+Instead of copying & pasting logic, suites can define scripts for tasks under
 them to execute before running, and also scripts that will restore the system
 to its original state so that follow up logic will find a (hopefuly? :)
 unmodified base:
@@ -319,8 +321,8 @@ suites:
             - echo Restoring...
 ```
 
-The prepare script is called once before any of the tests inside the suite are
-run, and the restore script is called once after all of the tests inside the
+The prepare script is called once before any of the tasks inside the suite are
+run, and the restore script is called once after all of the tasks inside the
 suite finish running.
 
 Note that the restore script is called even if the prepare or execute scripts
@@ -356,11 +358,11 @@ Debugging
 
 Debugging such remote tasking systems is generally quite boring, and Spread
 offers a hand to make the problem slightly less painful. Just add `-debug`
-to whatever set of options is in use and it will run the tests almost as usual,
+to whatever set of options is in use and it will run the tasks almost as usual,
 but on the first failure it will stop and report how to log in, and how to
 retry the failed task.
 
-Debugging also alters the running of the tests in a couple of ways to aid with
+Debugging also alters the running of the tasks in a couple of ways to aid with
 the process. Whether tasks succeed or fail, the pushed project files are not
 removed at the end of the run, and none of the used servers are discarded.
 This ensures you can login and inspect if desired.
@@ -384,7 +386,7 @@ last run including the `-reuse` option, but leaving `-debug` out.
 Keeping servers
 ---------------
 
-Even if server allocation is fast, it's even faster to not allocate it at all.
+Even if server allocation is fast, not allocating at all is even faster.
 Just add `-keep` to your current set of options and servers will remain running
 after workers are done with them. At the end of the process, Spread will report
 how to reuse them.
@@ -394,9 +396,9 @@ otherwise. The remote project is still removed at the end of the run and
 re-sent on the next iteration as if the machine was brand new.
 
 The obvious caveat when reusing machines like this is that failing restore
-scripts or bogus working ones may leave the server in a bad state which
-affects the next run improperly. In such cases the restore scripts should be
-fixed to be correct and more resiliant.
+scripts or bogus ones may leave the server in a bad state which affects the
+next run improperly. In such cases the restore scripts should be fixed to be
+correct and more resilient.
 
 Same as with `-debug`, after you're done iterating it's easy to get rid of the
 servers by performing one last run including the `-reuse` option, but leaving
@@ -439,15 +441,15 @@ backend:
     linode:
         key: $(echo $LINODE_API_KEY)
         systems:
-	    - ubuntu-16.04
+            - ubuntu-16.04
 ```
 
 With these settings the Linode backend in Spread will pick the API key from
 the local `$LINODE_API_KEY` environment variable (we don't want that in
 `spread.yaml`), and look for a server available on that user account that
 is powered off. When it finds one, it creates a brand new configuration and
-disk set to run the tests, without touching any of the available ones. That
-means you can even reuse existing servers to run the tests, if you wish.
+disk set to run the tasks, without touching any of the available ones. That
+means you can even reuse existing servers to run the tasks, if you wish.
 When discarding the server (assuming no `-keep` or `-debug`), it will power
 off the server and remove the configuration and disks, leaving it ready for
 the next run.
@@ -460,8 +462,8 @@ your main account.
 
 Some links to make your life easier:
 
-  * [API keys](https://manager.linode.com/profile/api)
   * [Users and permissions](https://manager.linode.com/user)
+  * [API keys](https://manager.linode.com/profile/api)
 
 
 <a name="parallelism"/>
@@ -485,7 +487,7 @@ backends:
             - ubuntu-16.10/foo,bar
 ```
 
-This will cause four different machines to be allocated for running tests
+This will cause four different machines to be allocated for running tasks
 concurrently: one running Ubuntu 14.04, two 16.04, and one 16.10. The 16.10
 machine will only run jobs for variants _foo_ and _bar_, while the others will
 accept any variants (including _foo_ and _bar_).

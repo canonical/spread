@@ -17,9 +17,9 @@ var verbose = flag.Bool("v", false, "Show detailed progress information")
 var vverbose = flag.Bool("vv", false, "Show debugging messages as well")
 var list = flag.Bool("list", false, "Just show list of tasks to be run")
 var keep = flag.Bool("keep", false, "Keep servers running when done")
-var debug = flag.Bool("debug", false, "Stop on failure for debugging (implies -keep)")
+var debug = flag.Bool("debug", false, "Keep state and stop on failure for debugging")
 var pass = flag.String("pass", "", "Server password to use, defaults to random")
-var reuse = flag.String("reuse", "", "Reuse server with provided comma-separated IDs")
+var reuse = flag.String("reuse", "", "Reuse servers, '-reuse help' for syntax")
 
 func main() {
 	if err := run(); err != nil {

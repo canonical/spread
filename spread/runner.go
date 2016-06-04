@@ -89,7 +89,15 @@ func (r *Runner) loop() error {
 			for _, server := range r.servers {
 				printf("Keeping %s with %s at %s", server, server.Image(), server.Address())
 			}
-			printf("Reuse servers with %s", r.reuseArgs())
+			if r.options.Debug {
+				filter := ""
+				if job := r.failedJob(); job != nil {
+					filter = " " + job.Name
+				}
+				printf("Retry with: snap %s%s", r.reuseArgs(), filter)
+			} else if r.options.Keep {
+				printf("Reuse with: snap %s", r.reuseArgs())
+			}
 		}
 	}()
 
@@ -250,24 +258,24 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 		} else {
 			r.add(&stats.TaskError, job)
 		}
-		if !r.run(client, job, "restore", job, job.Task.Restore, &debug) {
+		if !debug && !r.run(client, job, "restoring", job, job.Task.Restore, &debug) {
 			r.add(&stats.TaskRestoreError, job)
 			badProject = true
 		}
 	}
 
 	if client != nil {
-		if insideSuite != nil {
+		if !debug && insideSuite != nil {
 			if !r.run(client, last, "restoring", insideSuite, insideSuite.Restore, &debug) {
 				r.add(&stats.SuiteRestoreError, last)
 			}
 		}
-		if insideBackend {
+		if !debug && insideBackend {
 			if !r.run(client, last, "restoring", backend, backend.Restore, &debug) {
 				r.add(&stats.BackendRestoreError, last)
 			}
 		}
-		if insideProject {
+		if !debug && insideProject {
 			if !r.run(client, last, "restoring", r.project, r.project.Restore, &debug) {
 				r.add(&stats.ProjectRestoreError, last)
 			}
@@ -482,7 +490,7 @@ func (r *Runner) reuseArgs() string {
 		reuse[backend] = append(reuse[backend], server.Address())
 	}
 	sort.Strings(backends)
-	buf.WriteString("-keep -pass=")
+	buf.WriteString("-pass=")
 	buf.WriteString(r.options.Password)
 	buf.WriteString(" -reuse=")
 	if len(reuse) > 1 {
@@ -504,7 +512,32 @@ func (r *Runner) reuseArgs() string {
 	if len(reuse) > 1 {
 		buf.WriteString("'")
 	}
+	if r.options.Debug {
+		buf.WriteString(" -debug")
+	} else if r.options.Keep {
+		buf.WriteString(" -keep")
+	}
 	return buf.String()
+}
+
+func (r *Runner) failedJob() *Job {
+	errors := [][]*Job{
+		r.stats.TaskError,
+		r.stats.TaskPrepareError,
+		r.stats.TaskRestoreError,
+		r.stats.SuitePrepareError,
+		r.stats.SuiteRestoreError,
+		r.stats.BackendPrepareError,
+		r.stats.BackendRestoreError,
+		r.stats.ProjectPrepareError,
+		r.stats.ProjectRestoreError,
+	}
+	for _, jobs := range errors {
+		for _, job := range jobs {
+			return job
+		}
+	}
+	return nil
 }
 
 type stats struct {

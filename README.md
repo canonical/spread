@@ -1,6 +1,21 @@
 Spread - Task distribution respecting your sanity
 =================================================
 
+[Why?](#why)  
+[The cascading matrix](#matrix)  
+[Hello world](#hello-world)  
+[Environments](#environments)  
+[Environment interpolation](#interpolation)  
+[Variants](#variants)  
+[Blacklisting and whitelisting](#blacklisting)  
+[Preparing and restoring](#preparing)  
+[Debugging](#debugging)  
+[Keeping servers](#keeping)  
+[Including and excluding files](#including)  
+[Linode backend](#linode)  
+[More on parallelism](#parallelism)  
+
+<a name="why"/>
 Why?
 ----
 
@@ -17,8 +32,9 @@ and where, what to do before and after it runs, and how to duplicate jobs with
 minor variations without copy & paste.
 
 
-The Matrix
-----------
+<a name="matrix"/>
+The cascading matrix
+--------------------
 
 Each individual job in Spread has a:
 
@@ -58,6 +74,7 @@ run, use the `-list` option. It will show one entry per line in the format:
 backend:system:suite/task:variant
 ```
 
+<a name="hello-world"/>
 Hello world
 -----------
 
@@ -89,6 +106,7 @@ Run the example with `$ spread` for instant gratification. The echo will happen
 on the remote machine and system specified, and you'll see the output locally
 becaused the tasks have failed (`-vv` to see the output nevertheless).
 
+<a name="environments"/>
 Environments
 ------------
 
@@ -124,6 +142,7 @@ The cascading happens in the following order:
 
 All of these can have an equivalent environment field.
 
+<a name="interpolation"/>
 Environment interpolation
 -------------------------
 
@@ -168,6 +187,7 @@ takes place, so it's okay to make use of variables still undefined. Errors are
 caught and reported.
 
 
+<a name="variants"/>
 Variants
 --------
 
@@ -223,6 +243,7 @@ Some key takeaways here:
 <sup>1</sup> Actually, times two. It's an N-dimensional matrix.
 
 
+<a name="blacklisting"/>
 Blacklisting and whitelisting
 -----------------------------
 
@@ -275,6 +296,7 @@ add/remove/replace what the previous level defined, again with the ordering:
 
  * _Project => Backend => Suite => Task_
 
+<a name="preparing"/>
 Preparing and restoring
 -----------------------
 
@@ -326,18 +348,123 @@ project prepare
         suite2 restore
     backend1 restore
 project restore
-````
+```
 
-Sending content
----------------
-
-_(write me)_
-
+<a name="debugging"/>
 Debugging
 ---------
 
-_(write me)_
+Debugging such remote tasking systems is generally quite boring, and Spread
+offers a hand to make the problem slightly less painful. Just add `-debug`
+to whatever set of options is in use and it will run the tests almost as usual,
+but on the first failure it will stop and report how to log in, and how to
+retry the failed task.
 
+Debugging also alters the running of the tests in a couple of ways to aid with
+the process. Whether tasks succeed or fail, the pushed project files are not
+removed at the end of the run, and none of the used servers are discarded.
+This ensures you can login and inspect if desired.
+
+Note that the project files previously pushed are reused as they are on the
+server for fast iterations, but when re-running tasks the actual `spread.yaml`
+and `task.yaml` files used are the local ones. To update the remote project
+files, just `rm -rf` the whole remote project tree and Spread will re-send the
+content on the next run. Just be careful about which machine your terminal is
+on before doing that. :-)
+
+You may want to tune some of your prepare logic to make use of this behavior.
+For example, the project-level prepare might detect if the project was
+previously built and not do it again.
+
+After you're done debugging, an easy way get rid of the servers is to do one
+last run including the `-reuse` option, but leaving `-debug` out.
+
+
+<a name="keeping"/>
+Keeping servers
+---------------
+
+Even if server allocation is fast, it's even faster to not allocate it at all.
+Just add `-keep` to your current set of options and servers will remain running
+after workers are done with them. At the end of the process, Spread will report
+how to reuse them.
+
+Unlike the debug mode described above, this will not alter the running process
+otherwise. The remote project is still removed at the end of the run and
+re-sent on the next iteration as if the machine was brand new.
+
+The obvious caveat when reusing machines like this is that failing restore
+scripts or bogus working ones may leave the server in a bad state which
+affects the next run improperly. In such cases the restore scripts should be
+fixed to be correct and more resiliant.
+
+Same as with `-debug`, after you're done iterating it's easy to get rid of the
+servers by performing one last run including the `-reuse` option, but leaving
+`-keep` out.
+
+<a name="including"/>
+Including and excluding files
+-----------------------------
+
+There are three fields that control what is pushed to the remote servers after
+each server is allocated:
+
+_$PROJECT/spread.yaml_
+```
+(...)
+
+install: /remote/path
+include:
+    - src/*
+exclude:
+    - src/*.o
+```
+
+The `install` option must be provided, while `include` defaults to a single
+entry with `*` which causes everything inside the project directory to be sent
+over.  Nothing is excluded by default.
+
+<a name="linode"/>
+Linode backend
+--------------
+
+The Linode backend is extremely simple to setup and use:
+
+
+_$PROJECT/spread.yaml_
+```
+(...)
+
+backend:
+    linode:
+        key: $(echo $LINODE_API_KEY)
+        systems:
+	    - ubuntu-16.04
+```
+
+With these settings the Linode backend in Spread will pick the API key from
+the local `$LINODE_API_KEY` environment variable (we don't want that in
+`spread.yaml`), and look for a server available on that user account that
+is powered off. When it finds one, it creates a brand new configuration and
+disk set to run the tests, without touching any of the available ones. That
+means you can even reuse existing servers to run the tests, if you wish.
+When discarding the server (assuming no `-keep` or `-debug`), it will power
+off the server and remove the configuration and disks, leaving it ready for
+the next run.
+
+Note that in Linode you can create additional users inside your own account
+that have limited access to a selection of servers only.  Unless your Linode
+account is entirely dedicated to Spread, this is what you'll want to do.  The
+API key you will want here in that case is the one for the sub-user, not for
+your main account.
+
+Some links to make your life easier:
+
+  * [API keys](https://manager.linode.com/profile/api)
+  * [Users and permissions](https://manager.linode.com/user)
+
+
+<a name="parallelism"/>
 More on parallelism
 -------------------
 

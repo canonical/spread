@@ -12,6 +12,7 @@ Spread - Task distribution respecting your sanity
 [Debugging](#debugging)  
 [Keeping servers](#keeping)  
 [Including and excluding files](#including)  
+[Selecting which tasks to run](#selecting)  
 [Linode backend](#linode)  
 [More on parallelism](#parallelism)  
 
@@ -425,6 +426,49 @@ exclude:
 The `install` option must be provided, while `include` defaults to a single
 entry with `*` which causes everything inside the project directory to be sent
 over.  Nothing is excluded by default.
+
+<a name="selecting"/>
+Selecting which tasks to run
+----------------------------
+
+Often times you'll want to iterate over a single task or a few of these, or
+a given suite, or perhaps select a specific backend to run on instead of
+doing them all.
+
+For that you can pass additional arguments indicating what to run:
+```
+$ spread my-suite/task-one my-suite/task-two
+```
+
+These arguments are matched against the Spread job name which uniquely
+identifies it, looking like this:
+
+    1. linode:ubuntu-16.04:mysuite/task-one:variant-a
+    2. linode:ubuntu-16.04:mysuite/task-two:variant-b
+
+The provided parameter must match one of the name components exactly,
+optionally making use of the `...` wildcard for that. As an exception, the task
+name may be matched partially as long as the slash is present as a prefix or
+suffix. Matching multiple components at once is also possible separating them
+with a colon; they don't have to be consecutive as long as the ordering is
+correct.
+
+For example, assuming the two jobs above, these parameters would all match
+at least one of them:
+
+  * _linode_
+  * _linode:mysuite/_
+  * _ubuntu-16.04_
+  * _ubuntu-..._
+  * _mysuite/_
+  * _/task-one_
+  * _/task..._
+  * _mysu...one_
+  * _linode:ubuntu-16.04:variant-a_
+
+The `-list` option is useful to see what jobs would be selected by a given
+filter without actually running them.
+
 
 <a name="linode"/>
 Linode backend

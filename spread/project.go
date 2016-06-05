@@ -223,7 +223,10 @@ func Load(path string) (*Project, error) {
 	}
 
 	if len(project.Backends) == 0 {
-		return nil, fmt.Errorf("no backends specified for project")
+		return nil, fmt.Errorf("must define at least one backend")
+	}
+	if len(project.Suites) == 0 {
+		return nil, fmt.Errorf("must define at least one task suite")
 	}
 
 	orig := project.Suites
@@ -384,11 +387,7 @@ func NewFilter(args []string) (Filter, error) {
 			case "...":
 				return `[^:]*`
 			case ":":
-				return ":"
-			case "::":
-				return ":[^:]+:"
-			case ":::":
-				return ":[^:]+:[^:]+:"
+				return "(:.+)*:(.+:)*"
 			}
 			err = fmt.Errorf("invalid filter string: %q", s)
 			return s
@@ -396,10 +395,10 @@ func NewFilter(args []string) (Filter, error) {
 		if err != nil {
 			return nil, err
 		}
-		if strings.HasPrefix(arg, ":") || strings.HasPrefix(arg, "/") {
+		if strings.HasPrefix(arg, "(:.+)*:") || strings.HasPrefix(arg, "/") {
 			arg = ".+" + arg
 		}
-		if strings.HasSuffix(arg, ":") || strings.HasSuffix(arg, "/") {
+		if strings.HasSuffix(arg, ":(.+:)*") || strings.HasSuffix(arg, "/") {
 			arg = arg + ".+"
 		}
 		exp, err := regexp.Compile("(?:^|:)" + arg + "(?:$|:)")
@@ -550,7 +549,11 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 	}
 
 	if len(jobs) == 0 {
-		return nil, fmt.Errorf("nothing to do")
+		if options.Filter != nil {
+			return nil, fmt.Errorf("cannot find anything matching")
+		} else {
+			return nil, fmt.Errorf("cannot find any tasks")
+		}
 	}
 
 	return jobs, nil

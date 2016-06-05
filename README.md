@@ -515,7 +515,7 @@ More on parallelism
 -------------------
 
 The `systems` entry under each backend contains a list of systems that will be
-allocated on that backend for running tasks.
+allocated on that backend for running tasks concurrently. 
 
 Consider these settings:
 
@@ -545,3 +545,19 @@ could be exercised. On the other hand, if that same backend has instead two
 ubuntu-16.04 systems, there will be only 100 jobs matching the 100 tasks, and
 each system will run approximately half of them each, assuming similar task
 execution duration.
+
+Spread can also take multiple backends of the same type. In that case the
+backend name will not match the backend type and thus the latter must be
+provided explicitly:
+```
+backends:
+    linode-a:
+        type: linode
+        (...)
+    linode-b:
+        type: linode
+        (...)
+```
+
+This is generally not necessary, but may be useful when fine-tuning control
+over the use of sets of remote machines.

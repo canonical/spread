@@ -1,7 +1,7 @@
 Spread
 ======
 
-Convenient full-system test/task distribution 
+Convenient full-system test|task distribution 
 ---------------------------------------------
 
 [Why?](#why)  
@@ -69,7 +69,7 @@ Each individual job in Spread has a:
 
 Again, each job in spread has _a single one of each of these._ If you have two
 systems and one task, there will be two jobs running in parallel on each of the
-two systems. If you have two systems and three task, you have six jobs, three
+two systems. If you have two systems and three tasks, you have six jobs, three
 in parallel with three. See where this is going? You can easily blacklist
 specific cases too, but this is the basic idea.
 
@@ -97,8 +97,7 @@ suites:
     examples:
         summary: Simple examples
 
-
-path: /home/spread
+path: /remote/path
 ```
 
 _$PROJECT/examples/hello/task.yaml_

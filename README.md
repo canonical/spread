@@ -98,7 +98,7 @@ suites:
         summary: Simple examples
 
 
-install: /home/spread
+path: /home/spread
 ```
 
 _$PROJECT/examples/hello/task.yaml_
@@ -126,6 +126,26 @@ for instant gratification. The echo will happen on the remote machine and
 system specified, and you'll see the output locally since the task failed
 (`-vv` to see the output nevertheless).
 
+The default output for the example should look similar to this:
+```
+2016/06/06 09:59:34 Allocating server lxd:ubuntu-16.04...
+2016/06/06 09:59:55 Waiting for LXD container spread-1-ubuntu-16-04 to have an address...
+2016/06/06 09:59:59 Allocated lxd:ubuntu-16.04 (spread-1-ubuntu-16-04).
+2016/06/06 09:59:59 Connecting to lxd:ubuntu-16.04 (spread-1-ubuntu-16-04)...
+2016/06/06 10:00:04 Connected to lxd:ubuntu-16.04 (spread-1-ubuntu-16-04).
+2016/06/06 10:00:04 Sending data to lxd:ubuntu-16.04 (spread-1-ubuntu-16-04)...
+2016/06/06 10:00:05 Error executing lxd:ubuntu-16.04:examples/hello:
+-----
++ echo Hello world!
+Hello world!
++ exit 1
+-----
+2016/06/06 10:00:05 Discarding lxd:ubuntu-16.04 (spread-62-ubuntu-16-04)...
+2016/06/06 10:00:06 Successful tasks: 0
+2016/06/06 10:00:06 Aborted tasks: 0
+2016/06/06 10:00:06 Failed tasks: 1
+    - lxd:ubuntu-16.04:examples/hello
+```
 
 <a name="environments"/>
 Environments
@@ -433,14 +453,15 @@ _$PROJECT/spread.yaml_
 ```
 (...)
 
-install: /remote/path
+path: /remote/path
+
 include:
     - src/*
 exclude:
     - src/*.o
 ```
 
-The `install` option must be provided, while `include` defaults to a single
+The `path` option must be provided, while `include` defaults to a single
 entry with `*` which causes everything inside the project directory to be sent
 over.  Nothing is excluded by default.
 

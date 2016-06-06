@@ -147,9 +147,9 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	logf("%s %s...", strings.Title(verb), contextStr)
 	var cwd string
 	if context == job.Backend || context == job.Project {
-		cwd = r.project.Install
+		cwd = r.project.RemotePath
 	} else {
-		cwd = filepath.Join(r.project.Install, job.Task.Name)
+		cwd = filepath.Join(r.project.RemotePath, job.Task.Name)
 	}
 	_, err := client.Trace(script, cwd, job.Environment)
 	if err != nil {
@@ -289,10 +289,10 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 		}
 		server := client.Server()
 		if r.options.Debug {
-			printf("Keeping data for debugging at %s on %s...", r.project.Install, server)
+			printf("Keeping data for debugging at %s on %s...", r.project.RemotePath, server)
 		} else if r.options.Keep {
-			printf("Removing data from %s on %s...", r.project.Install, server)
-			if err := client.RemoveAll(r.project.Install); err != nil {
+			printf("Removing data from %s on %s...", r.project.RemotePath, server)
+			if err := client.RemoveAll(r.project.RemotePath); err != nil {
 				printf("Error remove project from %s: %v", server, err)
 			}
 		}
@@ -465,7 +465,7 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 
 		send := true
 		if r.options.Debug {
-			empty, err := client.MissingOrEmpty(r.project.Install)
+			empty, err := client.MissingOrEmpty(r.project.RemotePath)
 			if err != nil {
 				printf("Cannot send data to %s: %v", server, err)
 				return nil
@@ -475,7 +475,7 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 
 		if send {
 			printf("Sending data to %s...", server)
-			err := client.Send(r.project.Path, r.project.Install, r.project.Include, r.project.Exclude)
+			err := client.Send(r.project.Path, r.project.RemotePath, r.project.Include, r.project.Exclude)
 			if err != nil {
 				if reused {
 					printf("Cannot send data to %s: %v", server, err)

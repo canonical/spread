@@ -44,7 +44,8 @@ type Project struct {
 	Restore []string
 	Suites  map[string]*Suite
 
-	Install string
+	RemotePath string `yaml:"path"`
+
 	Include []string
 	Exclude []string
 
@@ -163,14 +164,14 @@ func Load(path string) (*Project, error) {
 	if !validName.MatchString(project.Name) {
 		return nil, fmt.Errorf("invalid project name: %q", project.Name)
 	}
-	if project.Install == "" {
-		return nil, fmt.Errorf("missing remote install location")
+	if project.RemotePath == "" {
+		return nil, fmt.Errorf("missing project path field with remote project location")
 	}
-	project.Path = filepath.Dir(filename)
-
 	if project.Include == nil {
 		project.Include = []string{"."}
 	}
+
+	project.Path = filepath.Dir(filename)
 
 	for bname, backend := range project.Backends {
 		if !validName.MatchString(bname) {
@@ -530,13 +531,13 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 		}
 	}
 
-	value, err := evalone("remote install directory", p.Install, cmdcache, penv)
+	value, err := evalone("remote project path", p.Path, cmdcache, penv)
 	if err != nil {
 		return nil, err
 	}
-	p.Install = filepath.Clean(value)
-	if !filepath.IsAbs(p.Install) || filepath.Dir(p.Install) == p.Install {
-		return nil, fmt.Errorf("remote install directory must be absolute and not /: %s", p.Install)
+	p.Path = filepath.Clean(value)
+	if !filepath.IsAbs(p.RemotePath) || filepath.Dir(p.RemotePath) == p.Path {
+		return nil, fmt.Errorf("remote project path must be absolute and not /: %s", p.RemotePath)
 	}
 
 	for bname, backend := range p.Backends {

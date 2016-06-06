@@ -1,5 +1,8 @@
-Spread - Task distribution respecting your sanity
-=================================================
+Spread
+======
+
+Convenient full-system test distribution 
+----------------------------------------
 
 [Why?](#why)  
 [The cascading matrix](#matrix)  
@@ -26,7 +29,7 @@ slow, very unstable, hard to make sense of the output, impossible to debug,
 hard to write tests for, hard to run on multiple environments, and parallelism
 was not a thing.
 
-Spread came out as a delightful way to fix that. A few simple and concrete
+Spread came out as a plesant way to fix that. A few simple and concrete
 concepts that are fun to play with and fix the exact piece missing in the
 puzzle. It's not Jenkins, it's not Travis, it's not a library, not a language,
 and it's not even specific to testing. It's a simple way to express what to run

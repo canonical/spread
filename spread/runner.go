@@ -40,6 +40,8 @@ type Runner struct {
 }
 
 func Start(project *Project, options *Options) (*Runner, error) {
+	debugf("Starting runner with passsword %q.", options.Password)
+
 	r := &Runner{
 		project:   project,
 		options:   options,
@@ -53,6 +55,8 @@ func Start(project *Project, options *Options) (*Runner, error) {
 		switch backend.Type {
 		case "linode":
 			r.providers[bname] = Linode(backend)
+		case "lxd":
+			r.providers[bname] = LXD(backend)
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}
@@ -79,6 +83,7 @@ func (r *Runner) Stop() error {
 
 func (r *Runner) loop() error {
 	defer func() {
+		logNames(debugf, "Pending jobs after workers returned", r.pending, taskName)
 		for _, job := range r.pending {
 			if job != nil {
 				r.add(&r.stats.TaskAbort, job)
@@ -146,7 +151,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	} else {
 		cwd = filepath.Join(r.project.Install, job.Task.Name)
 	}
-	_, err := client.Run(script, cwd, job.Environment)
+	_, err := client.Trace(script, cwd, job.Environment)
 	if err != nil {
 		printf("Error %s %s: %v", verb, contextStr, err)
 		*debug = r.options.Debug
@@ -181,12 +186,12 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 	var client *Client
 	var job, last *Job
 
-	for r.tomb.Alive() {
+	for {
 		r.mu.Lock()
 		if job != nil {
 			r.suiteWorkers[suiteWorkersKey(job)]--
 		}
-		if badProject || debug {
+		if badProject || debug || !r.tomb.Alive() {
 			r.mu.Unlock()
 			break
 		}
@@ -218,7 +223,9 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 		if !insideProject {
 			client = r.client(backend, job.System)
 			if client == nil {
-				break
+				r.add(&stats.TaskAbort, job)
+				badProject = true
+				continue
 			}
 
 			insideProject = true
@@ -422,8 +429,12 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 			}
 		}
 		if err != nil {
-			printf("Discarding %s, cannot connect: %v", server, err)
-			server.Discard()
+			if reused {
+				printf("Cannot connect to %s: %v", server, err)
+			} else {
+				printf("Discarding %s, cannot connect: %v", server, err)
+				server.Discard()
+			}
 			continue
 		}
 		if !reused {
@@ -466,7 +477,12 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 			printf("Sending data to %s...", server)
 			err := client.Send(r.project.Path, r.project.Install, r.project.Include, r.project.Exclude)
 			if err != nil {
-				printf("Cannot send data to %s: %v", server, err)
+				if reused {
+					printf("Cannot send data to %s: %v", server, err)
+				} else {
+					printf("Discarding %s, cannot send data: %s", server, err)
+					server.Discard()
+				}
 				continue
 			}
 		} else {
@@ -558,15 +574,15 @@ func (s *stats) log() {
 	printf("Successful tasks: %d", len(s.TaskDone))
 	printf("Aborted tasks: %d", len(s.TaskAbort))
 
-	s.logNames("Failed tasks", s.TaskError, taskName)
-	s.logNames("Failed task prepare", s.TaskPrepareError, taskName)
-	s.logNames("Failed task restore", s.TaskRestoreError, taskName)
-	s.logNames("Failed suite prepare", s.SuitePrepareError, suiteName)
-	s.logNames("Failed suite restore", s.SuiteRestoreError, suiteName)
-	s.logNames("Failed backend prepare", s.BackendPrepareError, backendName)
-	s.logNames("Failed backend restore", s.BackendRestoreError, backendName)
-	s.logNames("Failed project prepare", s.ProjectPrepareError, projectName)
-	s.logNames("Failed project restore", s.ProjectRestoreError, projectName)
+	logNames(printf, "Failed tasks", s.TaskError, taskName)
+	logNames(printf, "Failed task prepare", s.TaskPrepareError, taskName)
+	logNames(printf, "Failed task restore", s.TaskRestoreError, taskName)
+	logNames(printf, "Failed suite prepare", s.SuitePrepareError, suiteName)
+	logNames(printf, "Failed suite restore", s.SuiteRestoreError, suiteName)
+	logNames(printf, "Failed backend prepare", s.BackendPrepareError, backendName)
+	logNames(printf, "Failed backend restore", s.BackendRestoreError, backendName)
+	logNames(printf, "Failed project prepare", s.ProjectPrepareError, projectName)
+	logNames(printf, "Failed project restore", s.ProjectRestoreError, projectName)
 }
 
 func projectName(job *Job) string { return "project" }
@@ -580,13 +596,16 @@ func taskName(job *Job) string {
 	return job.Task.Name + ":" + job.Variant
 }
 
-func (s *stats) logNames(prefix string, jobs []*Job, name func(job *Job) string) {
-	if len(jobs) == 0 {
-		return
+func logNames(f func(format string, args ...interface{}), prefix string, jobs []*Job, name func(job *Job) string) {
+	names := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		if job == nil {
+			continue
+		}
+		names = append(names, fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System, name(job)))
 	}
-	names := make([]string, len(jobs))
-	for i, job := range jobs {
-		names[i] = fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System, name(job))
+	if len(names) == 0 {
+		return
 	}
 	sort.Strings(names)
 	const dash = "\n    - "

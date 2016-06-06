@@ -1,0 +1,290 @@
+package spread
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"gopkg.in/yaml.v2"
+	"io/ioutil"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
+)
+
+func LXD(b *Backend) Provider {
+	return &lxd{b}
+}
+
+type lxd struct {
+	backend *Backend
+}
+
+type lxdServer struct {
+	l *lxd
+	d lxdServerData
+}
+
+type lxdServerData struct {
+	Name    string
+	Address string
+	Image   ImageID
+}
+
+func (s *lxdServer) String() string {
+	return fmt.Sprintf("%s:%s (%s)", s.l.backend.Name, s.d.Image.SystemID(), s.d.Name)
+}
+
+func (s *lxdServer) Provider() Provider {
+	return s.l
+}
+
+func (s *lxdServer) Address() string {
+	return s.d.Address
+}
+
+func (s *lxdServer) Image() ImageID {
+	return s.d.Image
+}
+
+func (s *lxdServer) Snapshot() (ImageID, error) {
+	return "", nil
+}
+
+func (s *lxdServer) ReuseData() []byte {
+	data, err := yaml.Marshal(&s.d)
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
+func (s *lxdServer) Discard() error {
+	logf("Discarding %s...", s)
+
+	output, err := exec.Command("lxc", "delete", "--force", s.d.Name).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("cannot discard lxd container: %v", outputErr(output, err))
+	}
+	return nil
+}
+
+func (l *lxd) Backend() *Backend {
+	return l.backend
+}
+
+func (l *lxd) DiscardSnapshot(image ImageID) error {
+	return nil
+}
+
+func (l *lxd) Reuse(data []byte, password string) (Server, error) {
+	server := &lxdServer{}
+	err := yaml.Unmarshal(data, &server.d)
+	if err != nil {
+		return nil, fmt.Errorf("cannot unmarshal lxd reuse data: %v", err)
+	}
+	server.l = l
+	return server, nil
+}
+
+func (l *lxd) Allocate(image ImageID, password string) (Server, error) {
+	lxdimage, err := lxdImage(image)
+	if err != nil {
+		return nil, err
+	}
+	name, err := lxdName(image)
+	if err != nil {
+		return nil, err
+	}
+
+	output, err := exec.Command("lxc", "launch", lxdimage, name).CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("cannot launch lxd container: %v", outputErr(output, err))
+	}
+
+	server := &lxdServer{
+		l: l,
+		d: lxdServerData{
+			Name: name,
+			Image: image,
+		},
+	}
+
+	printf("Waiting for LXD container %s to have an address...", name)
+	timeout := time.After(10 * time.Second)
+	retry := time.NewTicker(1 * time.Second)
+	defer retry.Stop()
+	for {
+		addr, err := l.address(name)
+		if err == nil {
+			server.d.Address = addr
+			break
+		}
+		if _, ok := err.(*lxdNoAddrError); !ok {
+			server.Discard()
+			return nil, err
+		}
+
+		select {
+		case <-retry.C:
+		case <-timeout:
+			server.Discard()
+			return nil, err
+		}
+	}
+
+	err = l.tuneSSH(name, password)
+	if err != nil {
+		server.Discard()
+		return nil, err
+	}
+
+	printf("Allocated %s.", server)
+	return server, nil
+}
+
+func lxdImage(image ImageID) (string, error) {
+	s := string(image.SystemID())
+	if i := strings.Index(s, "-"); i > 0 && !strings.Contains(s[i+1:], "-") {
+		return s[:i] + ":" + s[i+1:], nil
+	}
+	return "", fmt.Errorf("unsupported lxd image: %s", image)
+}
+
+func lxdName(image ImageID) (string, error) {
+	filename := os.ExpandEnv("$HOME/.spread/lxd-count")
+	file, err := os.OpenFile(filename, os.O_RDWR, 0644)
+	if os.IsNotExist(err) {
+		err = os.Mkdir(filepath.Dir(filename), 0755)
+		if err != nil && !os.IsExist(err) {
+			return "", fmt.Errorf("cannot create ~/.spread/: %v", err)
+		}
+		file, err = os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0644)
+		if err != nil {
+			return "", fmt.Errorf("cannot create ~/.spread/lxd-count: %v", err)
+		}
+	} else if err != nil {
+		return "", fmt.Errorf("cannot open ~/.spread/lxd-count: %v", err)
+	}
+	defer file.Close()
+
+	const LOCK_EX = 2
+	err = syscall.Flock(int(file.Fd()), LOCK_EX)
+	if err != nil {
+		return "", fmt.Errorf("cannot obtain lock on ~/.spread/lxd-count: %v", err)
+	}
+
+	data, err := ioutil.ReadAll(file)
+	if err != nil {
+		return "", fmt.Errorf("cannot read ~/.spread/lxd-count: %v", err)
+	}
+
+	n := 0
+	nstr := strings.TrimSpace(string(data))
+	if nstr != "" {
+		n, err = strconv.Atoi(nstr)
+		if err != nil {
+			return "", fmt.Errorf("expected integer in ~/.spread/lxd-count, got %q", nstr)
+		}
+	}
+
+	n++
+	_, err = file.WriteAt([]byte(strconv.Itoa(n)), 0)
+	if err != nil {
+		return "", fmt.Errorf("cannot write to ~/.spread/lxd-count: %v", err)
+	}
+
+	return fmt.Sprintf("spread-%d-%s", n, strings.Replace(string(image.SystemID()), ".", "-", -1)), nil
+}
+
+type lxdServerJSON struct {
+	Name   string `json:"name"`
+	State  struct {
+		Network map[string]lxdDeviceJSON `json:"network"`
+	} `json:"state"`
+}
+
+type lxdDeviceJSON struct {
+	State string `json:"state"`
+	Addresses []lxdAddressJSON `json:"addresses"`
+}
+
+type lxdAddressJSON struct {
+	Family string `json:"family"`
+	Address string `json:"address"`
+}
+
+type lxdNoServerError struct {
+	name string
+}
+
+func (e *lxdNoServerError) Error() string {
+	return fmt.Sprintf("cannot find lxd server %q", e.name)
+}
+
+type lxdNoAddrError struct {
+	name string
+}
+
+func (e *lxdNoAddrError) Error() string {
+	return fmt.Sprintf("lxd server %s has no address available", e.name)
+}
+
+func (l *lxd) address(name string) (string, error) {
+	server, err := l.server(name)
+	if err != nil {
+		return "", err
+	}
+	for _, addr := range server.State.Network["eth0"].Addresses {
+		if addr.Family == "inet" && addr.Address != "" {
+			return addr.Address, nil
+		}
+	}
+	return "", &lxdNoAddrError{name}
+}
+
+func (l *lxd) server(name string) (*lxdServerJSON, error) {
+	var stderr bytes.Buffer
+	cmd := exec.Command("lxc", "list", "--format=json", name)
+	cmd.Stderr = &stderr
+
+	output, err := cmd.Output()
+	if err != nil {
+		err = outputErr(stderr.Bytes(), err)
+		return nil, fmt.Errorf("cannot list lxd container: %v", err)
+	}
+
+	var servers []*lxdServerJSON
+	err = json.Unmarshal(output, &servers)
+	if err != nil {
+		return nil, fmt.Errorf("cannot unmarshal lxd list output: %v", err)
+	}
+
+	debugf("lxd list output: %# v\n", servers)
+
+	if len(servers) == 0 {
+		return nil, &lxdNoServerError{name}
+	}
+	if servers[0].Name != name {
+		return nil, fmt.Errorf("lxd returned invalid JSON listing for %q: %s", name, outputErr(output, nil))
+	}
+	return servers[0], nil
+}
+
+func (l *lxd) tuneSSH(name, password string) error {
+	cmds := [][]string{
+		{"sed", "-i", `s/\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/`, "/etc/ssh/sshd_config"},
+		{"/bin/sh", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", password)},
+		{"killall", "-HUP", "sshd"},
+	}
+	for _, args := range cmds {
+		output, err := exec.Command("lxc", append([]string{"exec", name, "--"}, args...)...).CombinedOutput()
+		if err != nil && args[0] != "killall" {
+			return fmt.Errorf("cannot prepare sshd in lxd container %q: %v", name, outputErr(output, err))
+		}
+	}
+	return nil
+}

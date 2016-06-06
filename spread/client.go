@@ -61,10 +61,7 @@ func (c *Client) WriteFile(path string, data []byte) error {
 	debugf("Writing to %s at %s:\n-----\n%# v\n-----", c.server, path, string(data))
 	output, err := session.CombinedOutput(fmt.Sprintf(`cat >"%s"`, path))
 	if err != nil {
-		output := string(bytes.TrimSpace(output))
-		if len(output) > 0 {
-			err = fmt.Errorf("%s", output)
-		}
+		err = outputErr(output, err)
 		return fmt.Errorf("cannot write to %s at %s: %v", c.server, path, err)
 	}
 
@@ -72,6 +69,18 @@ func (c *Client) WriteFile(path string, data []byte) error {
 		printf("Error writing to %s at %s: %v", c.server, path, err)
 	}
 	return nil
+}
+
+func outputErr(output []byte, err error) error {
+	output = bytes.TrimSpace(output)
+	if len(output) > 0 {
+		if bytes.Contains(output, []byte{'\n'}) {
+			err = fmt.Errorf("\n-----\n%s\n-----", output)
+		} else {
+			err = fmt.Errorf("%s", output)
+		}
+	}
+	return err
 }
 
 func (c *Client) ReadFile(path string) ([]byte, error) {
@@ -84,10 +93,7 @@ func (c *Client) ReadFile(path string) ([]byte, error) {
 	debugf("Reading from %s at %s...", c.server, path)
 	output, err := session.CombinedOutput(fmt.Sprintf("cat '%s'", path))
 	if err != nil {
-		output := string(bytes.TrimSpace(output))
-		if len(output) > 0 {
-			err = fmt.Errorf("%s", output)
-		}
+		err = outputErr(output, err)
 		logf("Cannot read from %s at %s: %v", c.server, path, err)
 		return nil, fmt.Errorf("cannot read from %s at %s: %v", c.server, path, err)
 	}
@@ -96,7 +102,30 @@ func (c *Client) ReadFile(path string) ([]byte, error) {
 	return output, nil
 }
 
-func (c *Client) Run(script []string, cwd string, env map[string]string) (output []byte, err error) {
+const (
+	traceOutput = iota
+	combinedOutput
+	splitOutput
+)
+
+func (c *Client) Run(script []string, dir string, env map[string]string) error {
+	_, err := c.run(script, dir, env, combinedOutput)
+	return err
+}
+
+func (c *Client) Output(script []string, dir string, env map[string]string) (output []byte, err error) {
+	return c.run(script, dir, env, splitOutput)
+}
+
+func (c *Client) CombinedOutput(script []string, dir string, env map[string]string) (output []byte, err error) {
+	return c.run(script, dir, env, combinedOutput)
+}
+
+func (c *Client) Trace(script []string, dir string, env map[string]string) (output []byte, err error) {
+	return c.run(script, dir, env, traceOutput)
+}
+
+func (c *Client) run(script []string, dir string, env map[string]string, mode int) (output []byte, err error) {
 	if len(script) == 0 {
 		return nil, nil
 	}
@@ -127,7 +156,7 @@ func (c *Client) Run(script []string, cwd string, env map[string]string) (output
 		errch <- stdin.Close()
 	}()
 
-	if false && Debug {
+	if Debug {
 		var buf bytes.Buffer
 		for key, value := range env {
 			// TODO Value escaping.
@@ -140,19 +169,41 @@ func (c *Client) Run(script []string, cwd string, env map[string]string) (output
 		debugf("Sending script to %s:\n-----\n%s\n------", c.server, buf.Bytes())
 	}
 
-	output, err = session.CombinedOutput(fmt.Sprintf(`cd "%s" && /bin/sh -e -x - 2>&1`, cwd))
+	var stderr bytes.Buffer
+	var cmd string
+	switch mode {
+	case traceOutput:
+		cmd = "/bin/sh -e -x - 2>&1"
+	case combinedOutput:
+		cmd = "/bin/sh -e - 2>&1"
+	case splitOutput:
+		cmd = "/bin/sh -e -"
+		session.Stderr = &stderr
+	default:
+		panic("internal error: invalid output mode")
+	}
+
+	if dir != "" {
+		cmd = fmt.Sprintf(`cd "%s" && %s`, dir, cmd)
+	}
+
+	output, err = session.Output(cmd)
+
+	if len(output) > 0 {
+		debugf("Output from running script on %s:\n-----\n%s\n-----", c.server, output)
+	}
+	if stderr.Len() > 0 {
+		debugf("Error output from running script on %s:\n-----\n%s\n-----", c.server, output)
+	}
+
 	if err != nil {
-		output := bytes.TrimSpace(output)
-		if len(output) > 0 {
-			if bytes.Contains(output, []byte{'\n'}) {
-				err = fmt.Errorf("\n-----\n%s\n-----", output)
-			} else {
-				err = fmt.Errorf("%s", output)
-			}
+		if mode == splitOutput {
+			err = outputErr(stderr.Bytes(), err)
+		} else {
+			err = outputErr(output, err)
 		}
 		return nil, err
 	}
-	debugf("Output from running script on %s:\n-----\n%s\n-----", c.server, output)
 
 	if err := <-errch; err != nil {
 		printf("Error writing script to %s: %v", c.server, err)
@@ -161,18 +212,22 @@ func (c *Client) Run(script []string, cwd string, env map[string]string) (output
 }
 
 func (c *Client) RemoveAll(path string) error {
-	_, err := c.Run([]string{fmt.Sprintf(`rm -rf "%s"`, path)}, "", nil)
+	_, err := c.CombinedOutput([]string{fmt.Sprintf(`rm -rf "%s"`, path)}, "", nil)
 	return err
 }
 
 func (c *Client) MissingOrEmpty(dir string) (bool, error) {
-	output, err := c.Run([]string{fmt.Sprintf(`! test -e "%s" || ls -a "%s"`, dir, dir)}, "", nil)
+	output, err := c.Output([]string{fmt.Sprintf(`! test -e "%s" || ls -a "%s"`, dir, dir)}, "", nil)
 	if err != nil {
 		return false, fmt.Errorf("cannot check if %s on %s is empty: %v", dir, c.server, err)
 	}
-	for _, s := range strings.Split(string(output), "\n") {
-		if s != "." && s != ".." {
-			return false, nil
+	output = bytes.TrimSpace(output)
+	if len(output) > 0 {
+		for _, s := range strings.Split(string(output), "\n") {
+			if s != "." && s != ".." {
+				debugf("Found %q inside %q, considering non-empty.", s, dir)
+				return false, nil
+			}
 		}
 	}
 	return true, nil
@@ -180,6 +235,9 @@ func (c *Client) MissingOrEmpty(dir string) (bool, error) {
 
 func (c *Client) Send(from, to string, include []string, exclude []string) error {
 	empty, err := c.MissingOrEmpty(to)
+	if err != nil {
+		return err
+	}
 	if !empty {
 		return fmt.Errorf("remote directory %s is not empty", to)
 	}
@@ -219,11 +277,7 @@ func (c *Client) Send(from, to string, include []string, exclude []string) error
 
 	output, err := session.CombinedOutput(fmt.Sprintf(`mkdir -p "%s" && cd "%s" && /bin/tar -xz 2>&1`, to, to))
 	if err != nil {
-		output := string(bytes.TrimSpace(output))
-		if len(output) > 0 {
-			err = fmt.Errorf("%s", output)
-		}
-		return err
+		return outputErr(output, err)
 	}
 
 	if err := <-errch; err != nil {

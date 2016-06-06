@@ -7,14 +7,13 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 )
 
-func Linode(bopts *Backend) Provider {
-	return &linode{bopts}
+func Linode(b *Backend) Provider {
+	return &linode{b}
 }
 
 type linode struct {
@@ -548,12 +547,7 @@ func (l *linode) do(params linodeParams, result interface{}) error {
 		}
 		values[k] = []string{vs}
 	}
-
-	key := os.Getenv("LINODE_API_KEY")
-	if key == "" {
-		return fmt.Errorf("LINODE_API_KEY environment variable must be set")
-	}
-	values["api_key"] = []string{key}
+	values["api_key"] = []string{l.backend.Key}
 
 	resp, err := client.PostForm("https://api.linode.com", values)
 	if err != nil {

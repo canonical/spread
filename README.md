@@ -13,6 +13,7 @@ Spread - Task distribution respecting your sanity
 [Keeping servers](#keeping)  
 [Including and excluding files](#including)  
 [Selecting which tasks to run](#selecting)  
+[LXD backend](#lxd)  
 [Linode backend](#linode)  
 [More on parallelism](#parallelism)  
 
@@ -86,8 +87,7 @@ _$PROJECT/spread.yaml_
 project: hello-world
 
 backend:
-    linode:
-        key: $(echo $LINODE_API_KEY)
+    lxd:
         systems: [ubuntu-16.04]
 
 suites:
@@ -106,9 +106,23 @@ execute:
     - exit 1
 ```
 
-Run the example with `$ spread` for instant gratification. The echo will happen
-on the remote machine and system specified, and you'll see the output locally
-since the task failed (`-vv` to see the output nevertheless).
+This example uses the [LXD backend](#lxd) on the local sytem and thus requires
+Ubuntu 16.04 or later. If you want to distribute the tasks over to a remote
+system, try the [Linode backend](#linode) with:
+
+_$PROJECT/spread.yaml_
+```
+backend:
+    linode:
+        key: $(echo $LINODE_API_KEY)
+        systems: [ubuntu-16.04]
+```
+
+Then run the example with `$ spread` from anywhere inside your project tree
+for instant gratification. The echo will happen on the remote machine and
+system specified, and you'll see the output locally since the task failed
+(`-vv` to see the output nevertheless).
+
 
 <a name="environments"/>
 Environments
@@ -173,7 +187,7 @@ suites:
     examples:
         summary: Simple examples
         environment:
-	    GREETING: "Hello $[SUBJECT]!"
+            GREETING: "Hello $[SUBJECT]!"
 ```
 
 _$PROJECT/examples/hello/task.yaml_
@@ -443,8 +457,8 @@ $ spread my-suite/task-one my-suite/task-two
 These arguments are matched against the Spread job name which uniquely
 identifies it, looking like this:
 
-    1. linode:ubuntu-16.04:mysuite/task-one:variant-a
-    2. linode:ubuntu-16.04:mysuite/task-two:variant-b
+    1. lxd:ubuntu-16.04:mysuite/task-one:variant-a
+    2. lxd:ubuntu-16.04:mysuite/task-two:variant-b
 
 The provided parameter must match one of the name components exactly,
 optionally making use of the `...` wildcard for that. As an exception, the task
@@ -456,26 +470,58 @@ correct.
 For example, assuming the two jobs above, these parameters would all match
 at least one of them:
 
-  * _linode_
-  * _linode:mysuite/_
+  * _lxd_
+  * _lxd:mysuite/_
   * _ubuntu-16.04_
   * _ubuntu-..._
   * _mysuite/_
   * _/task-one_
   * _/task..._
   * _mysu...one_
-  * _linode:ubuntu-16.04:variant-a_
+  * _lxd:ubuntu-16.04:variant-a_
 
 The `-list` option is useful to see what jobs would be selected by a given
 filter without actually running them.
+
+<a name="lxd"/>
+LXD backend
+-----------
+
+The LXD backend depends on the [LXD](http://www.ubuntu.com/cloud/lxd) container
+hypervisor available on Ubuntu 16.04 or later, and allows you to run tests
+using the local system alone.
+
+Setup LXD there with:
+```
+sudo apt update
+sudo apt install lxd
+sudo lxd init
+```
+
+Then, make sure your local user has access to the `lxc` client tool. If you
+can run `lxc list` without errors, you're good to go. If not, you'll probably
+have to logout and login again, or manually change your group with:
+```
+$ newgrp lxd
+```
+
+Then, setting up the backend in your project file is as trivial as:
+```
+backends:
+    lxd:
+        systems:
+	    - ubuntu-16.04
+```
+
+That's it. Have fun with your self-contained multi-system task runner.
 
 
 <a name="linode"/>
 Linode backend
 --------------
 
-The Linode backend is extremely simple to setup and use:
-
+The Linode backend is extremely simple to setup and use as well, and allows
+distributing your tasks over into remote infrastructure.
 
 _$PROJECT/spread.yaml_
 ```

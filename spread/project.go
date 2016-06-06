@@ -531,12 +531,12 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 		}
 	}
 
-	value, err := evalone("remote project path", p.Path, cmdcache, penv)
+	value, err := evalone("remote project path", p.RemotePath, cmdcache, penv)
 	if err != nil {
 		return nil, err
 	}
-	p.Path = filepath.Clean(value)
-	if !filepath.IsAbs(p.RemotePath) || filepath.Dir(p.RemotePath) == p.Path {
+	p.RemotePath = filepath.Clean(value)
+	if !filepath.IsAbs(p.RemotePath) || filepath.Dir(p.RemotePath) == p.RemotePath {
 		return nil, fmt.Errorf("remote project path must be absolute and not /: %s", p.RemotePath)
 	}
 

@@ -1,8 +1,8 @@
 Spread
 ======
 
-Convenient full-system test distribution 
-----------------------------------------
+Convenient full-system test/task distribution 
+---------------------------------------------
 
 [Why?](#why)  
 [The cascading matrix](#matrix)  

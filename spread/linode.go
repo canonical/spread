@@ -9,15 +9,21 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 func Linode(b *Backend) Provider {
-	return &linode{b}
+	return &linode{backend: b}
 }
 
 type linode struct {
 	backend *Backend
+
+	distrosLock  sync.Mutex
+	distrosDone  bool
+	distrosCache []*linodeDistro
+	kernelsCache []*linodeKernel
 }
 
 var client = &http.Client{}
@@ -95,7 +101,6 @@ func (l *linode) DiscardSnapshot(image ImageID) error {
 }
 
 func (l *linode) Reuse(data []byte, password string) (Server, error) {
-	// TODO Store backend.
 	server := &linodeServer{}
 	err := yaml.Unmarshal(data, server)
 	if err != nil {
@@ -165,8 +170,6 @@ func (l *linode) list() ([]*linodeServer, error) {
 	return result.Data, nil
 }
 
-// setup takes a powered on (reserved) server, and creates a disk and config
-// for the given image, and then reboots the server on it.
 func (l *linode) setup(server *linodeServer, image ImageID, password string) error {
 	server.l = l
 	server.Img = image
@@ -247,18 +250,6 @@ func (l *linode) serverJob(server *linodeServer, verb string, params linodeParam
 	return result.Data, nil
 }
 
-type linodeImageInfo struct {
-	distroID int
-	kernelID int
-}
-
-var linodeImageInfos = map[ImageID]*linodeImageInfo{
-	Ubuntu1604: {
-		distroID: 146,
-		kernelID: 138,
-	},
-}
-
 type linodeDiskJob struct {
 	DiskID int `json:"DISKID"`
 	JobID  int `json:"JOBID"`
@@ -270,9 +261,9 @@ type linodeDiskJobResult struct {
 }
 
 func (l *linode) createDisk(server *linodeServer, image ImageID, password string) (root, swap *linodeDiskJob, err error) {
-	info, ok := linodeImageInfos[image]
-	if !ok {
-		return nil, nil, fmt.Errorf("no Linode image information for %s", image)
+	distro, err := l.distro(image)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	logf("Creating disk on %s with %s...", server, image)
@@ -281,7 +272,7 @@ func (l *linode) createDisk(server *linodeServer, image ImageID, password string
 		"api_requestArray": []linodeParams{{
 			"api_action":     "linode.disk.createFromDistribution",
 			"LinodeID":       server.ID,
-			"DistributionID": info.distroID,
+			"DistributionID": distro.ID,
 			"Label":          image.Label("root"),
 			"Size":           4096,
 			"rootPass":       password,
@@ -355,15 +346,15 @@ type linodeConfigResult struct {
 func (l *linode) createConfig(server *linodeServer, image ImageID, rootID, swapID int) (configID int, err error) {
 	logf("Creating configuration on %s with %s...", server, image)
 
-	info, ok := linodeImageInfos[image]
-	if !ok {
-		return 0, fmt.Errorf("no Linode image information for %s", image)
+	distro, err := l.distro(image)
+	if err != nil {
+		return 0, err
 	}
 
 	params := linodeParams{
 		"api_action":             "linode.config.create",
 		"LinodeID":               server.ID,
-		"KernelID":               info.kernelID,
+		"KernelID":               distro.KernelID,
 		"Label":                  image.Label(""),
 		"DiskList":               fmt.Sprintf("%d,%d", rootID, swapID),
 		"RootDeviceNum":          1,
@@ -523,6 +514,133 @@ func (l *linode) ip(server *linodeServer) (*linodeIP, error) {
 		}
 	}
 	return nil, fmt.Errorf("cannot find public IP for %s", server)
+}
+
+type distrosResult struct {
+	linodeResult
+	Data []*linodeDistro
+}
+
+type linodeDistro struct {
+	Name     string `json:"-"`
+	KernelID int    `json:"-"`
+
+	ID           int    `json:"DISTRIBUTIONID"`
+	Label        string `json:"LABEL"`
+	MinImageSize int    `json:"MINIMAGESIZE"`
+	VOPSKernel   int    `json:"REQUIRESVOPSKERNEL"`
+	Is64Bit      int    `json:"IS64BIT"`
+	Create       string `json:"CREATE_DT"`
+}
+
+type kernelsResult struct {
+	linodeResult
+	Data []*linodeKernel
+}
+
+type linodeKernel struct {
+	ID      int    `json:"KERNELID"`
+	IsPVOPS int    `json:"ISPVOPS"`
+	IsXEN   int    `json:"ISXEN"`
+	IsKVM   int    `json:"ISKVM"`
+	Label   string `json:"LABEL"`
+}
+
+func (l *linode) distro(image ImageID) (*linodeDistro, error) {
+	l.distrosLock.Lock()
+	defer l.distrosLock.Unlock()
+
+	if !l.distrosDone {
+		if err := l.cacheDistros(); err != nil {
+			return nil, err
+		}
+	}
+	l.distrosDone = true
+
+	var system = string(image.SystemID())
+	var best *linodeDistro
+	for _, distro := range l.distrosCache {
+		if distro.Name != system {
+			continue
+		}
+		if distro.Is64Bit == 1 {
+			return distro, nil
+		}
+		best = distro
+	}
+	if best == nil {
+		return nil, fmt.Errorf("cannot find system %s in Linode")
+	}
+	return best, nil
+}
+
+func (l *linode) cacheDistros() error {
+	var err error
+	for retry := 0; retry < 3; retry++ {
+		params := linodeParams{
+			"api_action": "avail.distributions",
+		}
+		var result distrosResult
+		err = l.do(params, &result)
+		if err == nil {
+			err = result.err()
+		}
+		if err == nil {
+			l.distrosCache = result.Data
+			break
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("cannot list Linode distributions: %v", err)
+	}
+	for retry := 0; retry < 3; retry++ {
+		params := linodeParams{
+			"api_action": "avail.kernels",
+		}
+		var result kernelsResult
+		err = l.do(params, &result)
+		if err == nil {
+			err = result.err()
+		}
+		if err == nil {
+			l.kernelsCache = result.Data
+			break
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("cannot list Linode kernels: %v", err)
+	}
+
+	var latest32 = -1
+	var latest64 = -1
+	for _, kernel := range l.kernelsCache {
+		if strings.HasPrefix(kernel.Label, "Latest 64 bit") {
+			latest64 = kernel.ID
+		}
+		if strings.HasPrefix(kernel.Label, "Latest 32 bit") {
+			latest32 = kernel.ID
+		}
+	}
+	if latest32 == -1 || latest64 == -1 {
+		return fmt.Errorf("cannot find latest Linode kernel")
+	}
+	for _, distro := range l.distrosCache {
+		if distro.Is64Bit == 1 {
+			distro.KernelID = latest64
+		} else {
+			distro.KernelID = latest32
+		}
+
+		label := strings.Fields(strings.ToLower(distro.Label))
+		if len(label) > 2 && label[1] == "linux" {
+			distro.Name = label[0] + "-" + label[2]
+		} else {
+			distro.Name = label[0] + "-" + label[1]
+		}
+	}
+
+	debugf("Linode distributions available: %# v", l.distrosCache)
+	return nil
 }
 
 type linodeParams map[string]interface{}

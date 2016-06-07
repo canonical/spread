@@ -147,9 +147,10 @@ func SplitCount(s string) (prefix string, count int, ok bool) {
 }
 
 var (
-	validName  = regexp.MustCompile("^[a-z0-9]+(?:[-._][a-z0-9]+)*$")
-	validSuite = regexp.MustCompile("^(?:[a-z0-9]+(?:[-._][a-z0-9]+)*/)+$")
-	validTask  = regexp.MustCompile("^(?:[a-z0-9]+(?:[-._][a-z0-9]+)*/)+[a-z0-9]+(?:[-._][a-z0-9]+)*$")
+	validName   = regexp.MustCompile("^[a-z0-9]+(?:[-._][a-z0-9]+)*$")
+	validSystem = regexp.MustCompile("^[a-z]+-[a-z0-9]+(?:[-.][a-z0-9]+)*$")
+	validSuite  = regexp.MustCompile("^(?:[a-z0-9]+(?:[-._][a-z0-9]+)*/)+$")
+	validTask   = regexp.MustCompile("^(?:[a-z0-9]+(?:[-._][a-z0-9]+)*/)+[a-z0-9]+(?:[-._][a-z0-9]+)*$")
 )
 
 func Load(path string) (*Project, error) {
@@ -335,22 +336,13 @@ func readProject(path string) (filename string, data []byte, err error) {
 }
 
 func checkSystems(context fmt.Stringer, systems []string) error {
-	var unknown []string
 	for _, system := range systems {
 		if strings.HasPrefix(system, "+") || strings.HasPrefix(system, "-") {
 			system = system[1:]
 		}
-		if !validName.MatchString(system) {
+		if !validSystem.MatchString(system) {
 			return fmt.Errorf("%s refers to invalid system name: %q", context, system)
 		}
-		switch ImageID(system) {
-		case Ubuntu1604:
-		default:
-			unknown = append(unknown, system)
-		}
-	}
-	if len(unknown) > 0 {
-		return fmt.Errorf("%s refers to unsupported systems: %s", context, strings.Join(unknown, ", "))
 	}
 	return nil
 }

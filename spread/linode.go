@@ -14,13 +14,19 @@ import (
 )
 
 func Linode(b *Backend) Provider {
-	return &linode{backend: b}
+	return &linode{
+		backend:  b,
+		reserved: make(map[int]bool),
+	}
 }
 
 type linode struct {
 	backend *Backend
 
-	distrosLock  sync.Mutex
+	mu sync.Mutex
+
+	reserved map[int]bool
+
 	distrosDone  bool
 	distrosCache []*linodeDistro
 	kernelsCache []*linodeKernel
@@ -114,6 +120,23 @@ type FatalError struct {
 	error
 }
 
+func (l *linode) reserve(server *linodeServer) bool {
+	l.mu.Lock()
+	ok := false
+	if !l.reserved[server.ID] {
+		l.reserved[server.ID] = true
+		ok = true
+	}
+	l.mu.Unlock()
+	return ok
+}
+
+func (l *linode) unreserve(server *linodeServer) {
+	l.mu.Lock()
+	delete(l.reserved, server.ID)
+	l.mu.Unlock()
+}
+
 func (l *linode) Allocate(image ImageID, password string) (Server, error) {
 	servers, err := l.list()
 	if err != nil {
@@ -122,12 +145,15 @@ func (l *linode) Allocate(image ImageID, password string) (Server, error) {
 	if len(servers) == 0 {
 		return nil, FatalError{fmt.Errorf("no servers in Linode account")}
 	}
-	for _, server := range servers {
-		if server.Status != linodePoweredOff {
+	// Iterate out of order to reduce conflicts.
+	for _, i := range rnd.Perm(len(servers)) {
+		server := servers[i]
+		if server.Status != linodePoweredOff || !l.reserve(server) {
 			continue
 		}
 		err := l.setup(server, image, password)
 		if err != nil {
+			l.unreserve(server)
 			return nil, err
 		}
 		printf("Allocated %s.", server)
@@ -136,38 +162,54 @@ func (l *linode) Allocate(image ImageID, password string) (Server, error) {
 	return nil, fmt.Errorf("no powered off servers in Linode account")
 }
 
-func firstErr(errs ...error) error {
-	for _, err := range errs {
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (s *linodeServer) Discard() error {
 	logf("Discarding %s...", s)
 	_, err1 := s.l.shutdown(s)
 	err2 := s.l.removeConfig(s, s.Config)
 	err3 := s.l.removeDisks(s, s.Root, s.Swap)
+	s.l.unreserve(s)
 	return firstErr(err1, err2, err3)
 }
 
 type linodeListResult struct {
+	linodeResult
 	Data []*linodeServer `json:"DATA"`
 }
 
 func (l *linode) list() ([]*linodeServer, error) {
-	log("Listing available Linode servers...")
+	debug("Listing available Linode servers...")
 	params := linodeParams{
 		"api_action": "linode.list",
 	}
 	var result linodeListResult
 	err := l.do(params, &result)
+	if err == nil {
+		err = result.err()
+	}
 	if err != nil {
 		return nil, err
 	}
 	return result.Data, nil
+}
+
+func (l *linode) status(server *linodeServer) (int, error) {
+	debugf("Checking power status of %s...", server)
+	params := linodeParams{
+		"api_action": "linode.list",
+		"LinodeID":   server.ID,
+	}
+	var result linodeListResult
+	err := l.do(params, &result)
+	if err == nil {
+		err = result.err()
+	}
+	if err != nil {
+		return 0, err
+	}
+	if len(result.Data) == 0 {
+		return 0, fmt.Errorf("cannot find %s data", server)
+	}
+	return result.Data[0].Status, nil
 }
 
 func (l *linode) setup(server *linodeServer, image ImageID, password string) error {
@@ -186,6 +228,26 @@ func (l *linode) setup(server *linodeServer, image ImageID, password string) err
 	}
 	server.Root = rootJob.DiskID
 	server.Swap = swapJob.DiskID
+
+	if _, err := l.waitJob(server, "allocate disk", rootJob.JobID); err != nil {
+		l.removeDisks(server, server.Root, server.Swap)
+		return err
+	}
+
+	if status, err := l.status(server); err != nil {
+		l.removeDisks(server, server.Root, server.Swap)
+		return err
+	} else if status != linodePoweredOff {
+		l.removeDisks(server, server.Root, server.Swap)
+		return fmt.Errorf("server %s concurrently allocated, giving up on it.", server)
+	}
+	if conflict, err := l.hasRecentDisk(server, server.Root); err != nil {
+		l.removeDisks(server, server.Root, server.Swap)
+		return err
+	} else if conflict {
+		l.removeDisks(server, server.Root, server.Swap)
+		return fmt.Errorf("server %s concurrently allocated, giving up on it.", server)
+	}
 
 	configID, err := l.createConfig(server, image, server.Root, server.Swap)
 	if err != nil {
@@ -206,40 +268,40 @@ func (l *linode) setup(server *linodeServer, image ImageID, password string) err
 	return nil
 }
 
-type linodeJob struct {
+type linodeSimpleJob struct {
 	JobID int `json:"JOBID"`
 }
 
-type linodeJobResult struct {
+type linodeSimpleJobResult struct {
 	linodeResult
-	Data *linodeJob `json:"DATA"`
+	Data *linodeSimpleJob `json:"DATA"`
 }
 
-func (l *linode) boot(server *linodeServer, configID int) (*linodeJob, error) {
-	return l.serverJob(server, "reboot", linodeParams{
+func (l *linode) boot(server *linodeServer, configID int) (*linodeSimpleJob, error) {
+	return l.simpleJob(server, "reboot", linodeParams{
 		"api_action": "linode.reboot",
 		"LinodeID":   server.ID,
 		"ConfigID":   configID,
 	})
 }
 
-func (l *linode) reboot(server *linodeServer, configID int) (*linodeJob, error) {
-	return l.serverJob(server, "reboot", linodeParams{
+func (l *linode) reboot(server *linodeServer, configID int) (*linodeSimpleJob, error) {
+	return l.simpleJob(server, "reboot", linodeParams{
 		"api_action": "linode.reboot",
 		"LinodeID":   server.ID,
 		"ConfigID":   configID,
 	})
 }
 
-func (l *linode) shutdown(server *linodeServer) (*linodeJob, error) {
-	return l.serverJob(server, "shutdown", linodeParams{
+func (l *linode) shutdown(server *linodeServer) (*linodeSimpleJob, error) {
+	return l.simpleJob(server, "shutdown", linodeParams{
 		"api_action": "linode.shutdown",
 		"LinodeID":   server.ID,
 	})
 }
 
-func (l *linode) serverJob(server *linodeServer, verb string, params linodeParams) (*linodeJob, error) {
-	var result linodeJobResult
+func (l *linode) simpleJob(server *linodeServer, verb string, params linodeParams) (*linodeSimpleJob, error) {
+	var result linodeSimpleJobResult
 	err := l.do(params, &result)
 	if err == nil {
 		err = result.err()
@@ -396,19 +458,21 @@ func (l *linode) removeConfig(server *linodeServer, configID int) error {
 	return nil
 }
 
-type linodeJobInfo struct {
-	JobID       int    `json:"JOBID"`
-	LinodeID    int    `json:"LINODEID"`
-	Action      string `json:"ACTION"`
-	Label       string `json:"LABEL"`
-	HostStart   string `json:"HOST_START_DT"`
-	HostFinish  string `json:"HOST_FINISH_DT"`
-	HostSuccess int    `json:"HOST_SUCCESS"`
-	HostMessage string `json:"HOST_MESSAGE"`
+type linodeJob struct {
+	JobID        int    `json:"JOBID"`
+	LinodeID     int    `json:"LINODEID"`
+	Action       string `json:"ACTION"`
+	Label        string `json:"LABEL"`
+	HostSuccess  int    `json:"HOST_SUCCESS"`
+	HostMessage  string `json:"HOST_MESSAGE"`
+	HostStartDT  string `json:"HOST_START_DT"`
+	HostFinishDT string `json:"HOST_FINISH_DT"`
+	EnteredDT    string `json:"ENTERED_DT"`
+	Duration     int    `json:"DURATION"`
 }
 
-func (job *linodeJobInfo) err() error {
-	if job.HostSuccess == 1 || job.HostFinish == "" {
+func (job *linodeJob) err() error {
+	if job.HostSuccess == 1 || job.HostFinishDT == "" {
 		return nil
 	}
 	if msg := job.HostMessage; msg != "" {
@@ -417,18 +481,18 @@ func (job *linodeJobInfo) err() error {
 	return fmt.Errorf("job %d failed silently", job.JobID)
 }
 
-type linodeJobInfoResult struct {
+type linodeJobResult struct {
 	linodeResult
-	Data []*linodeJobInfo `json:"DATA"`
+	Data []*linodeJob `json:"DATA"`
 }
 
-func (l *linode) jobInfo(server *linodeServer, jobID int) (*linodeJobInfo, error) {
+func (l *linode) job(server *linodeServer, jobID int) (*linodeJob, error) {
 	params := linodeParams{
 		"api_action": "linode.job.list",
 		"LinodeID":   server.ID,
 		"JobID":      jobID,
 	}
-	var result linodeJobInfoResult
+	var result linodeJobResult
 	err := l.do(params, &result)
 	if err == nil {
 		err = result.err()
@@ -442,7 +506,7 @@ func (l *linode) jobInfo(server *linodeServer, jobID int) (*linodeJobInfo, error
 	return result.Data[0], nil
 }
 
-func (l *linode) waitJob(server *linodeServer, verb string, jobID int) (*linodeJobInfo, error) {
+func (l *linode) waitJob(server *linodeServer, verb string, jobID int) (*linodeJob, error) {
 	logf("Waiting for %s to %s...", server, verb)
 
 	timeout := time.After(1 * time.Minute)
@@ -462,12 +526,12 @@ func (l *linode) waitJob(server *linodeServer, verb string, jobID int) (*linodeJ
 			return nil, fmt.Errorf("timeout waiting for %s to %s", server, verb)
 
 		case <-retry.C:
-			job, err := l.jobInfo(server, jobID)
+			job, err := l.job(server, jobID)
 			if err != nil {
 				infoErr = fmt.Errorf("cannot %s %s: %s", verb, server, err)
 				break
 			}
-			if job.HostFinish != "" {
+			if job.HostFinishDT != "" {
 				err := job.err()
 				if err != nil {
 					err = fmt.Errorf("cannot %s %s: %s", verb, server, err)
@@ -477,6 +541,74 @@ func (l *linode) waitJob(server *linodeServer, verb string, jobID int) (*linodeJ
 		}
 	}
 	panic("unreachable")
+}
+
+type linodeDisk struct {
+	UpdateDT   string `json:"UPDATE_DT"`
+	Type       string `json:"TYPE"`
+	Status     int    `json:"STATUS"`
+	DiskID     int    `json:"DISKID"`
+	CreateDT   string `json:"CREATE_DT"`
+	IsReadOnly int    `josn:"ISREADONLY"`
+	LinodeID   int    `json:"LINODEID"`
+	Label      string `json:"LABEL"`
+	Size       int    `json:"SIZE"`
+}
+
+func (d *linodeDisk) Created() time.Time {
+	return parseLinodeDT(d.CreateDT)
+}
+
+type linodeDiskResult struct {
+	linodeResult
+	Data []*linodeDisk `json:"DATA"`
+}
+
+func (l *linode) disks(server *linodeServer) ([]*linodeDisk, error) {
+	params := linodeParams{
+		"api_action": "linode.disk.list",
+		"LinodeID":   server.ID,
+	}
+	var result linodeDiskResult
+	err := l.do(params, &result)
+	if err == nil {
+		err = result.err()
+	}
+	if err != nil {
+		return nil, err
+	}
+	return result.Data, nil
+}
+
+// hasRecentDisk returns an error if there's a disk that is ready and
+// was created up to a minute before the provided disk ID. If two clients
+// use this logic, the most recent one will concede the machine usage to
+// the oldest one. We need this hack because operations in Linode are not
+// atomic, and a server will happily boot a second time on a different
+// configuration overriding a recent boot.
+func (l *linode) hasRecentDisk(server *linodeServer, diskID int) (bool, error) {
+	logf("Checking %s for allocation conflict...", server)
+	disks, err := l.disks(server)
+	if err != nil {
+		return false, fmt.Errorf("cannot check %s for allocation conflict: %v", server, err)
+	}
+
+	var limit time.Time
+	for _, d := range disks {
+		if d.DiskID == diskID {
+			limit = d.Created()
+		}
+	}
+	if limit.IsZero() {
+		return false, fmt.Errorf("cannot check %s for allocation conflict: disk %d not found", server, diskID)
+	}
+	for _, d := range disks {
+		t := d.Created()
+		if t.Before(limit) && t.After(limit.Add(-time.Minute)) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 type linodeIPResult struct {
@@ -547,8 +679,8 @@ type linodeKernel struct {
 }
 
 func (l *linode) distro(image ImageID) (*linodeDistro, error) {
-	l.distrosLock.Lock()
-	defer l.distrosLock.Unlock()
+	l.mu.Lock()
+	defer l.mu.Unlock()
 
 	if !l.distrosDone {
 		if err := l.cacheDistros(); err != nil {
@@ -690,6 +822,26 @@ func (l *linode) do(params linodeParams, result interface{}) error {
 	err = json.Unmarshal(data, result)
 	if err != nil {
 		return fmt.Errorf("cannot decode Linode response: %v", err)
+	}
+	return nil
+}
+
+func parseLinodeDT(dt string) time.Time {
+	if dt != "" {
+		t, err := time.Parse("2006-01-02 15:04:05.0", dt)
+		if err == nil {
+			return t
+		}
+		printf("WARNING: Cannot parse Linode date/time string: %q", dt)
+	}
+	return time.Time{}
+}
+
+func firstErr(errs ...error) error {
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

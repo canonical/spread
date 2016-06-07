@@ -2,9 +2,12 @@ package spread
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 	"time"
 )
+
+var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 type Provider interface {
 	Backend() *Backend
@@ -23,10 +26,6 @@ type Server interface {
 }
 
 type ImageID string
-
-const (
-	Ubuntu1604 ImageID = "ubuntu-16.04"
-)
 
 func (img ImageID) SystemID() ImageID {
 	if i := strings.Index(string(img), ":"); i >= 0 {

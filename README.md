@@ -1,8 +1,8 @@
 Spread
 ======
 
-Convenient full-system test|task distribution 
----------------------------------------------
+Convenient full-system test (task) distribution 
+-----------------------------------------------
 
 [Why?](#why)  
 [The cascading matrix](#matrix)  
@@ -139,7 +139,7 @@ The default output for the example should look similar to this:
 Hello world!
 + exit 1
 -----
-2016/06/06 10:00:05 Discarding lxd:ubuntu-16.04 (spread-62-ubuntu-16-04)...
+2016/06/06 10:00:05 Discarding lxd:ubuntu-16.04 (spread-1-ubuntu-16-04)...
 2016/06/06 10:00:06 Successful tasks: 0
 2016/06/06 10:00:06 Aborted tasks: 0
 2016/06/06 10:00:06 Failed tasks: 1

@@ -354,18 +354,18 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 			r.reused[addr] = true
 			server = &UnknownServer{addr}
 			reused = true
-			printf("Reused server %s:%s.", backend.Name, image.SystemID())
+			printf("Reused %s:%s.", backend.Name, image.SystemID())
 		}
 		r.mu.Unlock()
 
 		// Allocate a server when all else failed.
 		if !reused {
 			if len(r.options.Reuse) > 0 {
-				printf("Reuse requested but no servers left for %s:%s, aborting.", backend.Name, image.SystemID())
+				printf("Reuse requested but none left for %s:%s, aborting.", backend.Name, image.SystemID())
 				return nil
 			}
 
-			printf("Allocating server %s:%s...", backend.Name, image.SystemID())
+			printf("Allocating %s:%s...", backend.Name, image.SystemID())
 			var timeout = time.After(30 * time.Second)
 			var relog = time.NewTicker(8 * time.Second)
 			defer relog.Stop()
@@ -380,7 +380,7 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 					break
 				}
 				if lerr == nil || lerr.Error() != err.Error() {
-					printf("Cannot allocate server: %v", err)
+					printf("Cannot allocate %s:%s: %v", backend.Name, image.SystemID(), err)
 				}
 
 				// TODO Check if the error is unrecoverable (bad key, no machines whatsoever, etc).
@@ -388,7 +388,7 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 				select {
 				case <-retry.C:
 				case <-relog.C:
-					printf("Cannot allocate server: %v", err)
+					printf("Cannot allocate %s:%s: %v", backend.Name, image.SystemID(), err)
 				case <-timeout:
 					break Allocate
 				case <-r.tomb.Dying():
@@ -486,7 +486,7 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 				continue
 			}
 		} else {
-			printf("Debugging on %s and install directory has data. Won't send again.", server)
+			printf("Debugging on %s and remote path has data. Won't send again.", server)
 		}
 
 		r.servers = append(r.servers, server)

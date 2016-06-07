@@ -103,9 +103,9 @@ path: /remote/path
 _$PROJECT/examples/hello/task.yaml_
 ```
 summary: Greet the planet
-execute:
-    - echo "Hello world!"
-    - exit 1
+execute: |
+    echo "Hello world!"
+    exit 1
 ```
 
 This example uses the [LXD backend](#lxd) on the local sytem and thus requires
@@ -157,9 +157,9 @@ _$PROJECT/examples/hello/task.yaml_
 summary: Greet the planet
 environment:
     SUBJECT: world 
-execute:
-    - echo "Hello $SUBJECT!"
-    - exit 1
+execute: |
+    echo "Hello $SUBJECT!"
+    exit 1
 ```
 
 And we could set a default for this same environment variable by defining it at
@@ -217,9 +217,9 @@ _$PROJECT/examples/hello/task.yaml_
 summary: Greet the planet
 environment:
     SUBJECT: $(echo world)
-execute:
-    - echo "$[GREETING]"
-    - exit 1
+execute: |
+    echo "$[GREETING]"
+    exit 1
 ```
 
 Note that the evaluation of such variables actually happens after cascading
@@ -260,9 +260,9 @@ environment:
     GREETING: Hello
     GREETING/bar: Goodbye
     SUBJECT/baz: world
-execute:
-    - echo "$GREETING $SUBJECT!"
-    - exit 1
+execute: |
+    echo "$GREETING $SUBJECT!"
+    exit 1
 ```
 
 This task under that suite will spawn _three_ independent jobs, producing the
@@ -352,10 +352,10 @@ _$PROJECT/spread.yaml_
 suites:
     examples:
         summary: Simple examples
-        prepare:
-            - echo Preparing...
-        restore:
-            - echo Restoring...
+        prepare: |
+            echo Preparing...
+        restore: |
+            echo Restoring...
 ```
 
 The prepare script is called once before any of the tasks inside the suite are

@@ -15,24 +15,6 @@ import (
 	"strconv"
 )
 
-type Backend struct {
-	Name string `yaml:"-"`
-	Type string
-	Key  string
-
-	Systems        []string
-	SystemWorkers  map[string]int      `yaml:"-"`
-	SystemVariants map[string][]string `yaml:"-"`
-
-	Prepare []string
-	Restore []string
-
-	Environment map[string]string
-	Variants    []string
-}
-
-func (b *Backend) String() string { return fmt.Sprintf("backend %q", b.Name) }
-
 type Project struct {
 	Name string `yaml:"project"`
 
@@ -40,8 +22,8 @@ type Project struct {
 
 	Environment map[string]string
 
-	Prepare []string
-	Restore []string
+	Prepare string
+	Restore string
 	Suites  map[string]*Suite
 
 	RemotePath string `yaml:"path"`
@@ -54,6 +36,24 @@ type Project struct {
 
 func (p *Project) String() string { return "project" }
 
+type Backend struct {
+	Name string `yaml:"-"`
+	Type string
+	Key  string
+
+	Systems        []string
+	SystemWorkers  map[string]int      `yaml:"-"`
+	SystemVariants map[string][]string `yaml:"-"`
+
+	Prepare string
+	Restore string
+
+	Environment map[string]string
+	Variants    []string
+}
+
+func (b *Backend) String() string { return fmt.Sprintf("backend %q", b.Name) }
+
 type Suite struct {
 	Summary  string
 	Systems  []string
@@ -62,8 +62,8 @@ type Suite struct {
 	Variants    []string
 	Environment map[string]string
 
-	Prepare []string
-	Restore []string
+	Prepare string
+	Restore string
 
 	Name  string           `yaml:"-"`
 	Path  string           `yaml:"-"`
@@ -83,9 +83,9 @@ type Task struct {
 	Variants    []string
 	Environment map[string]string
 
-	Prepare []string
-	Restore []string
-	Execute []string
+	Prepare string
+	Restore string
+	Execute string
 
 	Disable string
 

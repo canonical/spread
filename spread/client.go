@@ -108,27 +108,29 @@ const (
 	splitOutput
 )
 
-func (c *Client) Run(script []string, dir string, env map[string]string) error {
+func (c *Client) Run(script string, dir string, env map[string]string) error {
 	_, err := c.run(script, dir, env, combinedOutput)
 	return err
 }
 
-func (c *Client) Output(script []string, dir string, env map[string]string) (output []byte, err error) {
+func (c *Client) Output(script string, dir string, env map[string]string) (output []byte, err error) {
 	return c.run(script, dir, env, splitOutput)
 }
 
-func (c *Client) CombinedOutput(script []string, dir string, env map[string]string) (output []byte, err error) {
+func (c *Client) CombinedOutput(script string, dir string, env map[string]string) (output []byte, err error) {
 	return c.run(script, dir, env, combinedOutput)
 }
 
-func (c *Client) Trace(script []string, dir string, env map[string]string) (output []byte, err error) {
+func (c *Client) Trace(script string, dir string, env map[string]string) (output []byte, err error) {
 	return c.run(script, dir, env, traceOutput)
 }
 
-func (c *Client) run(script []string, dir string, env map[string]string, mode int) (output []byte, err error) {
+func (c *Client) run(script string, dir string, env map[string]string, mode int) (output []byte, err error) {
+	script = strings.TrimSpace(script)
 	if len(script) == 0 {
 		return nil, nil
 	}
+	script += "\n"
 	session, err := c.sshc.NewSession()
 	if err != nil {
 		return nil, err
@@ -141,40 +143,32 @@ func (c *Client) run(script []string, dir string, env map[string]string, mode in
 	}
 	defer stdin.Close()
 
+	var buf bytes.Buffer
+	for key, value := range env {
+		// TODO Value escaping.
+		fmt.Fprintf(&buf, "export %s=\"%s\"\n", key, value)
+	}
+	if mode == traceOutput {
+		// Don't trace environment variables so secrets don't leak.
+		fmt.Fprintf(&buf, "set -x\n")
+	}
+	fmt.Fprintf(&buf, "\n%s\n", script)
+
 	errch := make(chan error, 2)
 	go func() {
-		for _, line := range script {
-			_, err := stdin.Write([]byte(line))
-			if err == nil {
-				_, err = stdin.Write([]byte{'\n'})
-			}
-			if err != nil {
-				errch <- err
-				break
-			}
+		_, err := stdin.Write(buf.Bytes())
+		if err != nil {
+			errch <- err
 		}
 		errch <- stdin.Close()
 	}()
 
-	if Debug {
-		var buf bytes.Buffer
-		for key, value := range env {
-			// TODO Value escaping.
-			buf.WriteString(fmt.Sprintf("export %s=\"%s\"\n", key, value))
-		}
-		for _, line := range script {
-			buf.WriteString(line)
-			buf.WriteString("\n")
-		}
-		debugf("Sending script to %s:\n-----\n%s\n------", c.server, buf.Bytes())
-	}
+	debugf("Sending script to %s:\n-----\n%s\n------", c.server, buf.Bytes())
 
 	var stderr bytes.Buffer
 	var cmd string
 	switch mode {
-	case traceOutput:
-		cmd = "/bin/sh -e -x - 2>&1"
-	case combinedOutput:
+	case traceOutput, combinedOutput:
 		cmd = "/bin/sh -e - 2>&1"
 	case splitOutput:
 		cmd = "/bin/sh -e -"
@@ -212,12 +206,12 @@ func (c *Client) run(script []string, dir string, env map[string]string, mode in
 }
 
 func (c *Client) RemoveAll(path string) error {
-	_, err := c.CombinedOutput([]string{fmt.Sprintf(`rm -rf "%s"`, path)}, "", nil)
+	_, err := c.CombinedOutput(fmt.Sprintf(`rm -rf "%s"`, path), "", nil)
 	return err
 }
 
 func (c *Client) MissingOrEmpty(dir string) (bool, error) {
-	output, err := c.Output([]string{fmt.Sprintf(`! test -e "%s" || ls -a "%s"`, dir, dir)}, "", nil)
+	output, err := c.Output(fmt.Sprintf(`! test -e "%s" || ls -a "%s"`, dir, dir), "", nil)
 	if err != nil {
 		return false, fmt.Errorf("cannot check if %s on %s is empty: %v", dir, c.server, err)
 	}

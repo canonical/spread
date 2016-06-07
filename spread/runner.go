@@ -139,7 +139,8 @@ func (r *Runner) loop() error {
 	return nil
 }
 
-func (r *Runner) run(client *Client, job *Job, verb string, context interface{}, script []string, debug *bool) bool {
+func (r *Runner) run(client *Client, job *Job, verb string, context interface{}, script string, debug *bool) bool {
+	script = strings.TrimSpace(script)
 	if len(script) == 0 {
 		return true
 	}

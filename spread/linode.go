@@ -148,7 +148,7 @@ func (l *linode) Allocate(image ImageID, password string) (Server, error) {
 	// Iterate out of order to reduce conflicts.
 	for _, i := range rnd.Perm(len(servers)) {
 		server := servers[i]
-		if server.Status != linodePoweredOff || !l.reserve(server) {
+		if (server.Status != linodeBrandNew && server.Status != linodePoweredOff) || !l.reserve(server) {
 			continue
 		}
 		err := l.setup(server, image, password)
@@ -237,7 +237,7 @@ func (l *linode) setup(server *linodeServer, image ImageID, password string) err
 	if status, err := l.status(server); err != nil {
 		l.removeDisks(server, server.Root, server.Swap)
 		return err
-	} else if status != linodePoweredOff {
+	} else if status != linodeBrandNew && status != linodePoweredOff {
 		l.removeDisks(server, server.Root, server.Swap)
 		return fmt.Errorf("server %s concurrently allocated, giving up on it.", server)
 	}

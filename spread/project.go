@@ -511,6 +511,14 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 							job.Name = fmt.Sprintf("%s:%s:%s:%s", job.Backend.Name, job.System, job.Task.Name, job.Variant)
 						}
 
+						env["SPREAD_JOB"] = job.Name
+						env["SPREAD_PROJECT"] = job.Project.Name
+						env["SPREAD_BACKEND"] = job.Backend.Name
+						env["SPREAD_SYSTEM"] = string(job.System)
+						env["SPREAD_SUITE"] = job.Suite.Name
+						env["SPREAD_TASK"] = job.Task.Name
+						env["SPREAD_VARIANT"] = job.Variant
+
 						if options.Filter != nil && !options.Filter.Pass(job) {
 							continue
 						}

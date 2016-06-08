@@ -144,6 +144,9 @@ func (c *Client) run(script string, dir string, env map[string]string, mode int)
 	defer stdin.Close()
 
 	var buf bytes.Buffer
+	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
+	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
+
 	for key, value := range env {
 		// TODO Value escaping.
 		fmt.Fprintf(&buf, "export %s=\"%s\"\n", key, value)

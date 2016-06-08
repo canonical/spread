@@ -486,10 +486,10 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 
 						for key, value := range env {
 							ekey, evariants := SplitVariants(key)
+							if len(evariants) > 0 {
+								delete(env, key)
+							}
 							for _, evariant := range evariants {
-								if len(evariants) > 1 {
-									env[ekey+"/"+evariant] = value
-								}
 								if evariant == variant {
 									env[ekey] = value
 								}

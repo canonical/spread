@@ -396,13 +396,15 @@ Debugging
 Debugging such remote tasking systems is generally quite boring, and Spread
 offers a hand to make the problem slightly less painful. Just add `-debug`
 to whatever set of options is in use and it will run the tasks almost as usual,
-but on the first failure it will stop and report how to log in, and how to
-retry the failed task.
+but on the first failure the restore script for the failing suite and task
+are not run, logs show how to log in and how to retry the failed task, and
+then Spread stops so you can debug the problem.
 
-Debugging also alters the running of the tasks in a couple of ways to aid with
-the process. Whether tasks succeed or fail, the pushed project files are not
-removed at the end of the run, and none of the used servers are discarded.
-This ensures you can login and inspect if desired.
+Debugging also alters the running of the tasks in a few other ways to aid with
+the inspection process. Whether tasks succeed or fail, the pushed project files
+are not removed at the end of the run, none of the used servers are discarded,
+and the restore script for the project and backend are never run as to not
+destroy the debugging environment.
 
 Note that the project files previously pushed are reused as they are on the
 server for fast iterations, but when re-running tasks the actual `spread.yaml`
@@ -411,11 +413,18 @@ files, just `rm -rf` the whole remote project tree and Spread will re-send the
 content on the next run. Just be careful about which machine your terminal is
 on before doing that. :-)
 
-You may want to tune some of your prepare logic to make use of this behavior.
-For example, the project-level prepare might detect if the project was
-previously built and not do it again.
+You may want to tune some of your prepare logic to make good use of this
+behavior. For example, the project-level prepare might detect if the project
+was previously built and not do it again.
 
-After you're done debugging, an easy way get rid of the servers is to do one
+Besides -debug, there are two other flags that are helpful when debugging.
+The -prepare flag will stop running right before the first task is executed,
+so you get the same system state the task execution would have. The -restore
+flag will only the restoring phase of all tasks and suites that were selected
+to run. It also runs the backend and project restore scripts if -debug is not
+in use.
+
+Aftee you're done debugging, an easy way get rid of the servers is to do one
 last run including the `-reuse` option, but leaving `-debug` out.
 
 

@@ -16,10 +16,12 @@ import (
 var verbose = flag.Bool("v", false, "Show detailed progress information")
 var vverbose = flag.Bool("vv", false, "Show debugging messages as well")
 var list = flag.Bool("list", false, "Just show list of tasks to be run")
-var keep = flag.Bool("keep", false, "Keep servers running when done")
-var debug = flag.Bool("debug", false, "Keep state and stop on failure for debugging")
 var pass = flag.String("pass", "", "Server password to use, defaults to random")
 var reuse = flag.String("reuse", "", "Reuse servers, '-reuse help' for syntax")
+var keep = flag.Bool("keep", false, "Keep servers running when done")
+var debug = flag.Bool("debug", false, "Keep state and stop on failure for debugging")
+var prepare = flag.Bool("prepare", false, "Keep state and stop after first task prepares")
+var restore = flag.Bool("restore", false, "Run only the restore scripts")
 
 func main() {
 	if err := run(); err != nil {
@@ -49,16 +51,22 @@ func run() error {
 		password = fmt.Sprintf("%x", buf)
 	}
 
-	filter, err := spread.NewFilter(flag.Args())
-	if err != nil {
-		return err
+	var filter spread.Filter
+	var err error
+	if args := flag.Args(); len(args) > 0 {
+		filter, err = spread.NewFilter(args)
+		if err != nil {
+			return err
+		}
 	}
 
 	options := &spread.Options{
+		Password: password,
+		Filter:   filter,
 		Keep:     *keep,
 		Debug:    *debug,
-		Filter:   filter,
-		Password: password,
+		Restore:  *restore,
+		Prepare:  *prepare,
 	}
 
 	project, err := spread.Load(".")

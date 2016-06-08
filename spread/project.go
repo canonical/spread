@@ -428,6 +428,7 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 	penv := envmap{p, p.Environment}
 	pevr := strmap{p, evars(p.Environment, "")}
 	pbke := strmap{p, p.backendNames()}
+
 	for _, suite := range p.Suites {
 		senv := envmap{suite, suite.Environment}
 		sevr := strmap{suite, evars(suite.Environment, "+")}
@@ -478,7 +479,7 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 							continue
 						}
 
-						env, err := evalenv(cmdcache, penv, benv, senv, tenv)
+						env, err := evalenv(cmdcache, false, penv, benv, senv, tenv)
 						if err != nil {
 							return nil, err
 						}
@@ -551,7 +552,7 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 
 	if len(jobs) == 0 {
 		if options.Filter != nil {
-			return nil, fmt.Errorf("cannot find anything matching")
+			return nil, fmt.Errorf("nothing matches provider filter")
 		} else {
 			return nil, fmt.Errorf("cannot find any tasks")
 		}
@@ -597,14 +598,14 @@ var (
 
 func evalone(context string, line string, cmdcache map[string]string, maps ...envmap) (string, error) {
 	m := envmap{stringer(context), map[string]string{"": line}}
-	out, err := evalenv(cmdcache, append(maps, m)...)
+	out, err := evalenv(cmdcache, false, append(maps, m)...)
 	if err != nil {
 		return "", err
 	}
 	return out[""], nil
 }
 
-func evalenv(cmdcache map[string]string, maps ...envmap) (map[string]string, error) {
+func evalenv(cmdcache map[string]string, partial bool, maps ...envmap) (map[string]string, error) {
 	merged := make(map[string]string)
 	for _, m := range maps {
 		for key, value := range m.env {
@@ -634,7 +635,7 @@ func evalenv(cmdcache map[string]string, maps ...envmap) (map[string]string, err
 					}
 					continue
 				}
-				if _, ok := merged[inner]; !ok {
+				if _, ok := merged[inner]; !ok && !partial {
 					if key == "" {
 						return nil, fmt.Errorf("%s references undefined variable %s", m.context, ref)
 					} else {
@@ -681,10 +682,19 @@ func evalenv(cmdcache map[string]string, maps ...envmap) (map[string]string, err
 	if len(done) != len(merged) {
 		var missing []string
 		for key := range merged {
-			if key != "" && !done[key] {
-				missing = append(missing, "$"+key)
+			if !done[key] {
+				if partial {
+					delete(merged, key)
+				} else if key != "" {
+					missing = append(missing, "$"+key)
+				}
 			}
 		}
+
+		if partial {
+			return merged, nil
+		}
+
 		sort.Strings(missing)
 
 		// Look for the most specific context.
@@ -700,7 +710,7 @@ func evalenv(cmdcache map[string]string, maps ...envmap) (map[string]string, err
 			}
 		}
 
-		return nil, fmt.Errorf("infinite recursion in %s environment: %s", context, strings.Join(missing, ", "))
+		return nil, fmt.Errorf("cannot define %s environment due to circular references: %s", context, strings.Join(missing, ", "))
 	}
 
 	return merged, nil

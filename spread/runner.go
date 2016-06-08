@@ -18,6 +18,8 @@ type Options struct {
 	Reuse    map[string][]string
 	Keep     bool
 	Debug    bool
+	Restore  bool
+	Prepare  bool
 }
 
 type Runner struct {
@@ -99,9 +101,9 @@ func (r *Runner) loop() error {
 				if job := r.failedJob(); job != nil {
 					filter = " " + job.Name
 				}
-				printf("Retry with: snap %s%s", r.reuseArgs(), filter)
+				printf("Retry with: spread %s%s", r.reuseArgs(), filter)
 			} else if r.options.Keep {
-				printf("Reuse with: snap %s", r.reuseArgs())
+				printf("Reuse with: spread %s", r.reuseArgs())
 			}
 		}
 	}()
@@ -174,6 +176,11 @@ func suiteWorkersKey(job *Job) [3]string {
 func (r *Runner) worker(backend *Backend, system ImageID) {
 	defer func() { r.done <- true }()
 
+	client := r.client(backend, system)
+	if client == nil {
+		return
+	}
+
 	var stats = &r.stats
 
 	var debug bool
@@ -184,7 +191,6 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 	var insideBackend bool
 	var insideSuite *Suite
 
-	var client *Client
 	var job, last *Job
 
 	for {
@@ -210,28 +216,22 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 		}
 
 		if insideSuite != nil && insideSuite != job.Suite {
-			insideSuite = nil
-			if !r.run(client, last, "restoring", insideSuite, insideSuite.Restore, &debug) {
+			if false {
+				printf("WARNING: Was inside missing suite %s on last run, so cannot restore it.", insideSuite)
+			} else if !r.run(client, last, "restoring", insideSuite, insideSuite.Restore, &debug) {
 				r.add(&stats.SuiteRestoreError, last)
 				r.add(&stats.TaskAbort, job)
 				badProject = true
 				continue
 			}
+			insideSuite = nil
 		}
 
 		last = job
 
 		if !insideProject {
-			client = r.client(backend, job.System)
-			if client == nil {
-				r.add(&stats.TaskAbort, job)
-				badProject = true
-				continue
-			}
-
 			insideProject = true
-
-			if !r.run(client, job, "preparing", r.project, r.project.Prepare, &debug) {
+			if !r.options.Restore && !r.run(client, job, "preparing", r.project, r.project.Prepare, &debug) {
 				r.add(&stats.ProjectPrepareError, job)
 				r.add(&stats.TaskAbort, job)
 				badProject = true
@@ -239,8 +239,7 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 			}
 
 			insideBackend = true
-
-			if !r.run(client, job, "preparing", backend, backend.Prepare, &debug) {
+			if !r.options.Restore && !r.run(client, job, "preparing", backend, backend.Prepare, &debug) {
 				r.add(&stats.BackendPrepareError, job)
 				r.add(&stats.TaskAbort, job)
 				badProject = true
@@ -250,7 +249,7 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 
 		if insideSuite != job.Suite {
 			insideSuite = job.Suite
-			if !r.run(client, job, "preparing", job.Suite, job.Suite.Prepare, &debug) {
+			if !r.options.Restore && !r.run(client, job, "preparing", job.Suite, job.Suite.Prepare, &debug) {
 				r.add(&stats.SuitePrepareError, job)
 				r.add(&stats.TaskAbort, job)
 				badSuite[job.Suite] = true
@@ -258,12 +257,18 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 			}
 		}
 
-		if !r.run(client, job, "preparing", job, job.Task.Prepare, &debug) {
+		if r.options.Restore {
+			// Do not prepare or execute.
+		} else if !r.options.Restore && !r.run(client, job, "preparing", job, job.Task.Prepare, &debug) {
 			r.add(&stats.TaskPrepareError, job)
 			r.add(&stats.TaskAbort, job)
-		} else if r.run(client, job, "executing", job, job.Task.Execute, &debug) {
+		} else if r.options.Prepare {
+			// Done. Stop the whole run for inspection.
+			debug = true
+			continue
+		} else if !r.options.Restore && r.run(client, job, "executing", job, job.Task.Execute, &debug) {
 			r.add(&stats.TaskDone, job)
-		} else {
+		} else if !r.options.Restore {
 			r.add(&stats.TaskError, job)
 		}
 		if !debug && !r.run(client, job, "restoring", job, job.Task.Restore, &debug) {
@@ -277,16 +282,19 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 			if !r.run(client, last, "restoring", insideSuite, insideSuite.Restore, &debug) {
 				r.add(&stats.SuiteRestoreError, last)
 			}
+			insideSuite = nil
 		}
-		if !debug && insideBackend {
+		if !r.options.Debug && insideBackend {
 			if !r.run(client, last, "restoring", backend, backend.Restore, &debug) {
 				r.add(&stats.BackendRestoreError, last)
 			}
+			insideBackend = false
 		}
-		if !debug && insideProject {
+		if !r.options.Debug && insideProject {
 			if !r.run(client, last, "restoring", r.project, r.project.Restore, &debug) {
 				r.add(&stats.ProjectRestoreError, last)
 			}
+			insideProject = false
 		}
 		server := client.Server()
 		if r.options.Debug {
@@ -352,6 +360,9 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 			if r.reused[addr] {
 				continue
 			}
+			// FIXME This is broken. Needs to account for the image.
+			//       Store backend in reuse data (already has image)
+			//       and pre-discover all servers before getting here.
 			r.reused[addr] = true
 			server = &UnknownServer{addr}
 			reused = true
@@ -469,7 +480,7 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 			empty, err := client.MissingOrEmpty(r.project.RemotePath)
 			if err != nil {
 				printf("Cannot send data to %s: %v", server, err)
-				return nil
+				continue
 			}
 			send = empty
 		}

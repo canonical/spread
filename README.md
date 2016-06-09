@@ -545,6 +545,13 @@ backends:
 	    - ubuntu-16.04
 ```
 
+System names are mapped into LXD images the following way:
+
+  * _ubuntu-16.04 => ubuntu:16.04_
+  * _debian-sid => images:debian/sid/amd64_
+  * _fedora-8_ => images:fedora/8/amd64_
+  * _etc_
+
 That's it. Have fun with your self-contained multi-system task runner.
 
 
@@ -552,7 +559,7 @@ That's it. Have fun with your self-contained multi-system task runner.
 Linode backend
 --------------
 
-The Linode backend is extremely simple to setup and use as well, and allows
+The Linode backend is very simple to setup and use as well, and allows
 distributing your tasks over into remote infrastructure.
 
 _$PROJECT/spread.yaml_
@@ -568,19 +575,41 @@ backend:
 
 With these settings the Linode backend in Spread will pick the API key from
 the local `$LINODE_API_KEY` environment variable (we don't want that in
-`spread.yaml`), and look for a server available on that user account that
-is powered off. When it finds one, it creates a brand new configuration and
-disk set to run the tasks, without touching any of the available ones. That
-means you can even reuse existing servers to run the tasks, if you wish.
-When discarding the server (assuming no `-keep` or `-debug`), it will power
-off the server and remove the configuration and disks, leaving it ready for
-the next run.
+`spread.yaml`), and look for a powered-off server available on that user
+account that. When it finds one, it creates a brand new configuration and
+disk set to run the tasks. That means you can even reuse existing servers to
+run the tasks, if you wish. When discarding the server, assuming no `-keep` or
+`-debug`, it will power off the server and remove the created configuration
+and disks, leaving it ready for the next run.
+
+The root disk is built out a [Linode-supported distribution][linode-distros]
+or a [custom image][linode-images] available in the user account. The system
+name is mapped into an image or distribution label the following way:
+
+  * _ubuntu-16.04 => Ubuntu 16.04 LTS_
+  * _debian-8 => Debian 8_
+  * _arch-2015-08_ => Arch Linux 2015.08_
+  * _etc_
+
+Images have user-defined labels, so they're also searched for using the Spread
+system name itself.
+
+The kernel used in the server configuration is the latest Linode kernel
+available, or the [GRUB 2][grub2] special kernel if the system name ends in
+`-grub`. The latter allows running custom images with the correct
+distribution-provided kernel.
+
+[linode-distros]: https://www.linode.com/distributions
+[linode-images]: https://www.linode.com/docs/platform/linode-images
+[linode-grub2]: https://www.linode.com/docs/tools-reference/custom-kernels-distros/run-a-distribution-supplied-kernel-with-kvm
+
 
 Note that in Linode you can create additional users inside your own account
-that have limited access to a selection of servers only.  Unless your Linode
-account is entirely dedicated to Spread, this is what you'll want to do.  The
-API key you will want here in that case is the one for the sub-user, not for
-your main account.
+that have limited access to a selection of servers only, and with limited
+permissions on them. You should use this even if your account is entirely
+dedicated to Spread, because it allows you to constrain what the key in use
+is allowed to do on your account. Note that you'll need to login with the
+sub-user to obtain the proper key.
 
 Some links to make your life easier:
 

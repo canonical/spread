@@ -25,11 +25,13 @@ type linode struct {
 
 	mu sync.Mutex
 
-	reserved map[int]bool
+	keyChecked bool
+	keyErr     error
+	reserved   map[int]bool
 
 	templatesDone  bool
 	templatesCache []*linodeTemplate
-	kernelsCache []*linodeKernel
+	kernelsCache   []*linodeKernel
 }
 
 var client = &http.Client{}
@@ -107,6 +109,10 @@ func (l *linode) DiscardSnapshot(image ImageID) error {
 }
 
 func (l *linode) Reuse(data []byte, password string) (Server, error) {
+	if err := l.checkKey(); err != nil {
+		return nil, err
+	}
+
 	server := &linodeServer{}
 	err := yaml.Unmarshal(data, server)
 	if err != nil {
@@ -114,10 +120,6 @@ func (l *linode) Reuse(data []byte, password string) (Server, error) {
 	}
 	server.l = l
 	return server, nil
-}
-
-type FatalError struct {
-	error
 }
 
 func (l *linode) reserve(server *linodeServer) bool {
@@ -138,6 +140,10 @@ func (l *linode) unreserve(server *linodeServer) {
 }
 
 func (l *linode) Allocate(image ImageID, password string) (Server, error) {
+	if err := l.checkKey(); err != nil {
+		return nil, err
+	}
+
 	servers, err := l.list()
 	if err != nil {
 		return nil, err
@@ -216,12 +222,6 @@ func (l *linode) setup(server *linodeServer, image ImageID, password string) err
 	server.l = l
 	server.Img = image
 
-	ip, err := l.ip(server)
-	if err != nil {
-		return err
-	}
-	server.Addr = ip.IPAddress
-
 	rootJob, swapJob, err := l.createDisk(server, image, password)
 	if err != nil {
 		return err
@@ -265,6 +265,13 @@ func (l *linode) setup(server *linodeServer, image ImageID, password string) err
 		l.removeDisks(server, server.Root, server.Swap)
 		return err
 	}
+
+	ip, err := l.ip(server)
+	if err != nil {
+		return err
+	}
+	server.Addr = ip.IPAddress
+
 	return nil
 }
 
@@ -718,7 +725,7 @@ func (l *linode) template(image ImageID) (*linodeTemplate, error) {
 		best = template
 	}
 	if best == nil {
-		return nil, fmt.Errorf("cannot find system %s in Linode")
+		return nil, &FatalError{fmt.Errorf("no Linode image or distribution for %s", system)}
 	}
 	return best, nil
 }
@@ -812,6 +819,28 @@ func (l *linode) cacheTemplates() error {
 
 	debugf("Linode distributions available: %# v", l.templatesCache)
 	return nil
+}
+
+func (l *linode) checkKey() error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if l.keyChecked {
+		return l.keyErr
+	}
+
+	var result linodeResult
+	err := l.do(linodeParams{"api_action": "test.echo"}, &result)
+	if err == nil {
+		err = result.err()
+	}
+	if err != nil {
+		err = &FatalError{err}
+	}
+
+	l.keyChecked = true
+	l.keyErr = err
+	return err
 }
 
 type linodeParams map[string]interface{}

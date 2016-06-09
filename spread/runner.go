@@ -108,17 +108,35 @@ func (r *Runner) loop() error {
 		}
 	}()
 
+	// Find out how many workers are needed for each backend+system.
+	// Even if multiple workers per system are requested, must not
+	// have more workers than there are jobs.
+	type pair [2]string
+	workers := make(map[pair]int)
 	for _, backend := range r.project.Backends {
 		for _, system := range backend.Systems {
-			r.alive += backend.SystemWorkers[system]
+			for _, job := range r.pending {
+				if job.Backend == backend && string(job.System) == system {
+					key := pair{backend.Name, system}
+					if backend.SystemWorkers[system] > workers[key] {
+						workers[key]++
+						r.alive++
+					} else {
+						break
+					}
+				}
+			}
 		}
 	}
 
 	r.done = make(chan bool, r.alive)
-	debugf("Creating %d worker%s...", r.alive, nth(r.alive, "", "", "s"))
+
+	msg := fmt.Sprintf("Starting %d worker%s for the following jobs", r.alive, nth(r.alive, "", "", "s"))
+	logNames(debugf, msg, r.pending, taskName)
+
 	for _, backend := range r.project.Backends {
 		for _, system := range backend.Systems {
-			n := backend.SystemWorkers[system]
+			n := workers[pair{backend.Name, system}]
 			for i := 0; i < n; i++ {
 				go r.worker(backend, ImageID(system))
 			}
@@ -393,6 +411,9 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 				}
 				if lerr == nil || lerr.Error() != err.Error() {
 					printf("Cannot allocate %s:%s: %v", backend.Name, image.SystemID(), err)
+					if _, ok := err.(*FatalError); ok {
+						return nil
+					}
 				}
 
 				// TODO Check if the error is unrecoverable (bad key, no machines whatsoever, etc).
@@ -621,5 +642,5 @@ func logNames(f func(format string, args ...interface{}), prefix string, jobs []
 	}
 	sort.Strings(names)
 	const dash = "\n    - "
-	printf("%s: %d%s%s", prefix, len(names), dash, strings.Join(names, dash))
+	f("%s: %d%s%s", prefix, len(names), dash, strings.Join(names, dash))
 }

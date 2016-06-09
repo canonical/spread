@@ -25,6 +25,9 @@ type Server interface {
 	ReuseData() []byte
 }
 
+// FatalError represents an error that cannot be fixed by just retrying.
+type FatalError struct{ error }
+
 type ImageID string
 
 func (img ImageID) SystemID() ImageID {

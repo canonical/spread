@@ -91,10 +91,7 @@ func (l *lxd) Reuse(data []byte, password string) (Server, error) {
 }
 
 func (l *lxd) Allocate(image ImageID, password string) (Server, error) {
-	lxdimage, err := lxdImage(image)
-	if err != nil {
-		return nil, err
-	}
+	lxdimage := lxdImage(image)
 	name, err := lxdName(image)
 	if err != nil {
 		return nil, err
@@ -102,13 +99,17 @@ func (l *lxd) Allocate(image ImageID, password string) (Server, error) {
 
 	output, err := exec.Command("lxc", "launch", lxdimage, name).CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("cannot launch lxd container: %v", outputErr(output, err))
+		err = outputErr(output, err)
+		if bytes.Contains(output, []byte("error: not found")) {
+			err = fmt.Errorf("%s not found", lxdimage)
+		}
+		return nil, &FatalError{fmt.Errorf("cannot launch lxd container: %v", err)}
 	}
 
 	server := &lxdServer{
 		l: l,
 		d: lxdServerData{
-			Name: name,
+			Name:  name,
 			Image: image,
 		},
 	}
@@ -146,12 +147,17 @@ func (l *lxd) Allocate(image ImageID, password string) (Server, error) {
 	return server, nil
 }
 
-func lxdImage(image ImageID) (string, error) {
-	s := string(image.SystemID())
-	if i := strings.Index(s, "-"); i > 0 && !strings.Contains(s[i+1:], "-") {
-		return s[:i] + ":" + s[i+1:], nil
+func lxdImage(image ImageID) string {
+	parts := strings.Split(string(image.SystemID()), "-")
+	if parts[0] == "ubuntu" {
+		return "ubuntu:" + strings.Join(parts[1:], "/")
 	}
-	return "", fmt.Errorf("unsupported lxd image: %s", image)
+	switch parts[len(parts)-1] {
+	case "amd64", "i386", "armel", "armhf", "arm64", "powerpc", "ppc64el", "s390x":
+	default:
+		parts = append(parts, "amd64")
+	}
+	return "images:" + strings.Join(parts, "/")
 }
 
 func lxdName(image ImageID) (string, error) {
@@ -201,19 +207,19 @@ func lxdName(image ImageID) (string, error) {
 }
 
 type lxdServerJSON struct {
-	Name   string `json:"name"`
-	State  struct {
+	Name  string `json:"name"`
+	State struct {
 		Network map[string]lxdDeviceJSON `json:"network"`
 	} `json:"state"`
 }
 
 type lxdDeviceJSON struct {
-	State string `json:"state"`
+	State     string           `json:"state"`
 	Addresses []lxdAddressJSON `json:"addresses"`
 }
 
 type lxdAddressJSON struct {
-	Family string `json:"family"`
+	Family  string `json:"family"`
 	Address string `json:"address"`
 }
 

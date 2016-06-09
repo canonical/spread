@@ -414,7 +414,7 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 
 		printf("Connecting to %s...", server)
 
-		var timeout = time.After(30 * time.Second)
+		var timeout = time.After(60 * time.Second)
 		var relog = time.NewTicker(8 * time.Second)
 		defer relog.Stop()
 		var retry = time.NewTicker(5 * time.Second)

@@ -49,8 +49,8 @@ func (img ImageID) Label(note string) string {
 	if note != "" {
 		note = " (" + note + ")"
 	}
-	tstr := time.Now().UTC().Format("2006-01-02 15:04")
-	return fmt.Sprintf("Test with %s on %s%s", img, tstr, note)
+	tstr := time.Now().UTC().Format("15:04Jan2")
+	return fmt.Sprintf("%s %s%s", img, tstr, note)
 }
 
 type UnknownServer struct {

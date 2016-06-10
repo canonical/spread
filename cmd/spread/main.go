@@ -13,15 +13,21 @@ import (
 	"os/signal"
 )
 
-var verbose = flag.Bool("v", false, "Show detailed progress information")
-var vverbose = flag.Bool("vv", false, "Show debugging messages as well")
-var list = flag.Bool("list", false, "Just show list of tasks to be run")
-var pass = flag.String("pass", "", "Server password to use, defaults to random")
-var reuse = flag.String("reuse", "", "Reuse servers, '-reuse help' for syntax")
-var keep = flag.Bool("keep", false, "Keep servers running when done")
-var debug = flag.Bool("debug", false, "Keep state and stop on failure for debugging")
-var prepare = flag.Bool("prepare", false, "Keep state and stop after first task prepares")
-var restore = flag.Bool("restore", false, "Run only the restore scripts")
+var (
+	verbose  = flag.Bool("v", false, "Show detailed progress information")
+	vverbose = flag.Bool("vv", false, "Show debugging messages as well")
+	list     = flag.Bool("list", false, "Just show list of jobs that would run")
+	pass     = flag.String("pass", "", "Server password to use, defaults to random")
+	keep     = flag.Bool("keep", false, "Keep servers running for reuse")
+	reuse    = flag.String("reuse", "", "Reuse servers held running by -keep")
+	resend   = flag.Bool("resend", false, "Resend project data to reused servers")
+	debug    = flag.Bool("debug", false, "Run shell after script errors")
+	shell    = flag.Bool("shell", false, "Run shell instead of task scripts")
+	abend    = flag.Bool("abend", false, "Stop without restoring on first error")
+	restore  = flag.Bool("restore", false, "Run only the restore scripts")
+)
+
+//var discard = flag.Bool("discard", false, "Discard reused servers without running")
 
 func main() {
 	if err := run(); err != nil {
@@ -39,6 +45,15 @@ func run() error {
 
 	if *reuse != "" && *pass == "" {
 		return fmt.Errorf("cannot have -reuse without -pass")
+	}
+
+	var other bool
+	for _, b := range []bool{*debug, *shell, *abend, *restore} {
+		if b && other {
+			return fmt.Errorf("must only provide one of -debug, -shell, -abend, and -restore")
+
+		}
+		other = other || b
 	}
 
 	password := *pass
@@ -64,9 +79,12 @@ func run() error {
 		Password: password,
 		Filter:   filter,
 		Keep:     *keep,
+		Resend:   *resend,
 		Debug:    *debug,
+		Shell:    *shell,
+		Abend:    *abend,
 		Restore:  *restore,
-		Prepare:  *prepare,
+		//Discard:  *discard,
 	}
 
 	project, err := spread.Load(".")

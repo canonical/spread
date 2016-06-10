@@ -169,7 +169,6 @@ func (l *linode) Allocate(image ImageID, password string) (Server, error) {
 }
 
 func (s *linodeServer) Discard() error {
-	logf("Discarding %s...", s)
 	_, err1 := s.l.shutdown(s)
 	err2 := s.l.removeConfig(s, s.Config)
 	err3 := s.l.removeDisks(s, s.Root, s.Swap)

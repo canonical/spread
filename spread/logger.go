@@ -1,14 +1,14 @@
 package spread
 
 import (
+	"bytes"
+	stdlog "log"
 	"github.com/kr/pretty"
+	"sync"
 )
 
 // Logger defines the logger where messages should be sent to.
-// The standard *log.Logger type implements this interface.
-var Logger interface {
-	Output(calldepth int, s string) error
-}
+var Logger *stdlog.Logger
 
 // Verbose defines whether to also deliver verbose messages to the log.
 var Verbose bool
@@ -16,40 +16,71 @@ var Verbose bool
 // Debug defines whether to also deliver debug messages to the log. Implies Verbose if set.
 var Debug bool
 
-func print(v ...interface{}) {
+func print(args ...interface{}) {
 	if Logger != nil {
-		Logger.Output(2, pretty.Sprint(v...))
+		writeLog(pretty.Sprint(args...))
 	}
 }
 
-func printf(format string, v ...interface{}) {
+func printf(format string, args ...interface{}) {
 	if Logger != nil {
-		Logger.Output(2, pretty.Sprintf(format, v...))
+		writeLog(pretty.Sprintf(format, args...))
 	}
 }
 
-func log(v ...interface{}) {
+func log(args ...interface{}) {
 	if (Verbose || Debug) && Logger != nil {
-		Logger.Output(2, pretty.Sprint(v...))
+		writeLog(pretty.Sprint(args...))
 	}
 }
 
-func logf(format string, v ...interface{}) {
+func logf(format string, args ...interface{}) {
 	if (Verbose || Debug) && Logger != nil {
-		Logger.Output(2, pretty.Sprintf(format, v...))
+		writeLog(pretty.Sprintf(format, args...))
 	}
 }
 
-func debug(v ...interface{}) {
+func debug(args ...interface{}) {
 	if Debug && Logger != nil {
-		Logger.Output(2, pretty.Sprint(v...))
+		writeLog(pretty.Sprint(args...))
 	}
 }
 
-func debugf(format string, v ...interface{}) {
+func debugf(format string, args ...interface{}) {
 	if Debug && Logger != nil {
-		Logger.Output(2, pretty.Sprintf(format, v...))
+		writeLog(pretty.Sprintf(format, args...))
 	}
+}
+
+var termMu sync.Mutex
+var logMu sync.Mutex
+var logCache bytes.Buffer
+var logSaved stdlog.Logger
+
+func writeLog(line string) {
+	logMu.Lock()
+	defer logMu.Unlock()
+	Logger.Output(3, line)
+}
+
+func termLock() {
+	termMu.Lock()
+	logMu.Lock()
+	logSaved = *Logger
+	Logger.SetOutput(&logCache)
+	logMu.Unlock()
+}
+
+func termUnlock() {
+	logMu.Lock()
+	*Logger = logSaved
+	Logger.SetFlags(0)
+	Logger.SetPrefix("")
+	Logger.Output(0, logCache.String())
+	*Logger = logSaved
+	logCache.Truncate(0)
+	logMu.Unlock()
+	termMu.Unlock()
 }
 
 func nth(n int, word0 string, wordN ...string) string {

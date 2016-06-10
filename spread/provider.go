@@ -23,6 +23,7 @@ type Server interface {
 	Image() ImageID
 	Snapshot() (ImageID, error)
 	ReuseData() []byte
+	String() string
 }
 
 // FatalError represents an error that cannot be fixed by just retrying.

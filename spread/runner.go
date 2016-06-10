@@ -18,8 +18,11 @@ type Options struct {
 	Reuse    map[string][]string
 	Keep     bool
 	Debug    bool
+	Shell    bool
+	Abend    bool
 	Restore  bool
-	Prepare  bool
+	Resend   bool
+	Discard  bool
 }
 
 type Runner struct {
@@ -92,19 +95,11 @@ func (r *Runner) loop() error {
 			}
 		}
 		r.stats.log()
-		if (r.options.Keep || r.options.Debug) && len(r.servers) > 0 {
+		if r.options.Keep && len(r.servers) > 0 {
 			for _, server := range r.servers {
-				printf("Keeping %s with %s at %s", server, server.Image(), server.Address())
+				printf("Keeping %s at %s", server, server.Address())
 			}
-			if r.options.Debug {
-				filter := ""
-				if job := r.failedJob(); job != nil {
-					filter = " " + job.Name
-				}
-				printf("Retry with: spread %s%s", r.reuseArgs(), filter)
-			} else if r.options.Keep {
-				printf("Reuse with: spread %s", r.reuseArgs())
-			}
+			printf("Reuse with: spread %s", r.reuseArgs())
 		}
 	}()
 
@@ -159,26 +154,59 @@ func (r *Runner) loop() error {
 	return nil
 }
 
-func (r *Runner) run(client *Client, job *Job, verb string, context interface{}, script string, debug *bool) bool {
+const (
+	preparing = "preparing"
+	executing = "executing"
+	restoring = "restoring"
+)
+
+func (r *Runner) run(client *Client, job *Job, verb string, context interface{}, script string, abend *bool) bool {
 	script = strings.TrimSpace(script)
 	if len(script) == 0 {
 		return true
 	}
 	contextStr := job.StringFor(context)
 	logf("%s %s...", strings.Title(verb), contextStr)
-	var cwd string
+	var dir string
 	if context == job.Backend || context == job.Project {
-		cwd = r.project.RemotePath
+		dir = r.project.RemotePath
 	} else {
-		cwd = filepath.Join(r.project.RemotePath, job.Task.Name)
+		dir = filepath.Join(r.project.RemotePath, job.Task.Name)
 	}
-	_, err := client.Trace(script, cwd, job.Environment)
+	if r.options.Shell && verb == executing {
+			printf("Starting shell instead of %s %s...", verb, job)
+			err := client.Shell("/bin/bash", dir, r.shellEnv(job, job.Environment))
+			if err != nil {
+				printf("Error running debug shell: %v", err)
+			}
+			printf("Continuing...")
+			return true
+	}
+	_, err := client.Trace(script, dir, job.Environment)
 	if err != nil {
 		printf("Error %s %s: %v", verb, contextStr, err)
-		*debug = r.options.Debug
+		if r.options.Debug {
+			printf("Starting shell to debug...")
+			err = client.Shell("/bin/bash", dir, r.shellEnv(job, job.Environment))
+			if err != nil {
+				printf("Error running debug shell: %v", err)
+			}
+			printf("Continuing...")
+		}
+		*abend = r.options.Abend
 		return false
 	}
 	return true
+}
+
+func (r *Runner) shellEnv(job *Job, env map[string]string) map[string]string {
+	senv := make(map[string]string)
+	for k, v := range env {
+		senv[k] = v
+	}
+	senv["HOME"] = r.project.RemotePath
+	senv["PS1"] = fmt.Sprintf(`%s:%s \w\$ `, job.Backend.Name, job.System)
+	return senv
 }
 
 func (r *Runner) add(where *[]*Job, job *Job) {
@@ -201,7 +229,7 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 
 	var stats = &r.stats
 
-	var debug bool
+	var abend bool
 	var badProject bool
 	var badSuite = make(map[*Suite]bool)
 
@@ -216,7 +244,7 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 		if job != nil {
 			r.suiteWorkers[suiteWorkersKey(job)]--
 		}
-		if badProject || debug || !r.tomb.Alive() {
+		if badProject || abend || !r.tomb.Alive() {
 			r.mu.Unlock()
 			break
 		}
@@ -236,7 +264,7 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 		if insideSuite != nil && insideSuite != job.Suite {
 			if false {
 				printf("WARNING: Was inside missing suite %s on last run, so cannot restore it.", insideSuite)
-			} else if !r.run(client, last, "restoring", insideSuite, insideSuite.Restore, &debug) {
+			} else if !r.run(client, last, restoring, insideSuite, insideSuite.Restore, &abend) {
 				r.add(&stats.SuiteRestoreError, last)
 				r.add(&stats.TaskAbort, job)
 				badProject = true
@@ -249,7 +277,7 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 
 		if !insideProject {
 			insideProject = true
-			if !r.options.Restore && !r.run(client, job, "preparing", r.project, r.project.Prepare, &debug) {
+			if !r.options.Restore && !r.run(client, job, preparing, r.project, r.project.Prepare, &abend) {
 				r.add(&stats.ProjectPrepareError, job)
 				r.add(&stats.TaskAbort, job)
 				badProject = true
@@ -257,7 +285,7 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 			}
 
 			insideBackend = true
-			if !r.options.Restore && !r.run(client, job, "preparing", backend, backend.Prepare, &debug) {
+			if !r.options.Restore && !r.run(client, job, preparing, backend, backend.Prepare, &abend) {
 				r.add(&stats.BackendPrepareError, job)
 				r.add(&stats.TaskAbort, job)
 				badProject = true
@@ -267,7 +295,7 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 
 		if insideSuite != job.Suite {
 			insideSuite = job.Suite
-			if !r.options.Restore && !r.run(client, job, "preparing", job.Suite, job.Suite.Prepare, &debug) {
+			if !r.options.Restore && !r.run(client, job, preparing, job.Suite, job.Suite.Prepare, &abend) {
 				r.add(&stats.SuitePrepareError, job)
 				r.add(&stats.TaskAbort, job)
 				badSuite[job.Suite] = true
@@ -277,58 +305,44 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 
 		if r.options.Restore {
 			// Do not prepare or execute.
-		} else if !r.options.Restore && !r.run(client, job, "preparing", job, job.Task.Prepare, &debug) {
+		} else if !r.options.Restore && !r.run(client, job, preparing, job, job.Task.Prepare, &abend) {
 			r.add(&stats.TaskPrepareError, job)
 			r.add(&stats.TaskAbort, job)
-		} else if r.options.Prepare {
-			// Done. Stop the whole run for inspection.
-			debug = true
-			continue
-		} else if !r.options.Restore && r.run(client, job, "executing", job, job.Task.Execute, &debug) {
+		} else if !r.options.Restore && r.run(client, job, executing, job, job.Task.Execute, &abend) {
 			r.add(&stats.TaskDone, job)
 		} else if !r.options.Restore {
 			r.add(&stats.TaskError, job)
 		}
-		if !debug && !r.run(client, job, "restoring", job, job.Task.Restore, &debug) {
+		if !abend && !r.run(client, job, restoring, job, job.Task.Restore, &abend) {
 			r.add(&stats.TaskRestoreError, job)
 			badProject = true
 		}
 	}
 
-	if client != nil {
-		if !debug && insideSuite != nil {
-			if !r.run(client, last, "restoring", insideSuite, insideSuite.Restore, &debug) {
-				r.add(&stats.SuiteRestoreError, last)
-			}
-			insideSuite = nil
+	if !abend && insideSuite != nil {
+		if !r.run(client, last, restoring, insideSuite, insideSuite.Restore, &abend) {
+			r.add(&stats.SuiteRestoreError, last)
 		}
-		if !r.options.Debug && insideBackend {
-			if !r.run(client, last, "restoring", backend, backend.Restore, &debug) {
-				r.add(&stats.BackendRestoreError, last)
-			}
-			insideBackend = false
+		insideSuite = nil
+	}
+	if !abend && insideBackend {
+		if !r.run(client, last, restoring, backend, backend.Restore, &abend) {
+			r.add(&stats.BackendRestoreError, last)
 		}
-		if !r.options.Debug && insideProject {
-			if !r.run(client, last, "restoring", r.project, r.project.Restore, &debug) {
-				r.add(&stats.ProjectRestoreError, last)
-			}
-			insideProject = false
+		insideBackend = false
+	}
+	if !abend && insideProject {
+		if !r.run(client, last, restoring, r.project, r.project.Restore, &abend) {
+			r.add(&stats.ProjectRestoreError, last)
 		}
-		server := client.Server()
-		if r.options.Debug {
-			printf("Keeping data for debugging at %s on %s...", r.project.RemotePath, server)
-		} else if r.options.Keep {
-			printf("Removing data from %s on %s...", r.project.RemotePath, server)
-			if err := client.RemoveAll(r.project.RemotePath); err != nil {
-				printf("Error remove project from %s: %v", server, err)
-			}
-		}
-		client.Close()
-		if !r.options.Keep && !r.options.Debug {
-			printf("Discarding %s...", server)
-			if err := server.Discard(); err != nil {
-				printf("Error discarding %s: %v", server, err)
-			}
+		insideProject = false
+	}
+	server := client.Server()
+	client.Close()
+	if !r.options.Keep {
+		printf("Discarding %s...", server)
+		if err := server.Discard(); err != nil {
+			printf("Error discarding %s: %v", server, err)
 		}
 	}
 }
@@ -384,7 +398,7 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 			r.reused[addr] = true
 			server = &UnknownServer{addr}
 			reused = true
-			printf("Reused %s:%s.", backend.Name, image.SystemID())
+			printf("Reusing %s:%s...", backend.Name, image.SystemID())
 		}
 		r.mu.Unlock()
 
@@ -497,29 +511,34 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 		printf("Connected to %s.", server)
 
 		send := true
-		if r.options.Debug {
+		if reused && r.options.Resend {
+			printf("Removing project data from %s at %s...", server, r.project.RemotePath)
+			if err := client.RemoveAll(r.project.RemotePath); err != nil {
+				printf("Cannot remove project data from %s: %v", server, err)
+			}
+		} else if reused {
 			empty, err := client.MissingOrEmpty(r.project.RemotePath)
 			if err != nil {
-				printf("Cannot send data to %s: %v", server, err)
+				printf("Cannot send project data to %s: %v", server, err)
 				continue
 			}
 			send = empty
 		}
 
 		if send {
-			printf("Sending data to %s...", server)
+			printf("Sending project data to %s...", server)
 			err := client.Send(r.project.Path, r.project.RemotePath, r.project.Include, r.project.Exclude)
 			if err != nil {
 				if reused {
-					printf("Cannot send data to %s: %v", server, err)
+					printf("Cannot send project data to %s: %v", server, err)
 				} else {
-					printf("Discarding %s, cannot send data: %s", server, err)
+					printf("Discarding %s, cannot send project data: %s", server, err)
 					server.Discard()
 				}
 				continue
 			}
 		} else {
-			printf("Debugging on %s and remote path has data. Won't send again.", server)
+			printf("Reusing project data on %s...", server)
 		}
 
 		r.servers = append(r.servers, server)
@@ -561,32 +580,21 @@ func (r *Runner) reuseArgs() string {
 	if len(reuse) > 1 {
 		buf.WriteString("'")
 	}
-	if r.options.Debug {
-		buf.WriteString(" -debug")
-	} else if r.options.Keep {
+	if r.options.Keep {
 		buf.WriteString(" -keep")
 	}
-	return buf.String()
-}
+	switch {
+	case r.options.Debug:
+		buf.WriteString(" -debug")
+	case r.options.Shell:
+		buf.WriteString(" -shell")
+	case r.options.Abend:
+		buf.WriteString(" -abend")
+	case r.options.Restore:
+		buf.WriteString(" -restore")
+	}
 
-func (r *Runner) failedJob() *Job {
-	errors := [][]*Job{
-		r.stats.TaskError,
-		r.stats.TaskPrepareError,
-		r.stats.TaskRestoreError,
-		r.stats.SuitePrepareError,
-		r.stats.SuiteRestoreError,
-		r.stats.BackendPrepareError,
-		r.stats.BackendRestoreError,
-		r.stats.ProjectPrepareError,
-		r.stats.ProjectRestoreError,
-	}
-	for _, jobs := range errors {
-		for _, job := range jobs {
-			return job
-		}
-	}
-	return nil
+	return buf.String()
 }
 
 type stats struct {

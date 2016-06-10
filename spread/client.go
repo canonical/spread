@@ -3,16 +3,18 @@ package spread
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
-	"os/exec"
-	"strings"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 type Client struct {
 	server Server
-	sshc *ssh.Client
+	sshc   *ssh.Client
 }
 
 func Dial(server Server, password string) (*Client, error) {
@@ -106,6 +108,7 @@ const (
 	traceOutput = iota
 	combinedOutput
 	splitOutput
+	shellOutput
 )
 
 func (c *Client) Run(script string, dir string, env map[string]string) error {
@@ -125,6 +128,11 @@ func (c *Client) Trace(script string, dir string, env map[string]string) (output
 	return c.run(script, dir, env, traceOutput)
 }
 
+func (c *Client) Shell(script string, dir string, env map[string]string) error {
+	_, err := c.run(script, dir, env, shellOutput)
+	return err
+}
+
 func (c *Client) run(script string, dir string, env map[string]string, mode int) (output []byte, err error) {
 	script = strings.TrimSpace(script)
 	if len(script) == 0 {
@@ -137,12 +145,6 @@ func (c *Client) run(script string, dir string, env map[string]string, mode int)
 	}
 	defer session.Close()
 
-	stdin, err := session.StdinPipe()
-	if err != nil {
-		return nil, err
-	}
-	defer stdin.Close()
-
 	var buf bytes.Buffer
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
@@ -151,6 +153,9 @@ func (c *Client) run(script string, dir string, env map[string]string, mode int)
 		// TODO Value escaping.
 		fmt.Fprintf(&buf, "export %s=\"%s\"\n", key, value)
 	}
+	if mode == shellOutput && env["PS1"] != "" {
+		fmt.Fprintf(&buf, `echo PS1=\''%s'\' > $HOME/.bashrc`, env["PS1"])
+	}
 	if mode == traceOutput {
 		// Don't trace environment variables so secrets don't leak.
 		fmt.Fprintf(&buf, "set -x\n")
@@ -158,13 +163,24 @@ func (c *Client) run(script string, dir string, env map[string]string, mode int)
 	fmt.Fprintf(&buf, "\n%s\n", script)
 
 	errch := make(chan error, 2)
-	go func() {
-		_, err := stdin.Write(buf.Bytes())
+	if mode == shellOutput {
+		session.Stdin = os.Stdin
+		errch <- nil
+	} else {
+		stdin, err := session.StdinPipe()
 		if err != nil {
-			errch <- err
+			return nil, err
 		}
-		errch <- stdin.Close()
-	}()
+		defer stdin.Close()
+
+		go func() {
+			_, err := stdin.Write(buf.Bytes())
+			if err != nil {
+				errch <- err
+			}
+			errch <- stdin.Close()
+		}()
+	}
 
 	debugf("Sending script to %s:\n-----\n%s\n------", c.server, buf.Bytes())
 
@@ -176,6 +192,17 @@ func (c *Client) run(script string, dir string, env map[string]string, mode int)
 	case splitOutput:
 		cmd = "/bin/sh -e -"
 		session.Stderr = &stderr
+	case shellOutput:
+		cmd = "{\n" + buf.String() + "\n}"
+		session.Stdout = os.Stdout
+		session.Stderr = os.Stderr
+		w, h, err := terminal.GetSize(0)
+		if err != nil {
+			return nil, fmt.Errorf("cannot get local terminal size: %v", err)
+		}
+		if err := session.RequestPty("xterm", h, w, nil); err != nil {
+			return nil, fmt.Errorf("cannot get remote pseudo terminal: %v", err)
+		}
 	default:
 		panic("internal error: invalid output mode")
 	}
@@ -184,7 +211,18 @@ func (c *Client) run(script string, dir string, env map[string]string, mode int)
 		cmd = fmt.Sprintf(`cd "%s" && %s`, dir, cmd)
 	}
 
-	output, err = session.Output(cmd)
+	if mode == shellOutput {
+		tstate, err := terminal.MakeRaw(0)
+		if err != nil {
+			return nil, fmt.Errorf("cannot put local terminal in raw mode: %v", err)
+		}
+		termLock()
+		err = session.Run(cmd)
+		termUnlock()
+		terminal.Restore(0, tstate)
+	} else {
+		output, err = session.Output(cmd)
+	}
 
 	if len(output) > 0 {
 		debugf("Output from running script on %s:\n-----\n%s\n-----", c.server, output)
@@ -253,7 +291,7 @@ func (c *Client) Send(from, to string, include []string, exclude []string) error
 
 	args := []string{"-cz"}
 	for _, pattern := range exclude {
-		args = append(args, "--exclude=" + pattern)
+		args = append(args, "--exclude="+pattern)
 	}
 	for _, pattern := range include {
 		args = append(args, pattern)

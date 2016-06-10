@@ -30,12 +30,13 @@ type lxdServer struct {
 
 type lxdServerData struct {
 	Name    string
+	Backend string
+	System  string
 	Address string
-	Image   ImageID
 }
 
 func (s *lxdServer) String() string {
-	return fmt.Sprintf("%s:%s (%s)", s.l.backend.Name, s.d.Image.SystemID(), s.d.Name)
+	return fmt.Sprintf("%s:%s (%s)", s.l.backend.Name, s.d.System, s.d.Name)
 }
 
 func (s *lxdServer) Provider() Provider {
@@ -46,12 +47,8 @@ func (s *lxdServer) Address() string {
 	return s.d.Address
 }
 
-func (s *lxdServer) Image() ImageID {
-	return s.d.Image
-}
-
-func (s *lxdServer) Snapshot() (ImageID, error) {
-	return "", nil
+func (s *lxdServer) System() string {
+	return s.d.System
 }
 
 func (s *lxdServer) ReuseData() []byte {
@@ -76,10 +73,6 @@ func (l *lxd) Backend() *Backend {
 	return l.backend
 }
 
-func (l *lxd) DiscardSnapshot(image ImageID) error {
-	return nil
-}
-
 func (l *lxd) Reuse(data []byte, password string) (Server, error) {
 	server := &lxdServer{}
 	err := yaml.Unmarshal(data, &server.d)
@@ -90,9 +83,9 @@ func (l *lxd) Reuse(data []byte, password string) (Server, error) {
 	return server, nil
 }
 
-func (l *lxd) Allocate(image ImageID, password string) (Server, error) {
-	lxdimage := lxdImage(image)
-	name, err := lxdName(image)
+func (l *lxd) Allocate(system string, password string) (Server, error) {
+	lxdimage := lxdImage(system)
+	name, err := lxdName(system)
 	if err != nil {
 		return nil, err
 	}
@@ -109,8 +102,9 @@ func (l *lxd) Allocate(image ImageID, password string) (Server, error) {
 	server := &lxdServer{
 		l: l,
 		d: lxdServerData{
-			Name:  name,
-			Image: image,
+			Name:    name,
+			System:  system,
+			Backend: l.backend.Name,
 		},
 	}
 
@@ -147,8 +141,8 @@ func (l *lxd) Allocate(image ImageID, password string) (Server, error) {
 	return server, nil
 }
 
-func lxdImage(image ImageID) string {
-	parts := strings.Split(string(image.SystemID()), "-")
+func lxdImage(system string) string {
+	parts := strings.Split(system, "-")
 	if parts[0] == "ubuntu" {
 		return "ubuntu:" + strings.Join(parts[1:], "/")
 	}
@@ -160,7 +154,7 @@ func lxdImage(image ImageID) string {
 	return "images:" + strings.Join(parts, "/")
 }
 
-func lxdName(image ImageID) (string, error) {
+func lxdName(system string) (string, error) {
 	filename := os.ExpandEnv("$HOME/.spread/lxd-count")
 	file, err := os.OpenFile(filename, os.O_RDWR, 0644)
 	if os.IsNotExist(err) {
@@ -203,7 +197,7 @@ func lxdName(image ImageID) (string, error) {
 		return "", fmt.Errorf("cannot write to ~/.spread/lxd-count: %v", err)
 	}
 
-	return fmt.Sprintf("spread-%d-%s", n, strings.Replace(string(image.SystemID()), ".", "-", -1)), nil
+	return fmt.Sprintf("spread-%d-%s", n, strings.Replace(system, ".", "-", -1)), nil
 }
 
 type lxdServerJSON struct {

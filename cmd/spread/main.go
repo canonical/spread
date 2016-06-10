@@ -25,9 +25,8 @@ var (
 	shell    = flag.Bool("shell", false, "Run shell instead of task scripts")
 	abend    = flag.Bool("abend", false, "Stop without restoring on first error")
 	restore  = flag.Bool("restore", false, "Run only the restore scripts")
+	discard  = flag.Bool("discard", false, "Discard reused servers without running")
 )
-
-//var discard = flag.Bool("discard", false, "Discard reused servers without running")
 
 func main() {
 	if err := run(); err != nil {
@@ -46,11 +45,14 @@ func run() error {
 	if *reuse != "" && *pass == "" {
 		return fmt.Errorf("cannot have -reuse without -pass")
 	}
+	if *keep && *discard {
+		return fmt.Errorf("cannot have both -keep and -discard")
+	}
 
 	var other bool
 	for _, b := range []bool{*debug, *shell, *abend, *restore} {
 		if b && other {
-			return fmt.Errorf("must only provide one of -debug, -shell, -abend, and -restore")
+			return fmt.Errorf("cannot have more than one of -debug, -shell, -abend, and -restore")
 
 		}
 		other = other || b
@@ -84,7 +86,7 @@ func run() error {
 		Shell:    *shell,
 		Abend:    *abend,
 		Restore:  *restore,
-		//Discard:  *discard,
+		Discard:  *discard,
 	}
 
 	project, err := spread.Load(".")
@@ -104,11 +106,7 @@ func run() error {
 	}
 
 	if *reuse != "" {
-		value, err := parseReuse(project, *reuse)
-		if err != nil {
-			return err
-		}
-		options.Reuse = value
+		options.Reuse = strings.Split(*reuse, ",")
 	}
 
 	runner, err := spread.Start(project, options)
@@ -130,21 +128,6 @@ func printf(format string, v ...interface{}) {
 	if spread.Logger != nil {
 		spread.Logger.Output(2, pretty.Sprintf(format, v...))
 	}
-}
-
-func parseReuse(project *spread.Project, s string) (map[string][]string, error) {
-	reuse := make(map[string][]string)
-	for _, entry := range strings.Fields(s) {
-		bname, addrs := parseReuseEntry(entry)
-		if len(bname) == 0 || len(addrs) == 0 {
-			return nil, fmt.Errorf("-reuse must be formatted as 'backend1:1.2.3.4,1.2.3.5 backend2:1.2.3.6'")
-		}
-		if _, ok := project.Backends[bname]; !ok {
-			return nil, fmt.Errorf("-reuse refers to unknown backend %q", bname)
-		}
-		reuse[bname] = addrs
-	}
-	return reuse, nil
 }
 
 func parseReuseEntry(entry string) (backend string, addrs []string) {

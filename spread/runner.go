@@ -6,6 +6,8 @@ import (
 	"sync"
 
 	"gopkg.in/tomb.v2"
+	"gopkg.in/yaml.v2"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -15,7 +17,7 @@ import (
 type Options struct {
 	Password string
 	Filter   Filter
-	Reuse    map[string][]string
+	Reuse    []string
 	Keep     bool
 	Debug    bool
 	Shell    bool
@@ -32,11 +34,11 @@ type Runner struct {
 	project   *Project
 	options   *Options
 	providers map[string]Provider
-	reused    map[string]bool
 
 	done  chan bool
 	alive int
 
+	reuse   map[Server]*Client
 	servers []Server
 	pending []*Job
 	stats   stats
@@ -51,7 +53,7 @@ func Start(project *Project, options *Options) (*Runner, error) {
 		project:   project,
 		options:   options,
 		providers: make(map[string]Provider),
-		reused:    make(map[string]bool),
+		reuse:     make(map[Server]*Client),
 
 		suiteWorkers: make(map[[3]string]int),
 	}
@@ -86,22 +88,61 @@ func (r *Runner) Stop() error {
 	return r.tomb.Wait()
 }
 
-func (r *Runner) loop() error {
-	defer func() {
-		logNames(debugf, "Pending jobs after workers returned", r.pending, taskName)
-		for _, job := range r.pending {
-			if job != nil {
-				r.add(&r.stats.TaskAbort, job)
+func (r *Runner) loop() (err error) {
+	// Discover all servers for which reuse was requested.
+	r.done = make(chan bool, r.alive)
+	for _, addr := range r.options.Reuse {
+		go r.prepareReuse(addr)
+	}
+	for _ = range r.options.Reuse {
+		<-r.done
+	}
+	if len(r.reuse) != len(r.options.Reuse) {
+		seen := make(map[string]bool)
+		for server, client := range r.reuse {
+			seen[server.Address()] = true
+			client.Close()
+		}
+		missing := make([]string, 0, len(r.options.Reuse))
+		for _, addr := range r.options.Reuse {
+			if !seen[addr] {
+				missing = append(missing, addr)
 			}
 		}
-		r.stats.log()
+		return fmt.Errorf("cannot reuse address%s: %s", nth(len(missing), "", "", "es"), strings.Join(missing, ", "))
+	}
+
+	defer func() {
+		if !r.options.Discard {
+			logNames(debugf, "Pending jobs after workers returned", r.pending, taskName)
+			for _, job := range r.pending {
+				if job != nil {
+					r.add(&r.stats.TaskAbort, job)
+				}
+			}
+			r.stats.log()
+		}
 		if r.options.Keep && len(r.servers) > 0 {
 			for _, server := range r.servers {
 				printf("Keeping %s at %s", server, server.Address())
 			}
-			printf("Reuse with: spread %s", r.reuseArgs())
+			printf("Reuse with: %s %s", os.Args[0], r.reuseArgs())
+		}
+		if !r.options.Keep {
+			for len(r.servers) > 0 {
+				printf("Discarding %s...", r.servers[0])
+				r.discardServer(r.servers[0])
+			}
+		}
+		ecount := r.stats.errorCount()
+		if ecount > 0 && err == nil {
+			err = fmt.Errorf("%d reported problem%s", ecount, nth(ecount, "", "", "s"))
 		}
 	}()
+
+	if r.options.Discard {
+		return nil
+	}
 
 	// Find out how many workers are needed for each backend+system.
 	// Even if multiple workers per system are requested, must not
@@ -111,7 +152,7 @@ func (r *Runner) loop() error {
 	for _, backend := range r.project.Backends {
 		for _, system := range backend.Systems {
 			for _, job := range r.pending {
-				if job.Backend == backend && string(job.System) == system {
+				if job.Backend == backend && job.System == system {
 					key := pair{backend.Name, system}
 					if backend.SystemWorkers[system] > workers[key] {
 						workers[key]++
@@ -133,7 +174,7 @@ func (r *Runner) loop() error {
 		for _, system := range backend.Systems {
 			n := workers[pair{backend.Name, system}]
 			for i := 0; i < n; i++ {
-				go r.worker(backend, ImageID(system))
+				go r.worker(backend, system)
 			}
 		}
 	}
@@ -174,13 +215,13 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		dir = filepath.Join(r.project.RemotePath, job.Task.Name)
 	}
 	if r.options.Shell && verb == executing {
-			printf("Starting shell instead of %s %s...", verb, job)
-			err := client.Shell("/bin/bash", dir, r.shellEnv(job, job.Environment))
-			if err != nil {
-				printf("Error running debug shell: %v", err)
-			}
-			printf("Continuing...")
-			return true
+		printf("Starting shell instead of %s %s...", verb, job)
+		err := client.Shell("/bin/bash", dir, r.shellEnv(job, job.Environment))
+		if err != nil {
+			printf("Error running debug shell: %v", err)
+		}
+		printf("Continuing...")
+		return true
 	}
 	_, err := client.Trace(script, dir, job.Environment)
 	if err != nil {
@@ -219,7 +260,7 @@ func suiteWorkersKey(job *Job) [3]string {
 	return [3]string{job.Backend.Name, string(job.System), job.Suite.Name}
 }
 
-func (r *Runner) worker(backend *Backend, system ImageID) {
+func (r *Runner) worker(backend *Backend, system string) {
 	defer func() { r.done <- true }()
 
 	client := r.client(backend, system)
@@ -341,13 +382,11 @@ func (r *Runner) worker(backend *Backend, system ImageID) {
 	client.Close()
 	if !r.options.Keep {
 		printf("Discarding %s...", server)
-		if err := server.Discard(); err != nil {
-			printf("Error discarding %s: %v", server, err)
-		}
+		r.discardServer(server)
 	}
 }
 
-func (r *Runner) job(backend *Backend, system ImageID, suite *Suite) *Job {
+func (r *Runner) job(backend *Backend, system string, suite *Suite) *Job {
 	var best = -1
 	var bestWorkers = 1000000
 	for i, job := range r.pending {
@@ -376,140 +415,26 @@ func (r *Runner) job(backend *Backend, system ImageID, suite *Suite) *Job {
 	return nil
 }
 
-func (r *Runner) client(backend *Backend, image ImageID) *Client {
+func (r *Runner) client(backend *Backend, system string) *Client {
 
-	// TODO Consider stopping the runner after too many retries.
-
-	var client *Client
-	var server Server
-	var err error
+	retries := 0
 	for r.tomb.Alive() {
-
-		// Look for a server available for reuse.
-		reused := false
-		r.mu.Lock()
-		for _, addr := range r.options.Reuse[backend.Name] {
-			if r.reused[addr] {
-				continue
-			}
-			// FIXME This is broken. Needs to account for the image.
-			//       Store backend in reuse data (already has image)
-			//       and pre-discover all servers before getting here.
-			r.reused[addr] = true
-			server = &UnknownServer{addr}
-			reused = true
-			printf("Reusing %s:%s...", backend.Name, image.SystemID())
+		if retries == 3 {
+			printf("Cannot allocate %s:%s after too many retries.", backend.Name, system)
+			break
 		}
-		r.mu.Unlock()
+		retries++
 
-		// Allocate a server when all else failed.
+		client := r.reuseServer(backend, system)
+		reused := client != nil
 		if !reused {
-			if len(r.options.Reuse) > 0 {
-				printf("Reuse requested but none left for %s:%s, aborting.", backend.Name, image.SystemID())
-				return nil
-			}
-
-			printf("Allocating %s:%s...", backend.Name, image.SystemID())
-			var timeout = time.After(30 * time.Second)
-			var relog = time.NewTicker(8 * time.Second)
-			defer relog.Stop()
-			var retry = time.NewTicker(5 * time.Second)
-			defer retry.Stop()
-			err = nil
-		Allocate:
-			for {
-				lerr := err
-				server, err = r.providers[backend.Name].Allocate(image, r.options.Password)
-				if err == nil {
-					break
-				}
-				if lerr == nil || lerr.Error() != err.Error() {
-					printf("Cannot allocate %s:%s: %v", backend.Name, image.SystemID(), err)
-					if _, ok := err.(*FatalError); ok {
-						return nil
-					}
-				}
-
-				// TODO Check if the error is unrecoverable (bad key, no machines whatsoever, etc).
-
-				select {
-				case <-retry.C:
-				case <-relog.C:
-					printf("Cannot allocate %s:%s: %v", backend.Name, image.SystemID(), err)
-				case <-timeout:
-					break Allocate
-				case <-r.tomb.Dying():
-					break Allocate
-				}
-			}
-			if err != nil {
-				continue
-			}
-		}
-
-		printf("Connecting to %s...", server)
-
-		var timeout = time.After(60 * time.Second)
-		var relog = time.NewTicker(8 * time.Second)
-		defer relog.Stop()
-		var retry = time.NewTicker(5 * time.Second)
-		defer retry.Stop()
-	Dial:
-		for {
-			lerr := err
-			client, err = Dial(server, r.options.Password)
-			if err == nil {
+			client = r.allocateServer(backend, system)
+			if client == nil {
 				break
 			}
-			if lerr == nil || lerr.Error() != err.Error() {
-				debugf("Cannot connect to %s: %v", server, err)
-			}
-
-			select {
-			case <-retry.C:
-			case <-relog.C:
-				debugf("Cannot connect to %s: %v", server, err)
-			case <-timeout:
-				break Dial
-			case <-r.tomb.Dying():
-				break Dial
-			}
-		}
-		if err != nil {
-			if reused {
-				printf("Cannot connect to %s: %v", server, err)
-			} else {
-				printf("Discarding %s, cannot connect: %v", server, err)
-				server.Discard()
-			}
-			continue
-		}
-		if !reused {
-			err = client.WriteFile("/.spread.yaml", server.ReuseData())
-			if err != nil {
-				printf("Discarding %s, cannot write reuse data: %s", server, err)
-				server.Discard()
-				continue
-			}
 		}
 
-		if _, ok := server.(*UnknownServer); ok {
-			data, err := client.ReadFile("/.spread.yaml")
-			if err != nil {
-				printf("Cannot read reuse data for %s: %v", server, err)
-				continue
-			}
-			s, err := r.providers[backend.Name].Reuse(data, r.options.Password)
-			if err != nil {
-				printf("Cannot reuse %s on %s: %v", server, backend, err)
-				continue
-			}
-			server = s
-			client.server = s
-		}
-
-		printf("Connected to %s.", server)
-
+		server := client.Server()
 		send := true
 		if reused && r.options.Resend {
 			printf("Removing project data from %s at %s...", server, r.project.RemotePath)
@@ -533,56 +458,193 @@ func (r *Runner) client(backend *Backend, image ImageID) *Client {
 					printf("Cannot send project data to %s: %v", server, err)
 				} else {
 					printf("Discarding %s, cannot send project data: %s", server, err)
-					server.Discard()
+					r.discardServer(server)
 				}
 				continue
 			}
 		} else {
 			printf("Reusing project data on %s...", server)
 		}
-
-		r.servers = append(r.servers, server)
 		return client
 	}
 
 	return nil
 }
 
+func (r *Runner) discardServer(server Server) {
+	if err := server.Discard(); err != nil {
+		printf("Error discarding %s: %v", server, err)
+	}
+	r.mu.Lock()
+	for i, s := range r.servers {
+		if s == server {
+			r.servers = append(r.servers[:i], r.servers[i+1:]...)
+			break
+		}
+	}
+	r.mu.Unlock()
+}
+
+func (r *Runner) allocateServer(backend *Backend, system string) *Client {
+	if len(r.options.Reuse) > 0 {
+		printf("Reuse requested but none left for %s:%s, aborting.", backend.Name, system)
+		return nil
+	}
+
+	printf("Allocating %s:%s...", backend.Name, system)
+	var timeout = time.After(30 * time.Second)
+	var relog = time.NewTicker(8 * time.Second)
+	defer relog.Stop()
+	var retry = time.NewTicker(5 * time.Second)
+	defer retry.Stop()
+
+	var server Server
+	var err error
+Allocate:
+	for {
+		lerr := err
+		server, err = r.providers[backend.Name].Allocate(system, r.options.Password)
+		if err == nil {
+			break
+		}
+		if lerr == nil || lerr.Error() != err.Error() {
+			printf("Cannot allocate %s:%s: %v", backend.Name, system, err)
+			if _, ok := err.(*FatalError); ok {
+				return nil
+			}
+		}
+
+		select {
+		case <-retry.C:
+		case <-relog.C:
+			printf("Cannot allocate %s:%s: %v", backend.Name, system, err)
+		case <-timeout:
+			break Allocate
+		case <-r.tomb.Dying():
+			break Allocate
+		}
+	}
+	if err != nil {
+		return nil
+	}
+
+	printf("Connecting to %s...", server)
+
+	timeout = time.After(60 * time.Second)
+	relog = time.NewTicker(8 * time.Second)
+	defer relog.Stop()
+	retry = time.NewTicker(5 * time.Second)
+	defer retry.Stop()
+
+	var client *Client
+Dial:
+	for {
+		lerr := err
+		client, err = Dial(server, r.options.Password)
+		if err == nil {
+			break
+		}
+		if lerr == nil || lerr.Error() != err.Error() {
+			debugf("Cannot connect to %s: %v", server, err)
+		}
+
+		select {
+		case <-retry.C:
+		case <-relog.C:
+			debugf("Cannot connect to %s: %v", server, err)
+		case <-timeout:
+			break Dial
+		case <-r.tomb.Dying():
+			break Dial
+		}
+	}
+	if err != nil {
+		printf("Discarding %s, cannot connect: %v", server, err)
+		r.discardServer(server)
+		return nil
+	}
+	err = client.WriteFile("/.spread.yaml", server.ReuseData())
+	if err != nil {
+		printf("Discarding %s, cannot write reuse data: %s", server, err)
+		r.discardServer(server)
+		return nil
+	}
+
+	printf("Connected to %s.", server)
+	r.servers = append(r.servers, server)
+	return client
+}
+
+func (r *Runner) reuseServer(backend *Backend, system string) *Client {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for server, client := range r.reuse {
+		if server.Provider().Backend() == backend && server.System() == system {
+			delete(r.reuse, server)
+			printf("Reusing %s...", server)
+			return client
+		}
+	}
+	return nil
+}
+
+func (r *Runner) prepareReuse(addr string) {
+	defer func() { r.done <- true }()
+
+	printf("Connecting to %s for reuse...", addr)
+	var server Server = &UnknownServer{addr}
+	client, err := Dial(server, r.options.Password)
+	if err != nil {
+		printf("Cannot connect to %s: %v", addr, err)
+		return
+	}
+	data, err := client.ReadFile("/.spread.yaml")
+	if err != nil {
+		printf("Cannot read reuse data for %s: %v", server, err)
+		return
+	}
+	var info struct {
+		Backend string
+	}
+	err = yaml.Unmarshal(data, &info)
+	if err != nil {
+		printf("Cannot read reuse data for %s: %v", server, err)
+		return
+	}
+	provider, ok := r.providers[info.Backend]
+	if !ok {
+		printf("Cannot reuse %s: backend %q is missing", server, info.Backend)
+		return
+	}
+	server, err = provider.Reuse(data, r.options.Password)
+	if err != nil {
+		printf("Cannot reuse %s on %s: %v", addr, info.Backend, err)
+		return
+	}
+	client.server = server
+
+	r.mu.Lock()
+	r.reuse[server] = client
+	r.servers = append(r.servers, server)
+	debugf("Prepared %s:%s server for reuse.", server.Provider().Backend().Name, server.System())
+	r.mu.Unlock()
+}
+
 func (r *Runner) reuseArgs() string {
 	buf := &bytes.Buffer{}
-	reuse := make(map[string][]string)
-	backends := make([]string, 0, len(r.servers))
+	var addrs []string
 	for _, server := range r.servers {
-		backend := server.Provider().Backend().Name
-		backends = append(backends, backend)
-		reuse[backend] = append(reuse[backend], server.Address())
+		addrs = append(addrs, server.Address())
 	}
-	sort.Strings(backends)
+	sort.Strings(addrs)
 	buf.WriteString("-pass=")
 	buf.WriteString(r.options.Password)
-	buf.WriteString(" -reuse=")
-	if len(reuse) > 1 {
-		buf.WriteString("'")
-	}
-	for _, backend := range backends {
-		buf.WriteString(backend)
-		buf.WriteString(":")
-		addrs := reuse[backend]
-		sort.Strings(addrs)
-		for _, addr := range addrs {
-			buf.WriteString(addr)
-			buf.WriteString(",")
-		}
-		buf.Truncate(buf.Len() - 1)
-		buf.WriteString(" ")
-	}
-	buf.Truncate(buf.Len() - 1)
-	if len(reuse) > 1 {
-		buf.WriteString("'")
-	}
 	if r.options.Keep {
 		buf.WriteString(" -keep")
 	}
+	buf.WriteString(" -reuse=")
+	buf.WriteString(strings.Join(addrs, ","))
 	switch {
 	case r.options.Debug:
 		buf.WriteString(" -debug")
@@ -593,7 +655,6 @@ func (r *Runner) reuseArgs() string {
 	case r.options.Restore:
 		buf.WriteString(" -restore")
 	}
-
 	return buf.String()
 }
 
@@ -609,6 +670,25 @@ type stats struct {
 	BackendRestoreError []*Job
 	ProjectPrepareError []*Job
 	ProjectRestoreError []*Job
+}
+
+func (s *stats) errorCount() int {
+	errors := [][]*Job{
+		s.TaskError,
+		s.TaskPrepareError,
+		s.TaskRestoreError,
+		s.SuitePrepareError,
+		s.SuiteRestoreError,
+		s.BackendPrepareError,
+		s.BackendRestoreError,
+		s.ProjectPrepareError,
+		s.ProjectRestoreError,
+	}
+	count := 0
+	for _, jobs := range errors {
+		count += len(jobs)
+	}
+	return count
 }
 
 func (s *stats) log() {

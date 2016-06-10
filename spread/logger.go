@@ -2,8 +2,8 @@ package spread
 
 import (
 	"bytes"
-	stdlog "log"
 	"github.com/kr/pretty"
+	stdlog "log"
 	"sync"
 )
 

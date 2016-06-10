@@ -200,7 +200,7 @@ func (c *Client) run(script string, dir string, env map[string]string, mode int)
 		if err != nil {
 			return nil, fmt.Errorf("cannot get local terminal size: %v", err)
 		}
-		if err := session.RequestPty("xterm", h, w, nil); err != nil {
+		if err := session.RequestPty(getenv("TERM", "vt100"), h, w, nil); err != nil {
 			return nil, fmt.Errorf("cannot get remote pseudo terminal: %v", err)
 		}
 	default:
@@ -212,14 +212,14 @@ func (c *Client) run(script string, dir string, env map[string]string, mode int)
 	}
 
 	if mode == shellOutput {
+		termLock()
 		tstate, err := terminal.MakeRaw(0)
 		if err != nil {
 			return nil, fmt.Errorf("cannot put local terminal in raw mode: %v", err)
 		}
-		termLock()
 		err = session.Run(cmd)
-		termUnlock()
 		terminal.Restore(0, tstate)
+		termUnlock()
 	} else {
 		output, err = session.Output(cmd)
 	}
@@ -244,6 +244,13 @@ func (c *Client) run(script string, dir string, env map[string]string, mode int)
 		printf("Error writing script to %s: %v", c.server, err)
 	}
 	return output, nil
+}
+
+func getenv(name, defaultValue string) string {
+	if value := os.Getenv(name); value != "" {
+		return value
+	}
+	return defaultValue
 }
 
 func (c *Client) RemoveAll(path string) error {

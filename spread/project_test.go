@@ -1,4 +1,4 @@
-package spread_test 
+package spread_test
 
 import (
 	"testing"

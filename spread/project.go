@@ -99,7 +99,7 @@ type Job struct {
 	Name    string
 	Project *Project
 	Backend *Backend
-	System  ImageID
+	System  string
 	Suite   *Suite
 	Task    *Task
 
@@ -499,7 +499,7 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 						job := &Job{
 							Project:     p,
 							Backend:     backend,
-							System:      ImageID(system),
+							System:      system,
 							Suite:       p.Suites[task.Suite],
 							Task:        task,
 							Variant:     variant,
@@ -515,7 +515,7 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 						env["SPREAD_JOB"] = job.Name
 						env["SPREAD_PROJECT"] = job.Project.Name
 						env["SPREAD_BACKEND"] = job.Backend.Name
-						env["SPREAD_SYSTEM"] = string(job.System)
+						env["SPREAD_SYSTEM"] = job.System
 						env["SPREAD_SUITE"] = job.Suite.Name
 						env["SPREAD_TASK"] = job.Task.Name
 						env["SPREAD_VARIANT"] = job.Variant

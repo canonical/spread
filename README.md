@@ -398,14 +398,18 @@ For fast iterations during development or debugging, it's best to keep the
 servers around so they're not allocated and discarded on every run. To do
 that just provide the `-keep` flag. As long as allocation worked, at the
 end of the run the servers will not be discarded and Spread will inform
-the exact line to reuse these servers.
+the exact line to reuse them via `-reuse`.
 
-Unless you use the `-resend` flag, the project files previously sent are also
-left alone and reused on the next run. That said, the `spread.yaml` and
-`task.yaml` content considered is actually the local one, so any updates to
+Without the `-resend` flag, the project files previously sent are also left
+alone and reused on the next run. That said, the `spread.yaml` and `task.yaml`
+content considered is actually the one in the local machine, so any updates to
 those will always be taken in account on re-runs.
 
+Once you're done with the servers, throw them using the same `-reuse` option
+and appending `-discard`.
 
+
+<a name="debugging"/>
 Debugging
 ---------
 

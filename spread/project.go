@@ -514,6 +514,7 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 
 						env["SPREAD_JOB"] = job.Name
 						env["SPREAD_PROJECT"] = job.Project.Name
+						env["SPREAD_PATH"] = job.Project.RemotePath
 						env["SPREAD_BACKEND"] = job.Backend.Name
 						env["SPREAD_SYSTEM"] = job.System
 						env["SPREAD_SUITE"] = job.Suite.Name

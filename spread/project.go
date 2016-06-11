@@ -547,7 +547,7 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 		if err != nil {
 			return nil, err
 		}
-		backend.Key = value
+		backend.Key = strings.TrimSpace(value)
 	}
 
 	if len(jobs) == 0 {

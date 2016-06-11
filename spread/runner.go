@@ -134,9 +134,8 @@ func (r *Runner) loop() (err error) {
 				r.discardServer(r.servers[0])
 			}
 		}
-		ecount := r.stats.errorCount()
-		if ecount > 0 && err == nil {
-			err = fmt.Errorf("%d reported problem%s", ecount, nth(ecount, "", "", "s"))
+		if err == nil && (len(r.stats.TaskAbort) > 0 || r.stats.errorCount() > 0) {
+			err = fmt.Errorf("unsuccessful run")
 		}
 	}()
 

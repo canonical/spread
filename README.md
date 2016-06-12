@@ -90,12 +90,12 @@ _$PROJECT/spread.yaml_
 ```
 project: hello-world
 
-backend:
+backends:
     lxd:
         systems: [ubuntu-16.04]
 
 suites:
-    examples:
+    examples/:
         summary: Simple examples
 
 path: /remote/path
@@ -115,7 +115,7 @@ system, try the [Linode backend](#linode) with:
 
 _$PROJECT/spread.yaml_
 ```
-backend:
+backends:
     linode:
         key: $(echo $LINODE_API_KEY)
         systems: [ubuntu-16.04]
@@ -171,7 +171,7 @@ _$PROJECT/spread.yaml_
 (...)
 
 suites:
-    examples:
+    examples/:
         summary: Simple examples
         environment:
             SUBJECT: sanity
@@ -207,7 +207,7 @@ _$PROJECT/spread.yaml_
 (...)
 
 suites:
-    examples:
+    examples/:
         summary: Simple examples
         environment:
             GREETING: "Hello $[SUBJECT]!"
@@ -242,7 +242,7 @@ _$PROJECT/spread.yaml_
 (...)
 
 suites:
-    examples:
+    examples/:
         summary: Simple examples
         environment:
             SUBJECT/foo: sanity
@@ -351,7 +351,7 @@ _$PROJECT/spread.yaml_
 (...)
 
 suites:
-    examples:
+    examples/:
         summary: Simple examples
         prepare: |
             echo Preparing...
@@ -572,7 +572,7 @@ _$PROJECT/spread.yaml_
 ```
 (...)
 
-backend:
+backends:
     linode:
         key: $(echo $LINODE_API_KEY)
         systems:

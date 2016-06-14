@@ -366,29 +366,53 @@ suite finish running.
 Note that the restore script is called even if the prepare or execute scripts
 failed _at any point while running,_ and it's supposed to do the right job of
 cleaning up the system even then for follow up logic to find a pristine state.
-If the restore script fails to execute, the whole system is considered broken
-and follow up jobs will be aborted. If the restore script does a bad job
-silently, you may lose your sleep over curious issues.
+If the restore script itself fails to execute, the whole system is considered
+broken and follow up jobs will be aborted. If the restore script does a bad job
+silently, you may instead lose your sleep over curious issues.
 
-By now you may already be getting used to this, but the `prepare` and `execute`
+By now you may already be getting used to this, but the `prepare` and `restore`
 fields are not in fact exclusive of suites. They are available at the project,
-backend, suite, and task levels. Assuming two tasks available under one suite,
-one task under another suite, and no failures, this is the ordering of
-execution:
+backend, suite, and task levels. In addition to those, the project, backend, and
+suite levels may also hold `prepare-each` and `restore-each` fields, which are
+run before and after _each task_ executes.
+
+Assuming two tasks available under one suite, one task under another suite, and
+no failures, this is the ordering of execution:
 
 ```
 project prepare
     backend1 prepare
         suite1 prepare
-            task1 prepare; task1 execute; task1 restore
-            task2 prepare; task2 execute; task2 restore
+            project prepare-each
+                backend1 prepare-each
+                    suite1 prepare-each
+                        task1 prepare; task1 execute; task1 restore
+                    suite1 restore-each
+                backend1 restore-each
+            project restore-each
+            project prepare-each
+                backend1 prepare-each
+                    suite1 prepare-each
+                        task2 prepare; task2 execute; task2 restore
+                    suite restore-each
+                backend1 restore-each
+            project restore-each
         suite1 restore
         suite2 prepare
-            task3 prepare; task3 execute; task3 restore
+            project prepare-each
+                backend1 prepare-each
+                    suite2 prepare-each
+                        task3 prepare; task3 execute; task3 restore
+                    suite2 restore-each
+                backend2 restore-each
+            project restore-each
         suite2 restore
     backend1 restore
 project restore
 ```
+
+Typically only a few of those script slots will be used.
+
 
 <a name="reuse"/>
 Fast iterations with reuse
@@ -548,7 +572,7 @@ Then, setting up the backend in your project file is as trivial as:
 backends:
     lxd:
         systems:
-	    - ubuntu-16.04
+            - ubuntu-16.04
 ```
 
 System names are mapped into LXD images the following way:

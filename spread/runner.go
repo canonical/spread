@@ -224,7 +224,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	}
 	_, err := client.Trace(script, dir, job.Environment)
 	if err != nil {
-		printf("Error %s %s: %v", verb, contextStr, err)
+		printf("Error %s %s : %v", verb, contextStr, err)
 		if r.options.Debug {
 			printf("Starting shell to debug...")
 			err = client.Shell("/bin/bash", dir, r.shellEnv(job, job.Environment))
@@ -345,7 +345,7 @@ func (r *Runner) worker(backend *Backend, system string) {
 
 		if r.options.Restore {
 			// Do not prepare or execute.
-		} else if !r.options.Restore && !r.run(client, job, preparing, job, job.Task.Prepare, &abend) {
+		} else if !r.options.Restore && !r.run(client, job, preparing, job, job.Prepare(), &abend) {
 			r.add(&stats.TaskPrepareError, job)
 			r.add(&stats.TaskAbort, job)
 		} else if !r.options.Restore && r.run(client, job, executing, job, job.Task.Execute, &abend) {
@@ -353,7 +353,7 @@ func (r *Runner) worker(backend *Backend, system string) {
 		} else if !r.options.Restore {
 			r.add(&stats.TaskError, job)
 		}
-		if !abend && !r.run(client, job, restoring, job, job.Task.Restore, &abend) {
+		if !abend && !r.run(client, job, restoring, job, job.Restore(), &abend) {
 			r.add(&stats.TaskRestoreError, job)
 			badProject = true
 		}

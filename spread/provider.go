@@ -38,9 +38,9 @@ type UnknownServer struct {
 	Addr string
 }
 
-func (s *UnknownServer) String() string             { return "server " + s.Addr }
-func (s *UnknownServer) Provider() Provider         { return nil }
-func (s *UnknownServer) Address() string            { return s.Addr }
-func (s *UnknownServer) Discard() error             { return nil }
-func (s *UnknownServer) ReuseData() []byte          { return nil }
-func (s *UnknownServer) System() string             { return "" }
+func (s *UnknownServer) String() string     { return "server " + s.Addr }
+func (s *UnknownServer) Provider() Provider { return nil }
+func (s *UnknownServer) Address() string    { return s.Addr }
+func (s *UnknownServer) Discard() error     { return nil }
+func (s *UnknownServer) ReuseData() []byte  { return nil }
+func (s *UnknownServer) System() string     { return "" }

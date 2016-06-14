@@ -60,8 +60,6 @@ func (s *lxdServer) ReuseData() []byte {
 }
 
 func (s *lxdServer) Discard() error {
-	logf("Discarding %s...", s)
-
 	output, err := exec.Command("lxc", "delete", "--force", s.d.Name).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("cannot discard lxd container: %v", outputErr(output, err))

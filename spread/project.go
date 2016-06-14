@@ -22,9 +22,12 @@ type Project struct {
 
 	Environment map[string]string
 
-	Prepare string
-	Restore string
-	Suites  map[string]*Suite
+	Prepare     string
+	Restore     string
+	PrepareEach string `yaml:"prepare-each"`
+	RestoreEach string `yaml:"restore-each"`
+
+	Suites map[string]*Suite
 
 	RemotePath string `yaml:"path"`
 
@@ -45,8 +48,10 @@ type Backend struct {
 	SystemWorkers  map[string]int      `yaml:"-"`
 	SystemVariants map[string][]string `yaml:"-"`
 
-	Prepare string
-	Restore string
+	Prepare     string
+	Restore     string
+	PrepareEach string `yaml:"prepare-each"`
+	RestoreEach string `yaml:"restore-each"`
 
 	Environment map[string]string
 	Variants    []string
@@ -62,8 +67,10 @@ type Suite struct {
 	Variants    []string
 	Environment map[string]string
 
-	Prepare string
-	Restore string
+	Prepare     string
+	Restore     string
+	PrepareEach string `yaml:"prepare-each"`
+	RestoreEach string `yaml:"restore-each"`
 
 	Name  string           `yaml:"-"`
 	Path  string           `yaml:"-"`
@@ -127,6 +134,29 @@ func (job *Job) StringFor(v interface{}) string {
 	panic(fmt.Errorf("job %s asked to stringify unrelated value: %v", job, v))
 }
 
+func (job *Job) Prepare() string {
+	fmt.Printf("PREPARE: %q\n", job.Project.PrepareEach)
+	return join(job.Project.PrepareEach, job.Backend.PrepareEach, job.Suite.PrepareEach, job.Task.Prepare)
+}
+
+func (job *Job) Restore() string {
+	return join(job.Task.Restore, job.Suite.RestoreEach, job.Backend.RestoreEach, job.Project.RestoreEach)
+}
+
+func join(scripts ...string) string {
+	var buf bytes.Buffer
+	for _, script := range scripts {
+		if len(script) == 0 {
+			continue
+		}
+		if buf.Len() > 0 {
+			buf.WriteString("\n\n")
+		}
+		buf.WriteString(script)
+	}
+	return buf.String()
+}
+
 func SplitVariants(s string) (prefix string, variants []string) {
 	if i := strings.LastIndex(s, "/"); i >= 0 {
 		return s[:i], strings.Split(s[i+1:], ",")
@@ -174,6 +204,11 @@ func Load(path string) (*Project, error) {
 
 	project.Path = filepath.Dir(filename)
 
+	project.Prepare = strings.TrimSpace(project.Prepare)
+	project.Restore = strings.TrimSpace(project.Restore)
+	project.PrepareEach = strings.TrimSpace(project.PrepareEach)
+	project.RestoreEach = strings.TrimSpace(project.RestoreEach)
+
 	for bname, backend := range project.Backends {
 		if !validName.MatchString(bname) {
 			return nil, fmt.Errorf("invalid backend name: %q", bname)
@@ -187,6 +222,11 @@ func Load(path string) (*Project, error) {
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}
+
+		backend.Prepare = strings.TrimSpace(backend.Prepare)
+		backend.Restore = strings.TrimSpace(backend.Restore)
+		backend.PrepareEach = strings.TrimSpace(backend.PrepareEach)
+		backend.RestoreEach = strings.TrimSpace(backend.RestoreEach)
 
 		backend.SystemWorkers = make(map[string]int)
 		backend.SystemVariants = make(map[string][]string)
@@ -244,6 +284,11 @@ func Load(path string) (*Project, error) {
 		suite.Name = sname + "/"
 		suite.Path = filepath.Join(project.Path, sname)
 		suite.Summary = strings.TrimSpace(suite.Summary)
+		suite.Prepare = strings.TrimSpace(suite.Prepare)
+		suite.Restore = strings.TrimSpace(suite.Restore)
+		suite.PrepareEach = strings.TrimSpace(suite.PrepareEach)
+		suite.RestoreEach = strings.TrimSpace(suite.RestoreEach)
+
 		project.Suites[suite.Name] = suite
 
 		if suite.Summary == "" {
@@ -287,6 +332,8 @@ func Load(path string) (*Project, error) {
 			task.Name = suite.Name + tname
 			task.Path = filepath.Dir(tfilename)
 			task.Summary = strings.TrimSpace(task.Summary)
+			task.Prepare = strings.TrimSpace(task.Prepare)
+			task.Restore = strings.TrimSpace(task.Restore)
 			if !validTask.MatchString(task.Name) {
 				return nil, fmt.Errorf("invalid task name: %q", task.Name)
 			}
@@ -424,6 +471,17 @@ func (p *Project) backendNames() []string {
 func (p *Project) Jobs(options *Options) ([]*Job, error) {
 	var jobs []*Job
 
+	sprenv := envmap{stringer("$SPREAD_*"), map[string]string{
+		"SPREAD_JOB":     "",
+		"SPREAD_PROJECT": "",
+		"SPREAD_PATH":    "",
+		"SPREAD_BACKEND": "",
+		"SPREAD_SYSTEM":  "",
+		"SPREAD_SUITE":   "",
+		"SPREAD_TASK":    "",
+		"SPREAD_VARIANT": "",
+	}}
+
 	cmdcache := make(map[string]string)
 	penv := envmap{p, p.Environment}
 	pevr := strmap{p, evars(p.Environment, "")}
@@ -479,11 +537,33 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 							continue
 						}
 
-						env, err := evalenv(cmdcache, false, penv, benv, senv, tenv)
+						job := &Job{
+							Project: p,
+							Backend: backend,
+							System:  system,
+							Suite:   p.Suites[task.Suite],
+							Task:    task,
+							Variant: variant,
+						}
+						if job.Variant == "" {
+							job.Name = fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System, job.Task.Name)
+						} else {
+							job.Name = fmt.Sprintf("%s:%s:%s:%s", job.Backend.Name, job.System, job.Task.Name, job.Variant)
+						}
+
+						sprenv.env["SPREAD_JOB"] = job.Name
+						sprenv.env["SPREAD_PROJECT"] = job.Project.Name
+						sprenv.env["SPREAD_PATH"] = job.Project.RemotePath
+						sprenv.env["SPREAD_BACKEND"] = job.Backend.Name
+						sprenv.env["SPREAD_SYSTEM"] = job.System
+						sprenv.env["SPREAD_SUITE"] = job.Suite.Name
+						sprenv.env["SPREAD_TASK"] = job.Task.Name
+						sprenv.env["SPREAD_VARIANT"] = job.Variant
+
+						env, err := evalenv(cmdcache, false, penv, benv, senv, tenv, sprenv)
 						if err != nil {
 							return nil, err
 						}
-
 						for key, value := range env {
 							ekey, evariants := SplitVariants(key)
 							if len(evariants) > 0 {
@@ -495,36 +575,11 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 								}
 							}
 						}
-
-						job := &Job{
-							Project:     p,
-							Backend:     backend,
-							System:      system,
-							Suite:       p.Suites[task.Suite],
-							Task:        task,
-							Variant:     variant,
-							Environment: env,
-						}
-
-						if job.Variant == "" {
-							job.Name = fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System, job.Task.Name)
-						} else {
-							job.Name = fmt.Sprintf("%s:%s:%s:%s", job.Backend.Name, job.System, job.Task.Name, job.Variant)
-						}
-
-						env["SPREAD_JOB"] = job.Name
-						env["SPREAD_PROJECT"] = job.Project.Name
-						env["SPREAD_PATH"] = job.Project.RemotePath
-						env["SPREAD_BACKEND"] = job.Backend.Name
-						env["SPREAD_SYSTEM"] = job.System
-						env["SPREAD_SUITE"] = job.Suite.Name
-						env["SPREAD_TASK"] = job.Task.Name
-						env["SPREAD_VARIANT"] = job.Variant
+						job.Environment = env
 
 						if options.Filter != nil && !options.Filter.Pass(job) {
 							continue
 						}
-
 						jobs = append(jobs, job)
 					}
 				}

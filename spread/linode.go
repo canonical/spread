@@ -3,7 +3,6 @@ package spread
 import (
 	"encoding/json"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -11,6 +10,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"gopkg.in/yaml.v2"
+	"github.com/kr/pretty"
 )
 
 func Linode(b *Backend) Provider {
@@ -882,16 +884,15 @@ func (l *linode) do(params linodeParams, result interface{}) error {
 
 	if Debug {
 		var r interface{}
-		err = json.Unmarshal(data, &r)
-		if err != nil {
-			return fmt.Errorf("cannot decode Linode response: %v", err)
+		if err := json.Unmarshal(data, &r); err == nil {
+			debugf("Linode response: %# v\n", r)
 		}
-		debugf("Linode response: %# v\n", r)
 	}
 
 	err = json.Unmarshal(data, result)
 	if err != nil {
-		return fmt.Errorf("cannot decode Linode response: %v", err)
+		info := pretty.Sprintf("Request:\n-----\n%# v\n-----\nResponse:\n-----\n%s\n-----\n", params, data)
+		return fmt.Errorf("cannot decode Linode response: %s\n%s", err, info)
 	}
 	return nil
 }

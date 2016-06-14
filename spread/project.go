@@ -13,6 +13,7 @@ import (
 
 	"gopkg.in/yaml.v2"
 	"strconv"
+	"time"
 )
 
 type Project struct {
@@ -35,6 +36,9 @@ type Project struct {
 	Exclude []string
 
 	Path string `yaml:"-"`
+
+	WarnTimeout Timeout `yaml:"warn-timeout"`
+	KillTimeout Timeout `yaml:"kill-timeout"`
 }
 
 func (p *Project) String() string { return "project" }
@@ -55,6 +59,9 @@ type Backend struct {
 
 	Environment map[string]string
 	Variants    []string
+
+	WarnTimeout Timeout `yaml:"warn-timeout"`
+	KillTimeout Timeout `yaml:"kill-timeout"`
 }
 
 func (b *Backend) String() string { return fmt.Sprintf("backend %q", b.Name) }
@@ -75,6 +82,9 @@ type Suite struct {
 	Name  string           `yaml:"-"`
 	Path  string           `yaml:"-"`
 	Tasks map[string]*Task `yaml:"-"`
+
+	WarnTimeout Timeout `yaml:"warn-timeout"`
+	KillTimeout Timeout `yaml:"kill-timeout"`
 }
 
 func (s *Suite) String() string { return "suite " + s.Name }
@@ -98,6 +108,9 @@ type Task struct {
 
 	Name string `yaml:"-"`
 	Path string `yaml:"-"`
+
+	WarnTimeout Timeout `yaml:"warn-timeout"`
+	KillTimeout Timeout `yaml:"kill-timeout"`
 }
 
 func (t *Task) String() string { return t.Name }
@@ -118,8 +131,8 @@ func (job *Job) String() string {
 	return job.Name
 }
 
-func (job *Job) StringFor(v interface{}) string {
-	switch v {
+func (job *Job) StringFor(context interface{}) string {
+	switch context {
 	case job.Project:
 		return fmt.Sprintf("project on %s:%s", job.Backend.Name, job.System)
 	case job.Backend, job.System:
@@ -131,16 +144,46 @@ func (job *Job) StringFor(v interface{}) string {
 	case job:
 		return job.Name
 	}
-	panic(fmt.Errorf("job %s asked to stringify unrelated value: %v", job, v))
+	panic(fmt.Errorf("job %s asked to stringify unrelated value: %v", job, context))
 }
 
 func (job *Job) Prepare() string {
-	fmt.Printf("PREPARE: %q\n", job.Project.PrepareEach)
 	return join(job.Project.PrepareEach, job.Backend.PrepareEach, job.Suite.PrepareEach, job.Task.Prepare)
 }
 
 func (job *Job) Restore() string {
 	return join(job.Task.Restore, job.Suite.RestoreEach, job.Backend.RestoreEach, job.Project.RestoreEach)
+}
+
+func (job *Job) WarnTimeoutFor(context interface{}) time.Duration {
+	touts := []Timeout{job.Task.WarnTimeout, job.Suite.WarnTimeout, job.Backend.WarnTimeout, job.Project.WarnTimeout}
+	return job.timeoutFor("warn", context, touts)
+}
+
+func (job *Job) KillTimeoutFor(context interface{}) time.Duration {
+	touts := []Timeout{job.Task.KillTimeout, job.Suite.KillTimeout, job.Backend.KillTimeout, job.Project.KillTimeout}
+	return job.timeoutFor("kill", context, touts)
+}
+
+func (job *Job) timeoutFor(which string, context interface{}, touts []Timeout) time.Duration {
+	switch context {
+	case job:
+	case job.Task:
+	case job.Suite:
+		touts = touts[1:]
+	case job.Backend:
+		touts = touts[2:]
+	case job.Project:
+		touts = touts[3:]
+	default:
+		panic(fmt.Errorf("job %s asked for %s-timeout of unrelated value: %v", job, which, context))
+	}
+	for _, tout := range touts {
+		if tout.Duration != 0 {
+			return tout.Duration
+		}
+	}
+	return 0
 }
 
 func join(scripts ...string) string {
@@ -842,3 +885,19 @@ func evalstr(what string, strmaps ...strmap) ([]string, error) {
 	}
 	return strs, nil
 }
+
+type Timeout struct {
+	time.Duration
+}
+
+func (t *Timeout) UnmarshalYAML(u func(interface{}) error) error {
+	var s string
+	_ = u(&s)
+	d, err := time.ParseDuration(strings.TrimSpace(s))
+	if err != nil {
+		return fmt.Errorf("timeout must look like 10s or 15m or 1.5h, not %q", s)
+	}
+	t.Duration = d
+	return nil
+}
+

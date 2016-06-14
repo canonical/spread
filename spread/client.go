@@ -3,9 +3,11 @@ package spread
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -15,6 +17,9 @@ import (
 type Client struct {
 	server Server
 	sshc   *ssh.Client
+
+	warnTimeout time.Duration
+	killTimeout time.Duration
 }
 
 func Dial(server Server, password string) (*Client, error) {
@@ -23,11 +28,15 @@ func Dial(server Server, password string) (*Client, error) {
 		Auth:    []ssh.AuthMethod{ssh.Password(password)},
 		Timeout: 10 * time.Second,
 	}
-	client, err := ssh.Dial("tcp", server.Address()+":22", config)
+	sshc, err := ssh.Dial("tcp", server.Address()+":22", config)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect to %s: %v", server, err)
 	}
-	return &Client{server, client}, nil
+	client := &Client{
+		server: server,
+		sshc:   sshc,
+	}
+	return client, nil
 }
 
 func (c *Client) Close() error {
@@ -36,6 +45,14 @@ func (c *Client) Close() error {
 
 func (c *Client) Server() Server {
 	return c.server
+}
+
+func (c *Client) SetWarnTimeout(warn time.Duration) {
+	c.warnTimeout = warn
+}
+
+func (c *Client) SetKillTimeout(warn time.Duration) {
+	c.killTimeout = warn
 }
 
 func (c *Client) WriteFile(path string, data []byte) error {
@@ -61,9 +78,13 @@ func (c *Client) WriteFile(path string, data []byte) error {
 	}()
 
 	debugf("Writing to %s at %s:\n-----\n%# v\n-----", c.server, path, string(data))
-	output, err := session.CombinedOutput(fmt.Sprintf(`cat >"%s"`, path))
+
+	var stderr safeBuffer
+	session.Stderr = &stderr
+	cmd := fmt.Sprintf(`cat >"%s"`, path)
+	err = c.runCommand(session, cmd, nil, &stderr)
 	if err != nil {
-		err = outputErr(output, err)
+		err = outputErr(stderr.Bytes(), err)
 		return fmt.Errorf("cannot write to %s at %s: %v", c.server, path, err)
 	}
 
@@ -71,18 +92,6 @@ func (c *Client) WriteFile(path string, data []byte) error {
 		printf("Error writing to %s at %s: %v", c.server, path, err)
 	}
 	return nil
-}
-
-func outputErr(output []byte, err error) error {
-	output = bytes.TrimSpace(output)
-	if len(output) > 0 {
-		if bytes.Contains(output, []byte{'\n'}) {
-			err = fmt.Errorf("\n-----\n%s\n-----", output)
-		} else {
-			err = fmt.Errorf("%s", output)
-		}
-	}
-	return err
 }
 
 func (c *Client) ReadFile(path string) ([]byte, error) {
@@ -93,14 +102,19 @@ func (c *Client) ReadFile(path string) ([]byte, error) {
 	defer session.Close()
 
 	debugf("Reading from %s at %s...", c.server, path)
-	output, err := session.CombinedOutput(fmt.Sprintf("cat '%s'", path))
+
+	var stdout, stderr safeBuffer
+	session.Stdout = &stdout
+	session.Stderr = &stderr
+	cmd := fmt.Sprintf(`cat "%s"`, path)
+	err = c.runCommand(session, cmd, nil, &stderr)
 	if err != nil {
-		err = outputErr(output, err)
+		err = outputErr(stderr.Bytes(), err)
 		logf("Cannot read from %s at %s: %v", c.server, path, err)
 		return nil, fmt.Errorf("cannot read from %s at %s: %v", c.server, path, err)
 	}
+	output := stdout.Bytes()
 	debugf("Got data from %s at %s:\n-----\n%# v\n-----", c.server, path, string(output))
-
 	return output, nil
 }
 
@@ -184,13 +198,15 @@ func (c *Client) run(script string, dir string, env map[string]string, mode int)
 
 	debugf("Sending script to %s:\n-----\n%s\n------", c.server, buf.Bytes())
 
-	var stderr bytes.Buffer
+	var stdout, stderr safeBuffer
 	var cmd string
 	switch mode {
 	case traceOutput, combinedOutput:
 		cmd = "/bin/sh -e - 2>&1"
+		session.Stdout = &stdout
 	case splitOutput:
 		cmd = "/bin/sh -e -"
+		session.Stdout = &stdout
 		session.Stderr = &stderr
 	case shellOutput:
 		cmd = "{\n" + buf.String() + "\n}"
@@ -213,29 +229,29 @@ func (c *Client) run(script string, dir string, env map[string]string, mode int)
 
 	if mode == shellOutput {
 		termLock()
-		tstate, err := terminal.MakeRaw(0)
-		if err != nil {
-			return nil, fmt.Errorf("cannot put local terminal in raw mode: %v", err)
+		tstate, terr := terminal.MakeRaw(0)
+		if terr != nil {
+			return nil, fmt.Errorf("cannot put local terminal in raw mode: %v", terr)
 		}
 		err = session.Run(cmd)
 		terminal.Restore(0, tstate)
 		termUnlock()
 	} else {
-		output, err = session.Output(cmd)
+		err = c.runCommand(session, cmd, &stdout, &stderr)
 	}
 
-	if len(output) > 0 {
-		debugf("Output from running script on %s:\n-----\n%s\n-----", c.server, output)
+	if stdout.Len() > 0 {
+		debugf("Output from running script on %s:\n-----\n%s\n-----", c.server, stdout.Bytes())
 	}
 	if stderr.Len() > 0 {
-		debugf("Error output from running script on %s:\n-----\n%s\n-----", c.server, output)
+		debugf("Error output from running script on %s:\n-----\n%s\n-----", c.server, stderr.Bytes())
 	}
 
 	if err != nil {
 		if mode == splitOutput {
 			err = outputErr(stderr.Bytes(), err)
 		} else {
-			err = outputErr(output, err)
+			err = outputErr(stdout.Bytes(), err)
 		}
 		return nil, err
 	}
@@ -311,20 +327,162 @@ func (c *Client) Send(from, to string, include []string, exclude []string) error
 		return fmt.Errorf("cannot start local tar command: %v", err)
 	}
 
-	errch := make(chan error, 2)
+	errch := make(chan error, 1)
 	go func() {
 		errch <- cmd.Wait()
 		stdin.Close()
 	}()
 
-	output, err := session.CombinedOutput(fmt.Sprintf(`mkdir -p "%s" && cd "%s" && /bin/tar -xz 2>&1`, to, to))
+	var stdout safeBuffer
+	session.Stdout = &stdout
+	rcmd := fmt.Sprintf(`mkdir -p "%s" && cd "%s" && /bin/tar -xz 2>&1`, to, to)
+	err = c.runCommand(session, rcmd, &stdout, nil)
 	if err != nil {
-		return outputErr(output, err)
+		return outputErr(stdout.Bytes(), err)
 	}
 
 	if err := <-errch; err != nil {
 		return fmt.Errorf("local tar command returned error: %v", err)
 	}
-
 	return nil
+}
+
+const (
+	defaultWarnTimeout = 5 * time.Minute
+	defaultKillTimeout = 15 * time.Minute
+	maxTimeout         = 365 * 24 * time.Hour
+)
+
+func (c *Client) runCommand(session *ssh.Session, cmd string, stdout, stderr io.Writer) error {
+	err := session.Start(cmd)
+	if err != nil {
+		return fmt.Errorf("cannot start remote command: %v", err)
+	}
+
+	done := make(chan error)
+	go func() {
+		done <- session.Wait()
+	}()
+
+	warnTimeout := c.warnTimeout
+	killTimeout := c.killTimeout
+	if warnTimeout == 0 {
+		warnTimeout = defaultWarnTimeout
+	} else if warnTimeout == -1 {
+		warnTimeout = maxTimeout
+	}
+	if killTimeout == 0 {
+		killTimeout = defaultKillTimeout
+	} else if killTimeout == -1 {
+		killTimeout = maxTimeout
+	}
+
+	if killTimeout%warnTimeout == 0 {
+		// So message from kill won't race with warning.
+		killTimeout -= 1 * time.Second
+	}
+
+	var lastOut, lastErr int
+
+	kill := time.After(killTimeout)
+	warn := time.NewTicker(warnTimeout)
+	defer warn.Stop()
+	for {
+		select {
+		case err := <-done:
+			return err
+		case <-kill:
+			session.Signal(ssh.SIGKILL)
+			out := stdout
+			if out == nil {
+				out = stderr
+			}
+			if out != nil {
+				out.Write([]byte("\n<kill-timeout reached>"))
+			}
+			return fmt.Errorf("kill-timeout reached")
+		case <-warn.C:
+			var output, errput []byte
+			if buf, ok := stdout.(*safeBuffer); ok {
+				output, lastOut = buf.Since(lastOut)
+			}
+			if buf, ok := stderr.(*safeBuffer); ok {
+				errput, lastErr = buf.Since(lastErr)
+				if len(output) == 0 || bytes.HasPrefix(errput, output) {
+					// Also avoids double (... same ...) message.
+					output = errput
+				} else if len(errput) > 0 {
+					output = append(output, '\n', '\n')
+					output = append(output, errput...)
+				}
+			}
+			if bytes.Equal(output, unchangedMarker) {
+				printf("WARNING: %s running late. Output unchanged.", c.server)
+			} else if len(output) == 0 {
+				printf("WARNING: %s running late. Output still empty.", c.server)
+			} else {
+				printf("WARNING: %s running late. Current output:\n-----\n%s\n-----", c.server, output)
+			}
+		}
+	}
+	panic("unreachable")
+}
+
+type safeBuffer struct {
+	buf bytes.Buffer
+	mu  sync.Mutex
+}
+
+func (sbuf *safeBuffer) Write(data []byte) (int, error) {
+	sbuf.mu.Lock()
+	n, err := sbuf.buf.Write(data)
+	sbuf.mu.Unlock()
+	return n, err
+}
+
+func (sbuf *safeBuffer) Bytes() []byte {
+	sbuf.mu.Lock()
+	data := sbuf.buf.Bytes()
+	sbuf.mu.Unlock()
+	return data
+}
+
+var unchangedMarker = []byte("(...)")
+
+func (sbuf *safeBuffer) Since(offset int) (data []byte, len int) {
+	sbuf.mu.Lock()
+	defer sbuf.mu.Unlock()
+
+	data = sbuf.buf.Bytes()
+	copy := true
+	for i := offset-1; i > 1; i-- {
+		if data[i] == '\n' {
+			data = append(unchangedMarker, data[i:]...)
+			copy = false
+			break
+		}
+	}
+	if copy {
+		data = append([]byte(nil), data...)
+	}
+	return bytes.TrimSpace(data), sbuf.buf.Len()
+}
+
+func (sbuf *safeBuffer) Len() int {
+	sbuf.mu.Lock()
+	l := sbuf.buf.Len()
+	sbuf.mu.Unlock()
+	return l
+}
+
+func outputErr(output []byte, err error) error {
+	output = bytes.TrimSpace(output)
+	if len(output) > 0 {
+		if bytes.Contains(output, []byte{'\n'}) {
+			err = fmt.Errorf("\n-----\n%s\n-----", output)
+		} else {
+			err = fmt.Errorf("%s", output)
+		}
+	}
+	return err
 }

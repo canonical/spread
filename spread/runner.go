@@ -222,6 +222,8 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		printf("Continuing...")
 		return true
 	}
+	client.SetWarnTimeout(job.WarnTimeoutFor(context))
+	client.SetKillTimeout(job.KillTimeoutFor(context))
 	_, err := client.Trace(script, dir, job.Environment)
 	if err != nil {
 		printf("Error %s %s : %v", verb, contextStr, err)

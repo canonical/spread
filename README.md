@@ -12,6 +12,7 @@ Convenient full-system test (task) distribution
 [Variants](#variants)  
 [Blacklisting and whitelisting](#blacklisting)  
 [Preparing and restoring](#preparing)  
+[Timeouts](#timeouts)
 [Fast iterations with reuse](#reuse)
 [Debugging](#debugging)  
 [Keeping servers](#keeping)  
@@ -412,6 +413,22 @@ project restore
 ```
 
 Typically only a few of those script slots will be used.
+
+
+<a name="timeouts"/>
+Timeouts
+--------
+
+Every 5 minutes a warning will be issued including the operation output since
+the last warning. If the operation does not finish within 15 minutes, it is
+killed and considered an error per the usual rules of whatever is being run.
+For example, a killed task is considered failed, but a killed restore script
+will render the whole system broken (see [Preparing and restoring](#preparing)).
+
+These timings may be tweaked at the project, backend, suite, and task level,
+by defining the `warn-timeout` and `kill-timeout` fields with a value such as
+`30s`, `1m30s`, `10m`, or `1.5h`. A value of `-1` means disable the timeout
+altogether.
 
 
 <a name="reuse"/>

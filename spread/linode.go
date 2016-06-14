@@ -287,8 +287,8 @@ type linodeSimpleJobResult struct {
 }
 
 func (l *linode) boot(server *linodeServer, configID int) (*linodeSimpleJob, error) {
-	return l.simpleJob(server, "reboot", linodeParams{
-		"api_action": "linode.reboot",
+	return l.simpleJob(server, "boot", linodeParams{
+		"api_action": "linode.boot",
 		"LinodeID":   server.d.ID,
 		"ConfigID":   configID,
 	})

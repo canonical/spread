@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"gopkg.in/yaml.v2"
 	"github.com/kr/pretty"
+	"gopkg.in/yaml.v2"
 )
 
 func Linode(b *Backend) Provider {
@@ -484,16 +484,18 @@ type linodeJob struct {
 	LinodeID     int    `json:"LINODEID"`
 	Action       string `json:"ACTION"`
 	Label        string `json:"LABEL"`
-	HostSuccess  int    `json:"HOST_SUCCESS"`
 	HostMessage  string `json:"HOST_MESSAGE"`
 	HostStartDT  string `json:"HOST_START_DT"`
 	HostFinishDT string `json:"HOST_FINISH_DT"`
 	EnteredDT    string `json:"ENTERED_DT"`
 	Duration     int    `json:"DURATION"`
+
+	// Linode bug: sometimes "", generally 1/0, see https://goo.gl/fxVyaz.
+	HostSuccess interface{} `json:"HOST_SUCCESS"`
 }
 
 func (job *linodeJob) err() error {
-	if job.HostSuccess == 1 || job.HostFinishDT == "" {
+	if job.HostSuccess == 1.0 || job.HostFinishDT == "" {
 		return nil
 	}
 	if msg := job.HostMessage; msg != "" {

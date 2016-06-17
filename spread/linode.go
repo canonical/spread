@@ -340,14 +340,14 @@ func (l *linode) createDisk(server *linodeServer, system, password string) (root
 	createRoot := linodeParams{
 		"LinodeID": server.d.ID,
 		"Label":    SystemLabel(system, "root"),
-		"Size":     2048,
+		"Size":     4096,
 		"rootPass": password,
 	}
 	createSwap := linodeParams{
 		"api_action": "linode.disk.create",
 		"LinodeID":   server.d.ID,
 		"Label":      SystemLabel(system, "swap"),
-		"Size":       64,
+		"Size":       256,
 		"Type":       "swap",
 	}
 
@@ -488,7 +488,6 @@ type linodeJob struct {
 	HostStartDT  string `json:"HOST_START_DT"`
 	HostFinishDT string `json:"HOST_FINISH_DT"`
 	EnteredDT    string `json:"ENTERED_DT"`
-	Duration     int    `json:"DURATION"`
 
 	// Linode bug: sometimes "", generally 1/0, see https://goo.gl/fxVyaz.
 	HostSuccess interface{} `json:"HOST_SUCCESS"`

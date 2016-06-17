@@ -81,14 +81,18 @@ func (l *lxd) Reuse(data []byte, password string) (Server, error) {
 	return server, nil
 }
 
-func (l *lxd) Allocate(system string, password string) (Server, error) {
+func (l *lxd) Allocate(system string, password string, keep bool) (Server, error) {
 	lxdimage := lxdImage(system)
 	name, err := lxdName(system)
 	if err != nil {
 		return nil, err
 	}
 
-	output, err := exec.Command("lxc", "launch", lxdimage, name).CombinedOutput()
+	args := []string{"launch", lxdimage, name}
+	if !keep {
+		args = append(args, "--ephemeral")
+	}
+	output, err := exec.Command("lxc", args...).CombinedOutput()
 	if err != nil {
 		err = outputErr(output, err)
 		if bytes.Contains(output, []byte("error: not found")) {

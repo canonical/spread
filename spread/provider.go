@@ -10,7 +10,7 @@ var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 type Provider interface {
 	Backend() *Backend
-	Allocate(system string, password string) (Server, error)
+	Allocate(system string, password string, keep bool) (Server, error)
 	Reuse(data []byte, password string) (Server, error)
 }
 

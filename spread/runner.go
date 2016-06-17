@@ -504,7 +504,7 @@ func (r *Runner) allocateServer(backend *Backend, system string) *Client {
 Allocate:
 	for {
 		lerr := err
-		server, err = r.providers[backend.Name].Allocate(system, r.options.Password)
+		server, err = r.providers[backend.Name].Allocate(system, r.options.Password, r.options.Keep)
 		if err == nil {
 			break
 		}

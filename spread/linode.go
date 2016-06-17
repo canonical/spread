@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -137,7 +139,7 @@ func (l *linode) unreserve(server *linodeServer) {
 	l.mu.Unlock()
 }
 
-func (l *linode) Allocate(system, password string) (Server, error) {
+func (l *linode) Allocate(system, password string, keep bool) (Server, error) {
 	if err := l.checkKey(); err != nil {
 		return nil, err
 	}
@@ -155,7 +157,7 @@ func (l *linode) Allocate(system, password string) (Server, error) {
 		if (server.d.Status != linodeBrandNew && server.d.Status != linodePoweredOff) || !l.reserve(server) {
 			continue
 		}
-		err := l.setup(server, system, password)
+		err := l.setup(server, system, password, keep)
 		if err != nil {
 			l.unreserve(server)
 			return nil, err
@@ -219,7 +221,7 @@ func (l *linode) status(server *linodeServer) (int, error) {
 	return result.Data[0].Status, nil
 }
 
-func (l *linode) setup(server *linodeServer, system, password string) error {
+func (l *linode) setup(server *linodeServer, system, password string, keep bool) error {
 	server.l = l
 	server.d.System = system
 	server.d.Backend = l.backend.Name
@@ -251,7 +253,13 @@ func (l *linode) setup(server *linodeServer, system, password string) error {
 		return fmt.Errorf("server %s concurrently allocated, giving up on it.", server)
 	}
 
-	configID, err := l.createConfig(server, system, server.d.Root, server.d.Swap)
+	ip, err := l.ip(server)
+	if err != nil {
+		return err
+	}
+	server.d.Address = ip.IPAddress
+
+	configID, err := l.createConfig(server, system, password, keep, server.d.Root, server.d.Swap)
 	if err != nil {
 		l.removeDisks(server, server.d.Root, server.d.Swap)
 		return err
@@ -267,12 +275,6 @@ func (l *linode) setup(server *linodeServer, system, password string) error {
 		l.removeDisks(server, server.d.Root, server.d.Swap)
 		return err
 	}
-
-	ip, err := l.ip(server)
-	if err != nil {
-		return err
-	}
-	server.d.Address = ip.IPAddress
 
 	return nil
 }
@@ -419,6 +421,18 @@ func (l *linode) removeDisks(server *linodeServer, diskIDs ...int) error {
 	return nil
 }
 
+func username() string {
+	for _, name := range []string{"USER", "LOGNAME"} {
+		if user := os.Getenv(name); user != "" {
+			return user
+		}
+	}
+	if home := os.Getenv("HOME"); home != "" {
+		return filepath.Base(home)
+	}
+	return ""
+}
+
 type linodeConfigResult struct {
 	linodeResult
 	Data struct {
@@ -426,7 +440,7 @@ type linodeConfigResult struct {
 	} `json:"DATA"`
 }
 
-func (l *linode) createConfig(server *linodeServer, system string, rootID, swapID int) (configID int, err error) {
+func (l *linode) createConfig(server *linodeServer, system, password string, keep bool, rootID, swapID int) (configID int, err error) {
 	logf("Creating configuration on %s with %s...", server, system)
 
 	template, err := l.template(system)
@@ -434,11 +448,14 @@ func (l *linode) createConfig(server *linodeServer, system string, rootID, swapI
 		return 0, err
 	}
 
+	comments := fmt.Sprintf("USER=%q spread\n-pass=%q -reuse=%s -keep=%v", username(), password, server.Address(), keep)
+
 	params := linodeParams{
 		"api_action":             "linode.config.create",
 		"LinodeID":               server.d.ID,
 		"KernelID":               template.Kernel.ID,
 		"Label":                  SystemLabel(system, ""),
+		"Comments":               comments,
 		"DiskList":               fmt.Sprintf("%d,%d", rootID, swapID),
 		"RootDeviceNum":          1,
 		"RootDeviceR0":           true,

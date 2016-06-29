@@ -493,8 +493,8 @@ func (r *Runner) allocateServer(backend *Backend, system string) *Client {
 	}
 
 	printf("Allocating %s:%s...", backend.Name, system)
-	var timeout = time.After(30 * time.Second)
-	var relog = time.NewTicker(8 * time.Second)
+	var timeout = time.After(5 * time.Minute)
+	var relog = time.NewTicker(15 * time.Second)
 	defer relog.Stop()
 	var retry = time.NewTicker(5 * time.Second)
 	defer retry.Stop()
@@ -531,7 +531,7 @@ Allocate:
 
 	printf("Connecting to %s...", server)
 
-	timeout = time.After(60 * time.Second)
+	timeout = time.After(1 * time.Minute)
 	relog = time.NewTicker(8 * time.Second)
 	defer relog.Stop()
 	retry = time.NewTicker(5 * time.Second)

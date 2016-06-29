@@ -817,7 +817,7 @@ func evalenv(cmdcache map[string]string, partial bool, maps ...envmap) (map[stri
 
 func evalcmd(cmdcache map[string]string, cmdline string) error {
 	var stderr bytes.Buffer
-	cmd := exec.Command("/bin/sh", "-c", cmdline)
+	cmd := exec.Command("/bin/bash", "-c", cmdline)
 	cmd.Stderr = &stderr
 	output, err := cmd.Output()
 	if err != nil {

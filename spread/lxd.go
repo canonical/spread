@@ -279,7 +279,7 @@ func (l *lxd) server(name string) (*lxdServerJSON, error) {
 func (l *lxd) tuneSSH(name, password string) error {
 	cmds := [][]string{
 		{"sed", "-i", `s/\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/`, "/etc/ssh/sshd_config"},
-		{"/bin/sh", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", password)},
+		{"/bin/bash", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", password)},
 		{"killall", "-HUP", "sshd"},
 	}
 	for _, args := range cmds {

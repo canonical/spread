@@ -202,10 +202,10 @@ func (c *Client) run(script string, dir string, env map[string]string, mode int)
 	var cmd string
 	switch mode {
 	case traceOutput, combinedOutput:
-		cmd = "/bin/sh -e - 2>&1"
+		cmd = "/bin/bash -e - 2>&1"
 		session.Stdout = &stdout
 	case splitOutput:
-		cmd = "/bin/sh -e -"
+		cmd = "/bin/bash -e -"
 		session.Stdout = &stdout
 		session.Stderr = &stderr
 	case shellOutput:

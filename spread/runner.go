@@ -94,7 +94,7 @@ func (r *Runner) loop() (err error) {
 	for _, addr := range r.options.Reuse {
 		go r.prepareReuse(addr)
 	}
-	for _ = range r.options.Reuse {
+	for range r.options.Reuse {
 		<-r.done
 	}
 	if len(r.reuse) != len(r.options.Reuse) {
@@ -143,18 +143,16 @@ func (r *Runner) loop() (err error) {
 		return nil
 	}
 
-	// Find out how many workers are needed for each backend+system.
+	// Find out how many workers are needed for each backend system.
 	// Even if multiple workers per system are requested, must not
 	// have more workers than there are jobs.
-	type pair [2]string
-	workers := make(map[pair]int)
+	workers := make(map[*System]int)
 	for _, backend := range r.project.Backends {
 		for _, system := range backend.Systems {
 			for _, job := range r.pending {
 				if job.Backend == backend && job.System == system {
-					key := pair{backend.Name, system}
-					if backend.SystemWorkers[system] > workers[key] {
-						workers[key]++
+					if system.Workers > workers[system] {
+						workers[system]++
 						r.alive++
 					} else {
 						break
@@ -171,7 +169,7 @@ func (r *Runner) loop() (err error) {
 
 	for _, backend := range r.project.Backends {
 		for _, system := range backend.Systems {
-			n := workers[pair{backend.Name, system}]
+			n := workers[system]
 			for i := 0; i < n; i++ {
 				go r.worker(backend, system)
 			}
@@ -258,10 +256,10 @@ func (r *Runner) add(where *[]*Job, job *Job) {
 }
 
 func suiteWorkersKey(job *Job) [3]string {
-	return [3]string{job.Backend.Name, string(job.System), job.Suite.Name}
+	return [3]string{job.Backend.Name, job.System.Name, job.Suite.Name}
 }
 
-func (r *Runner) worker(backend *Backend, system string) {
+func (r *Runner) worker(backend *Backend, system *System) {
 	defer func() { r.done <- true }()
 
 	client := r.client(backend, system)
@@ -387,7 +385,7 @@ func (r *Runner) worker(backend *Backend, system string) {
 	}
 }
 
-func (r *Runner) job(backend *Backend, system string, suite *Suite) *Job {
+func (r *Runner) job(backend *Backend, system *System, suite *Suite) *Job {
 	var best = -1
 	var bestWorkers = 1000000
 	for i, job := range r.pending {
@@ -416,12 +414,12 @@ func (r *Runner) job(backend *Backend, system string, suite *Suite) *Job {
 	return nil
 }
 
-func (r *Runner) client(backend *Backend, system string) *Client {
+func (r *Runner) client(backend *Backend, system *System) *Client {
 
 	retries := 0
 	for r.tomb.Alive() {
 		if retries == 3 {
-			printf("Cannot allocate %s:%s after too many retries.", backend.Name, system)
+			printf("Cannot allocate %s after too many retries.", system)
 			break
 		}
 		retries++
@@ -486,13 +484,13 @@ func (r *Runner) discardServer(server Server) {
 	r.mu.Unlock()
 }
 
-func (r *Runner) allocateServer(backend *Backend, system string) *Client {
+func (r *Runner) allocateServer(backend *Backend, system *System) *Client {
 	if len(r.options.Reuse) > 0 {
-		printf("Reuse requested but none left for %s:%s, aborting.", backend.Name, system)
+		printf("Reuse requested but none left for %s, aborting.", system)
 		return nil
 	}
 
-	printf("Allocating %s:%s...", backend.Name, system)
+	printf("Allocating %s...", system)
 	var timeout = time.After(5 * time.Minute)
 	var relog = time.NewTicker(15 * time.Second)
 	defer relog.Stop()
@@ -509,7 +507,7 @@ Allocate:
 			break
 		}
 		if lerr == nil || lerr.Error() != err.Error() {
-			printf("Cannot allocate %s:%s: %v", backend.Name, system, err)
+			printf("Cannot allocate %s: %v", system, err)
 			if _, ok := err.(*FatalError); ok {
 				return nil
 			}
@@ -518,7 +516,7 @@ Allocate:
 		select {
 		case <-retry.C:
 		case <-relog.C:
-			printf("Cannot allocate %s:%s: %v", backend.Name, system, err)
+			printf("Cannot allocate %s: %v", system, err)
 		case <-timeout:
 			break Allocate
 		case <-r.tomb.Dying():
@@ -576,7 +574,7 @@ Dial:
 	return client
 }
 
-func (r *Runner) reuseServer(backend *Backend, system string) *Client {
+func (r *Runner) reuseServer(backend *Backend, system *System) *Client {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

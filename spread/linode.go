@@ -69,8 +69,12 @@ func (s *linodeServer) Address() string {
 	return s.d.Address
 }
 
-func (s *linodeServer) System() string {
-	return s.d.System
+func (s *linodeServer) System() *System {
+	system := s.l.backend.Systems[s.d.System]
+	if system == nil {
+		return removedSystem(s.l.backend, s.d.System)
+	}
+	return system
 }
 
 func (s *linodeServer) ReuseData() []byte {
@@ -139,7 +143,7 @@ func (l *linode) unreserve(server *linodeServer) {
 	l.mu.Unlock()
 }
 
-func (l *linode) Allocate(system, password string, keep bool) (Server, error) {
+func (l *linode) Allocate(system *System, password string, keep bool) (Server, error) {
 	if err := l.checkKey(); err != nil {
 		return nil, err
 	}
@@ -221,9 +225,9 @@ func (l *linode) status(server *linodeServer) (int, error) {
 	return result.Data[0].Status, nil
 }
 
-func (l *linode) setup(server *linodeServer, system, password string, keep bool) error {
+func (l *linode) setup(server *linodeServer, system *System, password string, keep bool) error {
 	server.l = l
-	server.d.System = system
+	server.d.System = system.Name
 	server.d.Backend = l.backend.Name
 
 	rootJob, swapJob, err := l.createDisk(server, system, password)
@@ -333,8 +337,8 @@ type linodeDiskJobResult struct {
 	Data *linodeDiskJob `json:"DATA"`
 }
 
-func (l *linode) createDisk(server *linodeServer, system, password string) (root, swap *linodeDiskJob, err error) {
-	template, err := l.template(system)
+func (l *linode) createDisk(server *linodeServer, system *System, password string) (root, swap *linodeDiskJob, err error) {
+	template, _, err := l.template(system)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -353,7 +357,7 @@ func (l *linode) createDisk(server *linodeServer, system, password string) (root
 		"Type":       "swap",
 	}
 
-	logf("Creating disk on %s with %s...", server, system)
+	logf("Creating disk on %s with %s...", server, system.Name)
 	params := linodeParams{
 		"api_action":       "batch",
 		"api_requestArray": []linodeParams{createRoot, createSwap},
@@ -391,7 +395,7 @@ func (l *linode) createDisk(server *linodeServer, system, password string) (root
 	if swap != nil {
 		l.removeDisks(server, swap.DiskID)
 	}
-	return nil, nil, fmt.Errorf("cannot create Linode disk with %s: %v", system, err)
+	return nil, nil, fmt.Errorf("cannot create Linode disk with %s: %v", system.Name, err)
 }
 
 func (l *linode) removeDisks(server *linodeServer, diskIDs ...int) error {
@@ -440,10 +444,10 @@ type linodeConfigResult struct {
 	} `json:"DATA"`
 }
 
-func (l *linode) createConfig(server *linodeServer, system, password string, keep bool, rootID, swapID int) (configID int, err error) {
-	logf("Creating configuration on %s with %s...", server, system)
+func (l *linode) createConfig(server *linodeServer, system *System, password string, keep bool, rootID, swapID int) (configID int, err error) {
+	logf("Creating configuration on %s with %s...", server, system.Name)
 
-	template, err := l.template(system)
+	_, kernel, err := l.template(system)
 	if err != nil {
 		return 0, err
 	}
@@ -453,7 +457,7 @@ func (l *linode) createConfig(server *linodeServer, system, password string, kee
 	params := linodeParams{
 		"api_action":             "linode.config.create",
 		"LinodeID":               server.d.ID,
-		"KernelID":               template.Kernel.ID,
+		"KernelID":               kernel.ID,
 		"Label":                  SystemLabel(system, ""),
 		"Comments":               comments,
 		"DiskList":               fmt.Sprintf("%d,%d", rootID, swapID),
@@ -472,7 +476,7 @@ func (l *linode) createConfig(server *linodeServer, system, password string, kee
 		err = result.err()
 	}
 	if err != nil {
-		return 0, fmt.Errorf("cannot create config on %s with %s: %v", server, system, err)
+		return 0, fmt.Errorf("cannot create config on %s with %s: %v", server, system.Name, err)
 	}
 	return result.Data.ConfigID, nil
 }
@@ -719,37 +723,56 @@ type linodeKernel struct {
 }
 
 // Not listed for some reason.
-var linodeGrub2 = &linodeKernel{
+var linodeKernels = []*linodeKernel{{
 	ID:    210,
 	Label: "GRUB 2",
 	IsKVM: 1,
-}
+}, {
+	ID:    213,
+	Label: "Direct Disk",
+	IsKVM: 1,
+}}
 
-func (l *linode) template(system string) (*linodeTemplate, error) {
+func (l *linode) template(system *System) (*linodeTemplate, *linodeKernel, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	if !l.templatesDone {
 		if err := l.cacheTemplates(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	l.templatesDone = true
 
+	wantImage := strings.ToLower(system.Image)
+	wantPrefix := wantImage + " "
+
 	var best *linodeTemplate
 	for _, template := range l.templatesCache {
-		if template.Name != system {
+		label := strings.ToLower(template.Label)
+		if template.Name != system.Image && label != wantImage && !strings.HasPrefix(label, wantPrefix) {
 			continue
 		}
-		if template.ImageID > 0 || template.Is64Bit == 1 {
-			return template, nil
-		}
 		best = template
+		if template.ImageID > 0 || template.Is64Bit == 1 {
+			break
+		}
 	}
 	if best == nil {
-		return nil, &FatalError{fmt.Errorf("no Linode image or distribution for %s", system)}
+		return nil, nil, &FatalError{fmt.Errorf("no Linode image or distribution for %q", system.Image)}
 	}
-	return best, nil
+	if system.Kernel != "" {
+		wantKernel := strings.ToLower(system.Kernel)
+		wantPrefix := wantKernel + " "
+		for _, kernel := range l.kernelsCache {
+			label := strings.ToLower(kernel.Label)
+			if label == wantKernel || strings.HasPrefix(label, wantPrefix) {
+				return best, kernel, nil
+			}
+		}
+		return nil, nil, &FatalError{fmt.Errorf("no %q Linode kernel", system.Kernel)}
+	}
+	return best, best.Kernel, nil
 }
 
 func (l *linode) cacheTemplates() error {
@@ -806,7 +829,7 @@ func (l *linode) cacheTemplates() error {
 		return fmt.Errorf("cannot list Linode kernels: %v", err)
 	}
 
-	l.kernelsCache = append(l.kernelsCache, linodeGrub2)
+	l.kernelsCache = append(l.kernelsCache, linodeKernels...)
 
 	var latest32, latest64 *linodeKernel
 	for _, kernel := range l.kernelsCache {
@@ -831,7 +854,8 @@ func (l *linode) cacheTemplates() error {
 		}
 
 		if strings.HasSuffix(template.Name, "-grub") {
-			template.Kernel = linodeGrub2
+			// Deprecated logic. Drop after a short while.
+			template.Kernel = linodeKernels[0]
 		} else if template.Is64Bit == 1 || template.ImageID > 0 {
 			template.Kernel = latest64
 		} else {

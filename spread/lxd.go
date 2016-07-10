@@ -47,8 +47,12 @@ func (s *lxdServer) Address() string {
 	return s.d.Address
 }
 
-func (s *lxdServer) System() string {
-	return s.d.System
+func (s *lxdServer) System() *System {
+	system := s.l.backend.Systems[s.d.System]
+	if system == nil {
+		return removedSystem(s.l.backend, s.d.System)
+	}
+	return system
 }
 
 func (s *lxdServer) ReuseData() []byte {
@@ -81,8 +85,8 @@ func (l *lxd) Reuse(data []byte, password string) (Server, error) {
 	return server, nil
 }
 
-func (l *lxd) Allocate(system string, password string, keep bool) (Server, error) {
-	lxdimage := lxdImage(system)
+func (l *lxd) Allocate(system *System, password string, keep bool) (Server, error) {
+	lxdimage := l.lxdImage(system)
 	name, err := lxdName(system)
 	if err != nil {
 		return nil, err
@@ -105,7 +109,7 @@ func (l *lxd) Allocate(system string, password string, keep bool) (Server, error
 		l: l,
 		d: lxdServerData{
 			Name:    name,
-			System:  system,
+			System:  system.Name,
 			Backend: l.backend.Name,
 		},
 	}
@@ -143,8 +147,11 @@ func (l *lxd) Allocate(system string, password string, keep bool) (Server, error
 	return server, nil
 }
 
-func lxdImage(system string) string {
-	parts := strings.Split(system, "-")
+func (l *lxd) lxdImage(system *System) string {
+	if strings.Contains(system.Image, ":") {
+		return system.Image
+	}
+	parts := strings.Split(system.Image, "-")
 	if parts[0] == "ubuntu" {
 		return "ubuntu:" + strings.Join(parts[1:], "/")
 	}
@@ -156,7 +163,7 @@ func lxdImage(system string) string {
 	return "images:" + strings.Join(parts, "/")
 }
 
-func lxdName(system string) (string, error) {
+func lxdName(system *System) (string, error) {
 	filename := os.ExpandEnv("$HOME/.spread/lxd-count")
 	file, err := os.OpenFile(filename, os.O_RDWR, 0644)
 	if os.IsNotExist(err) {
@@ -199,7 +206,7 @@ func lxdName(system string) (string, error) {
 		return "", fmt.Errorf("cannot write to ~/.spread/lxd-count: %v", err)
 	}
 
-	return fmt.Sprintf("spread-%d-%s", n, strings.Replace(system, ".", "-", -1)), nil
+	return fmt.Sprintf("spread-%d-%s", n, strings.Replace(system.Name, ".", "-", -1)), nil
 }
 
 type lxdServerJSON struct {

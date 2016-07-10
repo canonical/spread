@@ -12,7 +12,6 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v2"
-	"strconv"
 	"time"
 )
 
@@ -48,9 +47,7 @@ type Backend struct {
 	Type string
 	Key  string
 
-	Systems        []string
-	SystemWorkers  map[string]int      `yaml:"-"`
-	SystemVariants map[string][]string `yaml:"-"`
+	Systems SystemsMap
 
 	Prepare     string
 	Restore     string
@@ -65,6 +62,64 @@ type Backend struct {
 }
 
 func (b *Backend) String() string { return fmt.Sprintf("backend %q", b.Name) }
+
+func (b *Backend) systemNames() []string {
+	sysnames := make([]string, 0, len(b.Systems))
+	for sysname := range b.Systems {
+		sysnames = append(sysnames, sysname)
+	}
+	sort.Strings(sysnames)
+	return sysnames
+}
+
+type SystemsMap map[string]*System
+
+func (sysmap *SystemsMap) UnmarshalYAML(u func(interface{}) error) error {
+	var systems []*System
+	if err := u(&systems); err != nil {
+		return err
+	}
+	*sysmap = make(SystemsMap)
+	for _, sys := range systems {
+		(*sysmap)[sys.Name] = sys
+	}
+	return nil
+}
+
+type System struct {
+	Backend string `json:"-"`
+
+	Name     string
+	Image    string
+	Kernel   string
+	Password string
+	Workers  int
+
+	Environment map[string]string
+	Variants    []string
+}
+
+func (system *System) String() string { return system.Backend + ":" + system.Name }
+
+func (system *System) UnmarshalYAML(u func(interface{}) error) error {
+	if err := u(&system.Name); err == nil {
+		system.Image = system.Name
+		return nil
+	}
+	type norecurse System
+	var def map[string]norecurse
+	if err := u(&def); err != nil {
+		return err
+	}
+	for name, sys := range def {
+		sys.Name = name
+		if sys.Image == "" {
+			sys.Image = name
+		}
+		*system = System(sys)
+	}
+	return nil
+}
 
 type Suite struct {
 	Summary  string
@@ -119,7 +174,7 @@ type Job struct {
 	Name    string
 	Project *Project
 	Backend *Backend
-	System  string
+	System  *System
 	Suite   *Suite
 	Task    *Task
 
@@ -136,11 +191,11 @@ func (job *Job) StringFor(context interface{}) string {
 	case job.Project:
 		return fmt.Sprintf("project on %s:%s", job.Backend.Name, job.System)
 	case job.Backend, job.System:
-		return fmt.Sprintf("%s:%s", job.Backend.Name, job.System)
+		return fmt.Sprintf("%s:%s", job.Backend.Name, job.System.Name)
 	case job.Suite:
-		return fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System, job.Suite.Name)
+		return fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System.Name, job.Suite.Name)
 	case job.Task:
-		return fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System, job.Task.Name)
+		return fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System.Name, job.Task.Name)
 	case job:
 		return job.Name
 	}
@@ -195,7 +250,9 @@ func join(scripts ...string) string {
 		if buf.Len() > 0 {
 			buf.WriteString("\n\n")
 		}
+		buf.WriteString("(\n")
 		buf.WriteString(script)
+		buf.WriteString("\n)")
 	}
 	return buf.String()
 }
@@ -205,18 +262,6 @@ func SplitVariants(s string) (prefix string, variants []string) {
 		return s[:i], strings.Split(s[i+1:], ",")
 	}
 	return s, nil
-}
-
-func SplitCount(s string) (prefix string, count int, ok bool) {
-	if i := strings.LastIndex(s, "*"); i >= 0 {
-		prefix = s[:i]
-		count, err := strconv.Atoi(s[i+1:])
-		if err != nil || count < 1 {
-			return "", 0, false
-		}
-		return prefix, count, true
-	}
-	return s, 1, true
 }
 
 var (
@@ -271,37 +316,21 @@ func Load(path string) (*Project, error) {
 		backend.PrepareEach = strings.TrimSpace(backend.PrepareEach)
 		backend.RestoreEach = strings.TrimSpace(backend.RestoreEach)
 
-		backend.SystemWorkers = make(map[string]int)
-		backend.SystemVariants = make(map[string][]string)
-
-		seen := make(map[string]bool)
-		for i, system := range backend.Systems {
-			system, variants := SplitVariants(system)
-			system, workers, ok := SplitCount(system)
-			if !ok {
-				return nil, fmt.Errorf("%s lists system with invalid count suffix: %q", backend, system)
+		for sysname, system := range backend.Systems {
+			system.Backend = backend.Name
+			if system.Workers < 0 {
+				return nil, fmt.Errorf("%s has system %q with %d workers", backend, sysname, system.Workers)
 			}
-			if seen[system] {
-				return nil, fmt.Errorf("%s lists %s system more than once", backend, system)
-			}
-			seen[system] = true
-			backend.Systems[i] = system
-			backend.SystemWorkers[system] = workers
-			backend.SystemVariants[system] = variants
-
-			for _, variant := range variants {
-				if !contains(backend.Variants, variant) {
-					backend.Variants = append(backend.Variants, variant)
-				}
+			if system.Workers == 0 {
+				system.Workers = 1
 			}
 		}
 		sort.Strings(backend.Variants)
 
-		err = checkSystems(backend, backend.Systems)
+		err = checkSystems(backend, backend.systemNames())
 		if err != nil {
 			return nil, err
 		}
-
 		if len(backend.Systems) == 0 {
 			return nil, fmt.Errorf("no systems specified for %s", backend)
 		}
@@ -494,18 +523,9 @@ func NewFilter(args []string) (Filter, error) {
 	return &filter{exps}, nil
 }
 
-func contains(set []string, item string) bool {
-	for _, v := range set {
-		if v == item {
-			return true
-		}
-	}
-	return false
-}
-
 func (p *Project) backendNames() []string {
 	bnames := make([]string, 0, len(p.Backends))
-	for bname, _ := range p.Backends {
+	for bname := range p.Backends {
 		bnames = append(bnames, bname)
 	}
 	return bnames
@@ -551,22 +571,23 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 
 			for _, bname := range backends {
 				backend := p.Backends[bname]
-				benv := envmap{task, backend.Environment}
-				bevr := strmap{task, evars(backend.Environment, "+")}
-				bvar := strmap{task, backend.Variants}
-				bsys := strmap{task, backend.Systems}
+				benv := envmap{backend, backend.Environment}
+				bevr := strmap{backend, evars(backend.Environment, "+")}
+				bvar := strmap{backend, backend.Variants}
+				bsys := strmap{backend, backend.systemNames()}
 
 				systems, err := evalstr("systems", bsys, ssys, tsys)
 				if err != nil {
 					return nil, err
 				}
 
-				for _, system := range systems {
-					if backend.SystemWorkers[system] == 0 {
-						continue
-					}
+				for _, sysname := range systems {
+					system := backend.Systems[sysname]
+					yenv := envmap{system, system.Environment}
+					yevr := strmap{system, evars(system.Environment, "+")}
+					yvar := strmap{system, system.Variants}
 
-					strmaps := []strmap{pevr, bevr, bvar, sevr, svar, tevr, tvar}
+					strmaps := []strmap{pevr, bevr, bvar, yevr, yvar, sevr, svar, tevr, tvar}
 					variants, err := evalstr("variants", strmaps...)
 					if err != nil {
 						return nil, err
@@ -574,9 +595,6 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 
 					for _, variant := range variants {
 						if variant == "" && len(variants) > 1 {
-							continue
-						}
-						if vs := backend.SystemVariants[system]; len(vs) > 0 && !contains(vs, variant) {
 							continue
 						}
 
@@ -589,21 +607,21 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 							Variant: variant,
 						}
 						if job.Variant == "" {
-							job.Name = fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System, job.Task.Name)
+							job.Name = fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System.Name, job.Task.Name)
 						} else {
-							job.Name = fmt.Sprintf("%s:%s:%s:%s", job.Backend.Name, job.System, job.Task.Name, job.Variant)
+							job.Name = fmt.Sprintf("%s:%s:%s:%s", job.Backend.Name, job.System.Name, job.Task.Name, job.Variant)
 						}
 
 						sprenv.env["SPREAD_JOB"] = job.Name
 						sprenv.env["SPREAD_PROJECT"] = job.Project.Name
 						sprenv.env["SPREAD_PATH"] = job.Project.RemotePath
 						sprenv.env["SPREAD_BACKEND"] = job.Backend.Name
-						sprenv.env["SPREAD_SYSTEM"] = job.System
+						sprenv.env["SPREAD_SYSTEM"] = job.System.Name
 						sprenv.env["SPREAD_SUITE"] = job.Suite.Name
 						sprenv.env["SPREAD_TASK"] = job.Task.Name
 						sprenv.env["SPREAD_VARIANT"] = job.Variant
 
-						env, err := evalenv(cmdcache, false, penv, benv, senv, tenv, sprenv)
+						env, err := evalenv(cmdcache, false, penv, benv, yenv, senv, tenv, sprenv)
 						if err != nil {
 							return nil, err
 						}
@@ -900,4 +918,3 @@ func (t *Timeout) UnmarshalYAML(u func(interface{}) error) error {
 	t.Duration = d
 	return nil
 }
-

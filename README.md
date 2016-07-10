@@ -180,7 +180,7 @@ suites:
 
 The cascading happens in the following order:
 
- * _Project => Backend => Suite => Task_
+ * _Project => Backend => System => Suite => Task_
 
 All of these can have an equivalent environment field.
 
@@ -335,7 +335,7 @@ systems: [-ubuntu-14.04]
 Cascading also takes place for these settings - each level can
 add/remove/replace what the previous level defined, again with the ordering:
 
- * _Project => Backend => Suite => Task_
+ * _Project => Backend => System => Suite => Task_
 
 <a name="preparing"/>
 Preparing and restoring
@@ -596,8 +596,17 @@ System names are mapped into LXD images the following way:
 
   * _ubuntu-16.04 => ubuntu:16.04_
   * _debian-sid => images:debian/sid/amd64_
-  * _fedora-8_ => images:fedora/8/amd64_
+  * _fedora-8 => images:fedora/8/amd64_
   * _etc_
+
+Alternatively they may also be provided explicitly as:
+```
+backends:
+    lxd:
+        systems:
+            - ubuntu-16.04:
+	        image: ubuntu:16.04.1
+```
 
 That's it. Have fun with your self-contained multi-system task runner.
 
@@ -629,27 +638,43 @@ run the tasks, if you wish. When discarding the server, assuming no `-keep` or
 `-debug`, it will power off the server and remove the created configuration
 and disks, leaving it ready for the next run.
 
-The root disk is built out a [Linode-supported distribution][linode-distros]
+The root disk is built out of a [Linode-supported distribution][linode-distros]
 or a [custom image][linode-images] available in the user account. The system
 name is mapped into an image or distribution label the following way:
 
   * _ubuntu-16.04 => Ubuntu 16.04 LTS_
   * _debian-8 => Debian 8_
-  * _arch-2015-08_ => Arch Linux 2015.08_
+  * _arch-2015-08 => Arch Linux 2015.08_
   * _etc_
 
 Images have user-defined labels, so they're also searched for using the Spread
 system name itself.
 
-The kernel used in the server configuration is the latest Linode kernel
-available, or the [GRUB 2][grub2] special kernel if the system name ends in
-`-grub`. The latter allows running custom images with the correct
-distribution-provided kernel.
+Alternatively, the extended system syntax may be used to define these details:
+```
+(...)
+
+backends:
+    linode:
+        key: (...)
+	systems:
+	    - ubuntu-16.04:
+	        image: Ubuntu 16.04
+	        kernel: GRUB 2
+```
+
+The `image` value is matched case-insensitively as a prefix of one of the
+[Linode-supported distributions][linode-distros] or a [custom
+image][linode-images] available in the user account. The `kernel` value is
+similarly matched against the available kernels.
+
+Both fields are optional. Image defaults to the behavior based on system name
+described above, and the kernel defaults to the latest recommended Linode
+kernel.
 
 [linode-distros]: https://www.linode.com/distributions
 [linode-images]: https://www.linode.com/docs/platform/linode-images
 [linode-grub2]: https://www.linode.com/docs/tools-reference/custom-kernels-distros/run-a-distribution-supplied-kernel-with-kvm
-
 
 Note that in Linode you can create additional users inside your own account
 that have limited access to a selection of servers only, and with limited
@@ -681,14 +706,12 @@ backends:
     linode:
         systems:
             - ubuntu-14.04
-            - ubuntu-16.04*2
-            - ubuntu-16.10/foo,bar
+            - ubuntu-16.04:
+	        workers: 2
 ```
 
-This will cause four different machines to be allocated for running tasks
-concurrently: one running Ubuntu 14.04, two 16.04, and one 16.10. The 16.10
-machine will only run jobs for variants _foo_ and _bar_, while the others will
-accept any variants (including _foo_ and _bar_).
+This will cause three different machines to be allocated for running tasks
+concurrently: one running Ubuntu 14.04 and two 16.04.
 
 Systems share a single job pool generated out of the variable matrix, and will
 run through it observing the constraints specified. For example, if there is a

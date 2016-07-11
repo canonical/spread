@@ -244,8 +244,7 @@ func (r *Runner) shellEnv(job *Job, env map[string]string) map[string]string {
 	for k, v := range env {
 		senv[k] = v
 	}
-	senv["HOME"] = r.project.RemotePath
-	senv["PS1"] = fmt.Sprintf(`%s:%s \w\$ `, job.Backend.Name, job.System)
+	senv["PS1"] = `'\$SPREAD_BACKEND:\$SPREAD_SYSTEM \${PWD/#\$SPREAD_PATH/...}\\$ '`
 	return senv
 }
 
@@ -722,7 +721,7 @@ func logNames(f func(format string, args ...interface{}), prefix string, jobs []
 		if job == nil {
 			continue
 		}
-		names = append(names, fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System, name(job)))
+		names = append(names, fmt.Sprintf("%s:%s", job.System, name(job)))
 	}
 	if len(names) == 0 {
 		return

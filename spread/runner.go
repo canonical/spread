@@ -534,11 +534,16 @@ Allocate:
 	retry = time.NewTicker(5 * time.Second)
 	defer retry.Stop()
 
+	password := system.Password
+	if password == "" {
+		password = r.options.Password
+	}
+
 	var client *Client
 Dial:
 	for {
 		lerr := err
-		client, err = Dial(server, r.options.Password)
+		client, err = Dial(server, password)
 		if err == nil {
 			break
 		}
@@ -560,6 +565,14 @@ Dial:
 		printf("Discarding %s, cannot connect: %v", server, err)
 		r.discardServer(server)
 		return nil
+	}
+	if password != r.options.Password {
+		err = client.ChangePassword(r.options.Password)
+		if err != nil {
+			printf("Discarding %s, cannot change password: %v", server, err)
+			r.discardServer(server)
+			return nil
+		}
 	}
 	err = client.WriteFile("/.spread.yaml", server.ReuseData())
 	if err != nil {

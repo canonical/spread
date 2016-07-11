@@ -274,6 +274,11 @@ func (c *Client) RemoveAll(path string) error {
 	return err
 }
 
+func (c *Client) ChangePassword(oldPassword, newPassword string) error {
+	_, err := c.CombinedOutput(fmt.Sprintf(`echo root:'%s' | chpasswd`, newPassword), "", nil)
+	return err
+}
+
 func (c *Client) MissingOrEmpty(dir string) (bool, error) {
 	output, err := c.Output(fmt.Sprintf(`! test -e "%s" || ls -a "%s"`, dir, dir), "", nil)
 	if err != nil {

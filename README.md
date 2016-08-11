@@ -19,7 +19,8 @@ Convenient full-system test (task) distribution
 [Including and excluding files](#including)  
 [Selecting which tasks to run](#selecting)  
 [LXD backend](#lxd)  
-[Linode backend](#linode)  
+[Linode backend](#linode)
+[SSH backend](#ssh)  
 [More on parallelism](#parallelism)  
 
 <a name="why"/>
@@ -663,6 +664,24 @@ Some links to make your life easier:
   * [Users and permissions](https://manager.linode.com/user)
   * [API keys](https://manager.linode.com/profile/api)
 
+<a name="ssh"/>
+ssh backend
+-----------
+
+The ssh backend depends on ssh only. It assumes you have a system
+prepared for testing using some other means.
+
+Example:
+```
+backends:
+    ssh:
+        systems:
+            - remotename-22
+```
+
+System names are mapped to ssh in the following way:
+
+  * name-port => name:port
 
 <a name="parallelism"/>
 More on parallelism

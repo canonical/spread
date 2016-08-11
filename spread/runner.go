@@ -64,6 +64,8 @@ func Start(project *Project, options *Options) (*Runner, error) {
 			r.providers[bname] = Linode(backend)
 		case "lxd":
 			r.providers[bname] = LXD(backend)
+		case "ssh":
+			r.providers[bname] = SSH(backend)
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}

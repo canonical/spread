@@ -261,7 +261,7 @@ func Load(path string) (*Project, error) {
 			backend.Type = bname
 		}
 		switch backend.Type {
-		case "linode", "lxd":
+		case "linode", "lxd", "ssh":
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}
@@ -900,4 +900,3 @@ func (t *Timeout) UnmarshalYAML(u func(interface{}) error) error {
 	t.Duration = d
 	return nil
 }
-

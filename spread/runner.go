@@ -239,12 +239,9 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	return true
 }
 
-func (r *Runner) shellEnv(job *Job, env map[string]string) map[string]string {
-	senv := make(map[string]string)
-	for k, v := range env {
-		senv[k] = v
-	}
-	senv["PS1"] = `'\$SPREAD_BACKEND:\$SPREAD_SYSTEM \${PWD/#\$SPREAD_PATH/...}\\$ '`
+func (r *Runner) shellEnv(job *Job, env *Environment) *Environment {
+	senv := env.Copy()
+	senv.Set("PS1", `'\$SPREAD_BACKEND:\$SPREAD_SYSTEM \${PWD/#\$SPREAD_PATH/...}\\$ '`)
 	return senv
 }
 

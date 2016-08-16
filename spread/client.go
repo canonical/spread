@@ -125,29 +125,29 @@ const (
 	shellOutput
 )
 
-func (c *Client) Run(script string, dir string, env map[string]string) error {
+func (c *Client) Run(script string, dir string, env *Environment) error {
 	_, err := c.run(script, dir, env, combinedOutput)
 	return err
 }
 
-func (c *Client) Output(script string, dir string, env map[string]string) (output []byte, err error) {
+func (c *Client) Output(script string, dir string, env *Environment) (output []byte, err error) {
 	return c.run(script, dir, env, splitOutput)
 }
 
-func (c *Client) CombinedOutput(script string, dir string, env map[string]string) (output []byte, err error) {
+func (c *Client) CombinedOutput(script string, dir string, env *Environment) (output []byte, err error) {
 	return c.run(script, dir, env, combinedOutput)
 }
 
-func (c *Client) Trace(script string, dir string, env map[string]string) (output []byte, err error) {
+func (c *Client) Trace(script string, dir string, env *Environment) (output []byte, err error) {
 	return c.run(script, dir, env, traceOutput)
 }
 
-func (c *Client) Shell(script string, dir string, env map[string]string) error {
+func (c *Client) Shell(script string, dir string, env *Environment) error {
 	_, err := c.run(script, dir, env, shellOutput)
 	return err
 }
 
-func (c *Client) run(script string, dir string, env map[string]string, mode int) (output []byte, err error) {
+func (c *Client) run(script string, dir string, env *Environment, mode int) (output []byte, err error) {
 	script = strings.TrimSpace(script)
 	if len(script) == 0 {
 		return nil, nil
@@ -163,12 +163,16 @@ func (c *Client) run(script string, dir string, env map[string]string, mode int)
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
 
-	for key, value := range env {
-		// TODO Value escaping.
-		fmt.Fprintf(&buf, "export %s=\"%s\"\n", key, value)
+	for _, k := range env.Keys() {
+		v := env.Get(k)
+		if len(v) == 0 || v[0] == '"' || v[0] == '\'' {
+			fmt.Fprintf(&buf, "export %s=%s\n", k, v)
+		} else {
+			fmt.Fprintf(&buf, "export %s=\"%s\"\n", k, v)
+		}
 	}
-	if mode == shellOutput && env["PS1"] != "" {
-		fmt.Fprintf(&buf, `echo PS1=\''%s'\' > $HOME/.bashrc`, env["PS1"])
+	if mode == shellOutput && env.Get("PS1") != "" {
+		fmt.Fprintf(&buf, `echo PS1=\''%s'\' > $HOME/.bashrc`, env.Get("PS1"))
 	}
 	if mode == traceOutput {
 		// Don't trace environment variables so secrets don't leak.
@@ -274,7 +278,7 @@ func (c *Client) RemoveAll(path string) error {
 	return err
 }
 
-func (c *Client) ChangePassword(oldPassword, newPassword string) error {
+func (c *Client) ChangePassword(newPassword string) error {
 	_, err := c.CombinedOutput(fmt.Sprintf(`echo root:'%s' | chpasswd`, newPassword), "", nil)
 	return err
 }

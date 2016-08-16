@@ -20,7 +20,7 @@ type Project struct {
 
 	Backends map[string]*Backend
 
-	Environment map[string]string
+	Environment *Environment
 
 	Prepare     string
 	Restore     string
@@ -54,7 +54,7 @@ type Backend struct {
 	PrepareEach string `yaml:"prepare-each"`
 	RestoreEach string `yaml:"restore-each"`
 
-	Environment map[string]string
+	Environment *Environment
 	Variants    []string
 
 	WarnTimeout Timeout `yaml:"warn-timeout"`
@@ -95,7 +95,7 @@ type System struct {
 	Password string
 	Workers  int
 
-	Environment map[string]string
+	Environment *Environment
 	Variants    []string
 }
 
@@ -121,13 +121,138 @@ func (system *System) UnmarshalYAML(u func(interface{}) error) error {
 	return nil
 }
 
+type Environment struct {
+	err  error
+	keys []string
+	vals map[string]string
+}
+
+func (e *Environment) Keys() []string {
+	if e == nil {
+		return nil
+	}
+	return append([]string(nil), e.keys...)
+}
+
+func (e *Environment) Copy() *Environment {
+	copy := &Environment{}
+	copy.err = e.err
+	copy.keys = append([]string(nil), e.keys...)
+	copy.vals = make(map[string]string)
+	for k, v := range e.vals {
+		copy.vals[k] = v
+	}
+	return copy
+}
+
+func (e *Environment) UnmarshalYAML(u func(interface{}) error) error {
+	var vals map[string]string
+	if err := u(&vals); err != nil {
+		return err
+	}
+	for k := range vals {
+		if !varname.MatchString(k) {
+			e.err = fmt.Errorf("invalid variable name: %q", k)
+			return nil
+		}
+	}
+
+	var seen = make(map[string]bool)
+	var keys = make([]string, len(vals))
+	var order yaml.MapSlice
+	if err := u(&order); err != nil {
+		return err
+	}
+	for i, item := range order {
+		k, ok := item.Key.(string)
+		_, good := vals[k]
+		if !ok || !good {
+			// Shouldn't happen if the regular expression is right.
+			e.err = fmt.Errorf("invalid variable name: %v", item.Key)
+			return nil
+		}
+		if seen[k] {
+			e.err = fmt.Errorf("variable %q defined multiple times", k)
+			return nil
+		}
+		seen[k] = true
+		keys[i] = k
+	}
+	e.keys = keys
+	e.vals = vals
+	return nil
+}
+
+func NewEnvironment(pairs ...string) *Environment {
+	e := &Environment{
+		vals: make(map[string]string),
+		keys: make([]string, len(pairs)/2),
+	}
+	for i := 0; i+1 < len(pairs); i += 2 {
+		e.vals[pairs[i]] = pairs[i+1]
+		e.keys[i/2] = pairs[i]
+	}
+	return e
+}
+
+func (e *Environment) MarshalYAML() (interface{}, error) {
+	lines := make([]string, len(e.keys))
+	for i := range lines {
+		key := e.keys[i]
+		lines[i] = key + "=" + e.vals[key]
+	}
+	return lines, nil
+}
+
+func (e *Environment) Unset(key string) {
+	l := len(e.vals)
+	delete(e.vals, key)
+	if len(e.vals) != l {
+		for i, k := range e.keys {
+			if k == key {
+				copy(e.keys[i:], e.keys[i+1:])
+				e.keys = e.keys[:len(e.keys)-1]
+			}
+		}
+	}
+}
+
+func (e *Environment) Get(key string) string {
+	return e.vals[key]
+}
+
+func (e *Environment) Set(key, value string) {
+	if !varname.MatchString(key) {
+		panic("invalid environment variable name: " + key)
+	}
+	e.Unset(key)
+	e.keys = append(e.keys, key)
+	e.vals[key] = value
+}
+
+func (e *Environment) Replace(oldkey, newkey, value string) {
+	if _, ok := e.vals[oldkey]; ok && newkey != oldkey {
+		e.Unset(newkey)
+		delete(e.vals, oldkey)
+		for i, key := range e.keys {
+			if key == oldkey {
+				e.keys[i] = newkey
+				break
+			}
+		}
+	} else if _, ok := e.vals[newkey]; !ok {
+		e.keys = append(e.keys, newkey)
+	}
+	e.vals[newkey] = value
+}
+
 type Suite struct {
 	Summary  string
 	Systems  []string
 	Backends []string
 
 	Variants    []string
-	Environment map[string]string
+	Environment *Environment
 
 	Prepare     string
 	Restore     string
@@ -153,7 +278,7 @@ type Task struct {
 	Backends []string
 
 	Variants    []string
-	Environment map[string]string
+	Environment *Environment
 
 	Prepare string
 	Restore string
@@ -179,7 +304,7 @@ type Job struct {
 	Task    *Task
 
 	Variant     string
-	Environment map[string]string
+	Environment *Environment
 }
 
 func (job *Job) String() string {
@@ -297,6 +422,10 @@ func Load(path string) (*Project, error) {
 	project.PrepareEach = strings.TrimSpace(project.PrepareEach)
 	project.RestoreEach = strings.TrimSpace(project.RestoreEach)
 
+	if err := checkEnv(project, &project.Environment); err != nil {
+		return nil, err
+	}
+
 	for bname, backend := range project.Backends {
 		if !validName.MatchString(bname) {
 			return nil, fmt.Errorf("invalid backend name: %q", bname)
@@ -324,11 +453,16 @@ func Load(path string) (*Project, error) {
 			if system.Workers == 0 {
 				system.Workers = 1
 			}
+			if err := checkEnv(system, &system.Environment); err != nil {
+				return nil, err
+			}
 		}
 		sort.Strings(backend.Variants)
 
-		err = checkSystems(backend, backend.systemNames())
-		if err != nil {
+		if err := checkEnv(backend, &backend.Environment); err != nil {
+			return nil, err
+		}
+		if err = checkSystems(backend, backend.systemNames()); err != nil {
 			return nil, err
 		}
 		if len(backend.Systems) == 0 {
@@ -367,8 +501,10 @@ func Load(path string) (*Project, error) {
 			return nil, fmt.Errorf("%s is missing a summary", suite)
 		}
 
-		err = checkSystems(suite, suite.Systems)
-		if err != nil {
+		if err := checkEnv(suite, &suite.Environment); err != nil {
+			return nil, err
+		}
+		if err := checkSystems(suite, suite.Systems); err != nil {
 			return nil, err
 		}
 
@@ -413,8 +549,10 @@ func Load(path string) (*Project, error) {
 				return nil, fmt.Errorf("%s is missing a summary", task)
 			}
 
-			err = checkSystems(task, task.Systems)
-			if err != nil {
+			if err := checkEnv(task, &task.Environment); err != nil {
+				return nil, err
+			}
+			if err := checkSystems(task, task.Systems); err != nil {
 				return nil, err
 			}
 
@@ -452,6 +590,15 @@ func readProject(path string) (filename string, data []byte, err error) {
 		path = newpath
 	}
 	return "", nil, fmt.Errorf("cannot find spread.yaml or .spread.yaml")
+}
+
+func checkEnv(context fmt.Stringer, env **Environment) error {
+	if *env == nil {
+		*env = NewEnvironment()
+	} else if (*env).err != nil {
+		return fmt.Errorf("invalid %s environment: %s", context, (*env).err)
+	}
+	return nil
 }
 
 func checkSystems(context fmt.Stringer, systems []string) error {
@@ -534,17 +681,6 @@ func (p *Project) backendNames() []string {
 func (p *Project) Jobs(options *Options) ([]*Job, error) {
 	var jobs []*Job
 
-	sprenv := envmap{stringer("$SPREAD_*"), map[string]string{
-		"SPREAD_JOB":     "",
-		"SPREAD_PROJECT": "",
-		"SPREAD_PATH":    "",
-		"SPREAD_BACKEND": "",
-		"SPREAD_SYSTEM":  "",
-		"SPREAD_SUITE":   "",
-		"SPREAD_TASK":    "",
-		"SPREAD_VARIANT": "",
-	}}
-
 	cmdcache := make(map[string]string)
 	penv := envmap{p, p.Environment}
 	pevr := strmap{p, evars(p.Environment, "")}
@@ -612,28 +748,32 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 							job.Name = fmt.Sprintf("%s:%s:%s:%s", job.Backend.Name, job.System.Name, job.Task.Name, job.Variant)
 						}
 
-						sprenv.env["SPREAD_JOB"] = job.Name
-						sprenv.env["SPREAD_PROJECT"] = job.Project.Name
-						sprenv.env["SPREAD_PATH"] = job.Project.RemotePath
-						sprenv.env["SPREAD_BACKEND"] = job.Backend.Name
-						sprenv.env["SPREAD_SYSTEM"] = job.System.Name
-						sprenv.env["SPREAD_SUITE"] = job.Suite.Name
-						sprenv.env["SPREAD_TASK"] = job.Task.Name
-						sprenv.env["SPREAD_VARIANT"] = job.Variant
+						sprenv := envmap{stringer("$SPREAD_*"), NewEnvironment(
+							"SPREAD_JOB", job.Name,
+							"SPREAD_PROJECT", job.Project.Name,
+							"SPREAD_PATH", job.Project.RemotePath,
+							"SPREAD_BACKEND", job.Backend.Name,
+							"SPREAD_SYSTEM", job.System.Name,
+							"SPREAD_SUITE", job.Suite.Name,
+							"SPREAD_TASK", job.Task.Name,
+							"SPREAD_VARIANT", job.Variant,
+						)}
 
 						env, err := evalenv(cmdcache, false, penv, benv, yenv, senv, tenv, sprenv)
 						if err != nil {
 							return nil, err
 						}
-						for key, value := range env {
+					NextKey:
+						for _, key := range env.Keys() {
 							ekey, evariants := SplitVariants(key)
-							if len(evariants) > 0 {
-								delete(env, key)
-							}
 							for _, evariant := range evariants {
 								if evariant == variant {
-									env[ekey] = value
+									env.Replace(key, ekey, env.Get(key))
+									continue NextKey
 								}
+							}
+							if len(evariants) > 0 {
+								env.Unset(key)
 							}
 						}
 						job.Environment = env
@@ -678,9 +818,10 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 	return jobs, nil
 }
 
-func evars(env map[string]string, prefix string) []string {
-	seen := make(map[string]bool, len(env))
-	for key := range env {
+func evars(env *Environment, prefix string) []string {
+	keys := env.Keys()
+	seen := make(map[string]bool, len(keys))
+	for _, key := range keys {
 		_, variants := SplitVariants(key)
 		for _, variant := range variants {
 			seen[variant] = true
@@ -701,7 +842,7 @@ func evars(env map[string]string, prefix string) []string {
 
 type envmap struct {
 	context fmt.Stringer
-	env     map[string]string
+	env     *Environment
 }
 
 type stringer string
@@ -709,131 +850,55 @@ type stringer string
 func (s stringer) String() string { return string(s) }
 
 var (
-	varref  = regexp.MustCompile(`\$\(.+?\)|\$\[[a-zA-Z0-9_/]+\]`)
+	varcmd  = regexp.MustCompile(`\$\(HOST:.+?\)`)
 	varname = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*(?:/[a-zA-Z0-9_]+)?$`)
 )
 
-func evalone(context string, line string, cmdcache map[string]string, maps ...envmap) (string, error) {
-	m := envmap{stringer(context), map[string]string{"": line}}
+func evalone(context string, value string, cmdcache map[string]string, maps ...envmap) (string, error) {
+	const key = "SPREAD_INTERNAL_EVAL"
+	m := envmap{stringer(context), NewEnvironment(key, value)}
 	out, err := evalenv(cmdcache, false, append(maps, m)...)
 	if err != nil {
 		return "", err
 	}
-	return out[""], nil
+	return out.Get(key), nil
 }
 
-func evalenv(cmdcache map[string]string, partial bool, maps ...envmap) (map[string]string, error) {
-	merged := make(map[string]string)
+func evalenv(cmdcache map[string]string, partial bool, maps ...envmap) (*Environment, error) {
+	result := NewEnvironment()
 	for _, m := range maps {
-		for key, value := range m.env {
-			if key != "" && !varname.MatchString(key) {
-				return nil, fmt.Errorf("invalid variable name in %s environment: %q", m.context)
-			}
-			merged[key] = value
-		}
-	}
-
-	// Pre-validation to make errors saner.
-	for _, m := range maps {
-		for key, value := range m.env {
-			for _, ref := range varref.FindAllString(value, -1) {
-				inner := ref[2 : len(ref)-1]
-				if strings.HasPrefix(ref, "$(") {
-					if _, ok := cmdcache[inner]; ok {
-						continue
-					}
-					err := evalcmd(cmdcache, inner)
-					if err != nil {
-						if key == "" {
-							return nil, fmt.Errorf("%s in %s returned error: %v", ref, m.context, err)
-						} else {
-							return nil, fmt.Errorf("%s in %s environment returned error: %v", ref, m.context, err)
-						}
-					}
-					continue
+		for _, key := range m.env.Keys() {
+			var failed error
+			value := varcmd.ReplaceAllStringFunc(m.env.Get(key), func(ref string) string {
+				if failed != nil {
+					return ""
 				}
-				if _, ok := merged[inner]; !ok && !partial {
+				inner := ref[len("$(HOST:") : len(ref)-len(")")]
+				if output, ok := cmdcache[inner]; ok {
+					return output
+				}
+				output, err := evalcmd(inner)
+				if err != nil && failed == nil {
 					if key == "" {
-						return nil, fmt.Errorf("%s references undefined variable %s", m.context, ref)
+						failed = fmt.Errorf("%s in %s returned error: %v", ref, m.context, err)
 					} else {
-						return nil, fmt.Errorf("%s in %s environment references undefined variable %s", key, m.context, ref)
+						failed = fmt.Errorf("%s in %s environment returned error: %v", ref, m.context, err)
 					}
+					return ""
 				}
-			}
-		}
-	}
-
-	// Perform replacements on each variable only once, and
-	// only after referenced variables are replaced.
-	done := make(map[string]bool)
-	for {
-		before := len(done)
-	NextVar:
-		for key, value := range merged {
-			for _, ref := range varref.FindAllString(value, -1) {
-				if strings.HasPrefix(ref, "$(") {
-					continue
-				}
-				if !done[ref[2:len(ref)-1]] {
-					continue NextVar
-				}
-			}
-			done[key] = true
-			merged[key] = varref.ReplaceAllStringFunc(value, func(ref string) string {
-				inner := ref[2 : len(ref)-1]
-				if strings.HasPrefix(ref, "$(") {
-					return cmdcache[inner]
-				}
-				return merged[inner]
+				cmdcache[inner] = output
+				return output
 			})
-			if key == "" {
-				// Stop early for single field case.
-				return merged, nil
+			if failed != nil {
+				return nil, failed
 			}
-		}
-		if len(done) == before {
-			break
+			result.Set(key, value)
 		}
 	}
-
-	if len(done) != len(merged) {
-		var missing []string
-		for key := range merged {
-			if !done[key] {
-				if partial {
-					delete(merged, key)
-				} else if key != "" {
-					missing = append(missing, "$"+key)
-				}
-			}
-		}
-
-		if partial {
-			return merged, nil
-		}
-
-		sort.Strings(missing)
-
-		// Look for the most specific context.
-		var context fmt.Stringer
-	ContextLoop:
-		for i := len(maps) - 1; i >= 0; i-- {
-			m := maps[i]
-			for _, key := range missing {
-				if _, ok := m.env[key[1:]]; ok {
-					context = m.context
-					break ContextLoop
-				}
-			}
-		}
-
-		return nil, fmt.Errorf("cannot define %s environment due to circular references: %s", context, strings.Join(missing, ", "))
-	}
-
-	return merged, nil
+	return result, nil
 }
 
-func evalcmd(cmdcache map[string]string, cmdline string) error {
+func evalcmd(cmdline string) (string, error) {
 	var stderr bytes.Buffer
 	cmd := exec.Command("/bin/bash", "-c", cmdline)
 	cmd.Stderr = &stderr
@@ -842,12 +907,11 @@ func evalcmd(cmdcache map[string]string, cmdline string) error {
 		msg := string(bytes.TrimSpace(stderr.Bytes()))
 		if len(msg) > 0 {
 			msgs := strings.Split(msg, "\n")
-			return fmt.Errorf("%s", strings.Join(msgs, "; "))
+			return "", fmt.Errorf("%s", strings.Join(msgs, "; "))
 		}
-		return err
+		return "", err
 	}
-	cmdcache[cmdline] = string(output)
-	return nil
+	return string(bytes.TrimRight(output, "\n")), nil
 }
 
 type strmap struct {

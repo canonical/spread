@@ -648,11 +648,11 @@ func (r *Runner) reuseArgs() string {
 	sort.Strings(addrs)
 	buf.WriteString("-pass=")
 	buf.WriteString(r.options.Password)
+	buf.WriteString(" -reuse=")
+	buf.WriteString(strings.Join(addrs, ","))
 	if r.options.Keep {
 		buf.WriteString(" -keep")
 	}
-	buf.WriteString(" -reuse=")
-	buf.WriteString(strings.Join(addrs, ","))
 	switch {
 	case r.options.Debug:
 		buf.WriteString(" -debug")

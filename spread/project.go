@@ -92,6 +92,7 @@ type System struct {
 	Name     string
 	Image    string
 	Kernel   string
+	Username string
 	Password string
 	Workers  int
 
@@ -435,7 +436,7 @@ func Load(path string) (*Project, error) {
 			backend.Type = bname
 		}
 		switch backend.Type {
-		case "linode", "lxd":
+		case "linode", "lxd", "qemu":
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}

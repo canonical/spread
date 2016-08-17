@@ -64,6 +64,8 @@ func Start(project *Project, options *Options) (*Runner, error) {
 			r.providers[bname] = Linode(backend)
 		case "lxd":
 			r.providers[bname] = LXD(backend)
+		case "qemu":
+			r.providers[bname] = QEMU(backend)
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}
@@ -440,6 +442,7 @@ func (r *Runner) client(backend *Backend, system *System) *Client {
 			empty, err := client.MissingOrEmpty(r.project.RemotePath)
 			if err != nil {
 				printf("Cannot send project data to %s: %v", server, err)
+				client.Close()
 				continue
 			}
 			send = empty
@@ -455,6 +458,7 @@ func (r *Runner) client(backend *Backend, system *System) *Client {
 					printf("Discarding %s, cannot send project data: %s", server, err)
 					r.discardServer(server)
 				}
+				client.Close()
 				continue
 			}
 		} else {
@@ -531,7 +535,11 @@ Allocate:
 	retry = time.NewTicker(5 * time.Second)
 	defer retry.Stop()
 
+	username := system.Username
 	password := system.Password
+	if username == "" {
+		username = "root"
+	}
 	if password == "" {
 		password = r.options.Password
 	}
@@ -540,7 +548,7 @@ Allocate:
 Dial:
 	for {
 		lerr := err
-		client, err = Dial(server, password)
+		client, err = Dial(server, username, password)
 		if err == nil {
 			break
 		}
@@ -563,17 +571,26 @@ Dial:
 		r.discardServer(server)
 		return nil
 	}
-	if password != r.options.Password {
-		err = client.ChangePassword(r.options.Password)
+	if username != "root" || password != r.options.Password {
+		err = client.SetupRootAccess(r.options.Password)
 		if err != nil {
-			printf("Discarding %s, cannot change password: %v", server, err)
+			printf("Discarding %s, %v", server, err)
+			client.Close()
 			r.discardServer(server)
 			return nil
+		}
+		if username != "root" {
+			printf("Re-connecting as root...")
+			client.Close()
+			username = "root"
+			password = r.options.Password
+			goto Dial
 		}
 	}
 	err = client.WriteFile("/.spread.yaml", server.ReuseData())
 	if err != nil {
 		printf("Discarding %s, cannot write reuse data: %s", server, err)
+		client.Close()
 		r.discardServer(server)
 		return nil
 	}
@@ -602,7 +619,7 @@ func (r *Runner) prepareReuse(addr string) {
 
 	printf("Connecting to %s for reuse...", addr)
 	var server Server = &UnknownServer{addr}
-	client, err := Dial(server, r.options.Password)
+	client, err := Dial(server, "root", r.options.Password)
 	if err != nil {
 		printf("Cannot connect to %s: %v", addr, err)
 		return

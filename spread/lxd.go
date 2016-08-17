@@ -114,7 +114,7 @@ func (l *lxd) Allocate(system *System, password string, keep bool) (Server, erro
 		},
 	}
 
-	printf("Waiting for LXD container %s to have an address...", name)
+	printf("Waiting for lxd container %s to have an address...", name)
 	timeout := time.After(10 * time.Second)
 	retry := time.NewTicker(1 * time.Second)
 	defer retry.Stop()

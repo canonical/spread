@@ -17,18 +17,23 @@ import (
 type Client struct {
 	server Server
 	sshc   *ssh.Client
+	user   string
 
 	warnTimeout time.Duration
 	killTimeout time.Duration
 }
 
-func Dial(server Server, password string) (*Client, error) {
+func Dial(server Server, username, password string) (*Client, error) {
 	config := &ssh.ClientConfig{
-		User:    "root",
+		User:    username,
 		Auth:    []ssh.AuthMethod{ssh.Password(password)},
 		Timeout: 10 * time.Second,
 	}
-	sshc, err := ssh.Dial("tcp", server.Address()+":22", config)
+	addr := server.Address()
+	if !strings.Contains(addr, ":") {
+		addr += ":22"
+	}
+	sshc, err := ssh.Dial("tcp", addr, config)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect to %s: %v", server, err)
 	}
@@ -278,9 +283,22 @@ func (c *Client) RemoveAll(path string) error {
 	return err
 }
 
-func (c *Client) ChangePassword(newPassword string) error {
-	_, err := c.CombinedOutput(fmt.Sprintf(`echo root:'%s' | chpasswd`, newPassword), "", nil)
-	return err
+func (c *Client) SetupRootAccess(password string) error {
+	var script string
+	if c.user == "root" {
+		script = fmt.Sprintf(`echo root:'%s' | chpasswd`, password)
+	} else {
+		script = strings.Join([]string{
+			`sudo sed -i 's/\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /etc/ssh/sshd_config`,
+			`echo root:'` + password + `' | sudo chpasswd`,
+			`sudo pkill -o -HUP sshd || true`,
+		}, "\n")
+	}
+	_, err := c.CombinedOutput(script, "", nil)
+	if err != nil {
+		return fmt.Errorf("cannot setup root access: %s", err)
+	}
+	return nil
 }
 
 func (c *Client) MissingOrEmpty(dir string) (bool, error) {

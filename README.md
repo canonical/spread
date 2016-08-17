@@ -19,6 +19,7 @@ Convenient full-system test (task) distribution
 [Including and excluding files](#including)  
 [Selecting which tasks to run](#selecting)  
 [LXD backend](#lxd)  
+[QEMU backend](#qemu)  
 [Linode backend](#linode)  
 [More on parallelism](#parallelism)  
 
@@ -609,6 +610,51 @@ backends:
 ```
 
 That's it. Have fun with your self-contained multi-system task runner.
+
+
+<a name="qemu"/>
+QEMU backend
+-----------
+
+The QEMU backend depends on the [QEMU](http://www.qemu.org) emulator
+available from various sources and allows you to run tasks using the
+local system alone even if those tasks depend on low-level features
+not avaliable under LXD.
+
+Setting up the QEMU backend looks similar to:
+
+_$PROJECT/spread.yaml_
+```
+backends:
+    qemu:
+        systems:
+            - ubuntu-16.04:
+	        username: ubuntu
+		password: ubuntu
+```
+
+For this example to work, a QEMU image must be made available under
+`~/.spread/qemu/ubuntu-16.04.img`, and when run this image must open
+an SSH daemon on port 22 using the provided credentials.
+
+During the initial setup, spread will enable root access over SSH, and
+will set its password to the current global password in use for the
+running session as usual for every other backend (random by default,
+see the `-pass` command line option).
+
+Note that at the moment QEMU is run via the `kvm` script, which enables
+the KVM performance optimizations for the local architecture. This will
+not work for other architectures, though. This problem may be easily
+addressed in the future when use cases show up.
+
+As a hint if you are using Ubuntu, here is an easy way to get a suitable
+QEMU image:
+```
+sudo apt install qemu-kvm autopkgtest
+adt-buildvm-ubuntu-cloud
+```
+When done move the downloaded image into the location described above.
+
 
 
 <a name="linode"/>

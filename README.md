@@ -12,6 +12,7 @@ Convenient full-system test (task) distribution
 [Variants](#variants)  
 [Blacklisting and whitelisting](#blacklisting)  
 [Preparing and restoring](#preparing)  
+[Rebooting](#rebooting)
 [Timeouts](#timeouts)  
 [Fast iterations with reuse](#reuse)  
 [Debugging](#debugging)  
@@ -416,6 +417,25 @@ project restore
 Typically only a few of those script slots will be used.
 
 
+<a name="rebooting"/>
+Rebooting
+---------
+
+Scripts can reboot the system at any point by simply including a comment
+inline at the exact point the reboot should happen:
+
+_$PROJECT/spread.yaml_
+```
+execute: |
+    echo "Before reboot"
+    # REBOOT
+    echo "After reboot"
+```
+
+The system will reboot at that point and the script will continue where
+it left off once the system is back up.
+
+
 <a name="timeouts"/>
 Timeouts
 --------
@@ -641,6 +661,9 @@ During the initial setup, spread will enable root access over SSH, and
 will set its password to the current global password in use for the
 running session as usual for every other backend (random by default,
 see the `-pass` command line option).
+
+The QEMU backend is run with the `-nographic` option by default. This
+may be changed with `export SPREAD_QEMU_GUI=1`.
 
 Note that at the moment QEMU is run via the `kvm` script, which enables
 the KVM performance optimizations for the local architecture. This will

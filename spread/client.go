@@ -12,12 +12,15 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
+	"net"
+	"regexp"
 )
 
 type Client struct {
 	server Server
 	sshc   *ssh.Client
-	user   string
+	config *ssh.ClientConfig
+	addr   string
 
 	warnTimeout time.Duration
 	killTimeout time.Duration
@@ -40,8 +43,34 @@ func Dial(server Server, username, password string) (*Client, error) {
 	client := &Client{
 		server: server,
 		sshc:   sshc,
+		config: config,
+		addr:   addr,
 	}
 	return client, nil
+}
+
+func (c *Client) dialOnReboot() error {
+	var timeout = time.After(5 * time.Minute)
+	var relog = time.NewTicker(30 * time.Second)
+	defer relog.Stop()
+	var retry = time.NewTicker(1 * time.Second)
+	defer retry.Stop()
+
+	for {
+		sshc, err := ssh.Dial("tcp", c.addr, c.config)
+		if err == nil {
+			c.sshc.Close()
+			c.sshc = sshc
+			return nil
+		}
+		select {
+		case <-retry.C:
+		case <-relog.C:
+			printf("Reboot of %s is taking a while...", c.server)
+		case <-timeout:
+			return fmt.Errorf("cannot reconnect to %s after reboot: %v", c.server, err)
+		}
+	}
 }
 
 func (c *Client) Close() error {
@@ -152,7 +181,39 @@ func (c *Client) Shell(script string, dir string, env *Environment) error {
 	return err
 }
 
+var rebootDirective = regexp.MustCompile("(?m)^# *REBOOT *$")
+
 func (c *Client) run(script string, dir string, env *Environment, mode int) (output []byte, err error) {
+	scripts := rebootDirective.Split(script, -1)
+	output, err = c.runPart(scripts[0], dir, env, mode, nil)
+	if err != nil || len(scripts) == 1 {
+		return output, err
+	}
+
+	for _, script := range scripts[1:] {
+		output = append(output, "\n<REBOOTED>\n\n"...)
+
+		err := c.Run("reboot &\nsleep 60", "", nil)
+		if err != nil {
+			err = c.Run("echo should-have-disconnected", "", nil)
+		}
+		if err == nil {
+			return nil, fmt.Errorf("reboot request timed out")
+		}
+
+		if err := c.dialOnReboot(); err != nil {
+			return nil, err
+		}
+
+		output, err = c.runPart(script, dir, env, mode, output)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return output, nil
+}
+
+func (c *Client) runPart(script string, dir string, env *Environment, mode int, previous []byte) (output []byte, err error) {
 	script = strings.TrimSpace(script)
 	if len(script) == 0 {
 		return nil, nil
@@ -258,17 +319,17 @@ func (c *Client) run(script string, dir string, env *Environment, mode int) (out
 
 	if err != nil {
 		if mode == splitOutput {
-			err = outputErr(stderr.Bytes(), err)
+			output = stderr.Bytes()
 		} else {
-			err = outputErr(stdout.Bytes(), err)
+			output = stdout.Bytes()
 		}
-		return nil, err
+		return nil, outputErr(append(previous, output...), err)
 	}
 
 	if err := <-errch; err != nil {
 		printf("Error writing script to %s: %v", c.server, err)
 	}
-	return output, nil
+	return append(previous, stdout.Bytes()...), nil
 }
 
 func getenv(name, defaultValue string) string {
@@ -285,7 +346,7 @@ func (c *Client) RemoveAll(path string) error {
 
 func (c *Client) SetupRootAccess(password string) error {
 	var script string
-	if c.user == "root" {
+	if c.config.User == "root" {
 		script = fmt.Sprintf(`echo root:'%s' | chpasswd`, password)
 	} else {
 		script = strings.Join([]string{
@@ -297,6 +358,9 @@ func (c *Client) SetupRootAccess(password string) error {
 	_, err := c.CombinedOutput(script, "", nil)
 	if err != nil {
 		return fmt.Errorf("cannot setup root access: %s", err)
+	}
+	if c.config.User == "root" {
+		c.config.Auth = []ssh.AuthMethod{ssh.Password(password)}
 	}
 	return nil
 }
@@ -512,4 +576,28 @@ func outputErr(output []byte, err error) error {
 		}
 	}
 	return err
+}
+
+func waitPortUp(what fmt.Stringer, address string) error {
+	var timeout = time.After(5 * time.Minute)
+	var relog = time.NewTicker(15 * time.Second)
+	defer relog.Stop()
+	var retry = time.NewTicker(1 * time.Second)
+	defer retry.Stop()
+
+	for {
+		conn, err := net.Dial("tcp", address)
+		if err == nil {
+			conn.Close()
+			break
+		}
+		select {
+		case <-retry.C:
+		case <-relog.C:
+			printf("Cannot connect to %s: %v", what, err)
+		case <-timeout:
+			return fmt.Errorf("cannot connect to %s: %v", what, err)
+		}
+	}
+	return nil
 }

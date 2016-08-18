@@ -5,12 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	mrand "math/rand"
 	"os"
+	"os/signal"
 	"strings"
 
 	"github.com/kr/pretty"
 	"github.com/snapcore/spread/spread"
-	"os/signal"
+	"time"
 )
 
 var (
@@ -36,6 +38,7 @@ func main() {
 }
 
 func run() error {
+	mrand.Seed(time.Now().UnixNano())
 	flag.Parse()
 
 	spread.Logger = log.New(os.Stdout, "", log.LstdFlags)

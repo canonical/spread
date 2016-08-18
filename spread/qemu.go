@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"gopkg.in/yaml.v2"
 	"math/rand"
-	"net"
 	"os"
 	"os/exec"
 	"strconv"
-	"time"
 )
 
 func QEMU(b *Backend) Provider {
@@ -89,51 +87,24 @@ func (q *qemu) Reuse(data []byte, password string) (Server, error) {
 	return server, nil
 }
 
-func (s *qemuServer) waitReady(system *System) error {
-	var timeout = time.After(5 * time.Minute)
-	var relog = time.NewTicker(15 * time.Second)
-	defer relog.Stop()
-	var retry = time.NewTicker(1 * time.Second)
-	defer retry.Stop()
-
-	for {
-		conn, err := net.Dial("tcp", s.Address())
-		if err == nil {
-			conn.Close()
-			break
-		}
-		select {
-		case <-retry.C:
-		case <-relog.C:
-			printf("Cannot connect to %s: %v", system, err)
-		case <-timeout:
-			return fmt.Errorf("cannot connect to %s: %v", system, err)
-		}
-	}
-	return nil
-}
-
 func systemPath(system *System) string {
 	return os.ExpandEnv("$HOME/.spread/qemu/" + system.Image + ".img")
 }
 
 func (q *qemu) Allocate(system *System, password string, keep bool) (Server, error) {
 	// FIXME Find an available port more reliably.
-	port := 20000 + rand.Intn(10000)
+	port := 59301 + rand.Intn(99)
 
 	path := systemPath(system)
 	if info, err := os.Stat(path); err != nil || info.IsDir() {
 		return nil, &FatalError{fmt.Errorf("cannot find qemu image at %s", path)}
 	}
 
-	cmd := exec.Command(
-		"kvm",
-		//"-nographic",
-		"-snapshot",
-		"-m", "1500",
-		"-net", "nic",
-		"-net", fmt.Sprintf("user,hostfwd=tcp::%d-:22", port),
-		path)
+	fwd := fmt.Sprintf("user,hostfwd=tcp::%d-:22", port)
+	cmd := exec.Command("kvm", "-snapshot", "-m", "1500", "-net", "nic", "-net", fwd, path)
+	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
+		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
+	}
 	err := cmd.Start()
 	if err != nil {
 		return nil, &FatalError{fmt.Errorf("cannot launch qemu %s: %v", system, err)}
@@ -150,7 +121,7 @@ func (q *qemu) Allocate(system *System, password string, keep bool) (Server, err
 	}
 
 	printf("Waiting for %s to have an address...", system)
-	if err := server.waitReady(system); err != nil {
+	if err := waitPortUp(system, server.Address()); err != nil {
 		server.Discard()
 		return nil, fmt.Errorf("cannot connect to %s: %s", server, err)
 	}

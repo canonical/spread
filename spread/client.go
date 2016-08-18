@@ -50,12 +50,34 @@ func Dial(server Server, username, password string) (*Client, error) {
 }
 
 func (c *Client) dialOnReboot() error {
-	var timeout = time.After(5 * time.Minute)
+	// First wait until SSH isn't working anymore.
+	var timeout = time.After(1 * time.Minute)
 	var relog = time.NewTicker(30 * time.Second)
 	defer relog.Stop()
 	var retry = time.NewTicker(1 * time.Second)
 	defer retry.Stop()
 
+	waitConfig := *c.config
+	waitConfig.Timeout = 5 * time.Second
+	for {
+		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
+		if err != nil {
+			// It's gone.
+			break
+		}
+		sshc.Close()
+
+		select {
+		case <-retry.C:
+		case <-relog.C:
+			printf("Reboot of %s is taking a while...", c.server)
+		case <-timeout:
+			return fmt.Errorf("reboot request on %s timed out", c.server)
+		}
+	}
+
+	// Then wait for it to come back up.
+	timeout = time.After(5 * time.Minute)
 	for {
 		sshc, err := ssh.Dial("tcp", c.addr, c.config)
 		if err == nil {
@@ -198,7 +220,7 @@ func (c *Client) run(script string, dir string, env *Environment, mode int) (out
 			err = c.Run("echo should-have-disconnected", "", nil)
 		}
 		if err == nil {
-			return nil, fmt.Errorf("reboot request timed out")
+			return nil, fmt.Errorf("reboot request on %s timed out", c.server)
 		}
 
 		if err := c.dialOnReboot(); err != nil {

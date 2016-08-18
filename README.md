@@ -424,7 +424,7 @@ Rebooting
 Scripts can reboot the system at any point by simply including a comment
 inline at the exact point the reboot should happen:
 
-_$PROJECT/spread.yaml_
+_$PROJECT/examples/hello/task.yaml_
 ```
 execute: |
     echo "Before reboot"

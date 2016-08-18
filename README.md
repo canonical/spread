@@ -12,7 +12,7 @@ Convenient full-system test (task) distribution
 [Variants](#variants)  
 [Blacklisting and whitelisting](#blacklisting)  
 [Preparing and restoring](#preparing)  
-[Rebooting](#rebooting)
+[Rebooting](#rebooting)  
 [Timeouts](#timeouts)  
 [Fast iterations with reuse](#reuse)  
 [Debugging](#debugging)  

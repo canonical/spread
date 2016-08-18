@@ -120,7 +120,7 @@ _$PROJECT/spread.yaml_
 ```
 backends:
     linode:
-        key: $(echo $LINODE_API_KEY)
+        key: $(HOST:echo $LINODE_API_KEY)
         systems: [ubuntu-16.04]
 ```
 
@@ -477,10 +477,10 @@ Debugging
 
 Debugging such remote tasking systems is generally quite boring, and Spread
 offers a good hand to make the problem less painful. Just add `-debug` to
-whatever set of options is in use and it stop and open a shell at the exact
-point you get a failure, with the exact same environment as the script had.
-Exit the shell and the process continues, until the next failure, no matter
-which backend or system it was in.
+whatever set of options is in use and it will stop and open a shell at the
+exact point you get a failure, with the exact same environment as the script
+had.  Exit the shell and the process continues, until the next failure, no
+matter which backend or system it was in.
 
 A similar option is to use `-shell`. Rather than stopping on failures, this
 will run the shell _instead of_ the original task scripts, for every job
@@ -626,7 +626,7 @@ backends:
     lxd:
         systems:
             - ubuntu-16.04:
-	        image: ubuntu:16.04.1
+                image: ubuntu:16.04.1
 ```
 
 That's it. Have fun with your self-contained multi-system task runner.
@@ -649,8 +649,8 @@ backends:
     qemu:
         systems:
             - ubuntu-16.04:
-	        username: ubuntu
-		password: ubuntu
+                username: ubuntu
+                password: ubuntu
 ```
 
 For this example to work, a QEMU image must be made available under
@@ -693,7 +693,7 @@ _$PROJECT/spread.yaml_
 
 backends:
     linode:
-        key: $(echo $LINODE_API_KEY)
+        key: $(HOST:echo $LINODE_API_KEY)
         systems:
             - ubuntu-16.04
 ```

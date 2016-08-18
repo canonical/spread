@@ -720,6 +720,10 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 
 				for _, sysname := range systems {
 					system := backend.Systems[sysname]
+					// not for us
+					if system == nil {
+						continue
+					}
 					yenv := envmap{system, system.Environment}
 					yevr := strmap{system, evars(system.Environment, "+")}
 					yvar := strmap{system, system.Variants}

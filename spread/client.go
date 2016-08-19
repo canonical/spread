@@ -215,6 +215,7 @@ func (c *Client) run(script string, dir string, env *Environment, mode int) (out
 	for _, script := range scripts[1:] {
 		output = append(output, "\n<REBOOTED>\n\n"...)
 
+		printf("Requesting reboot for %s", c.server)
 		err := c.Run("reboot &\nsleep 60", "", nil)
 		if err != nil {
 			err = c.Run("echo should-have-disconnected", "", nil)
@@ -226,6 +227,7 @@ func (c *Client) run(script string, dir string, env *Environment, mode int) (out
 		if err := c.dialOnReboot(); err != nil {
 			return nil, err
 		}
+		printf("Resuming %s after reboot", c.server)
 
 		output, err = c.runPart(script, dir, env, mode, output)
 		if err != nil {

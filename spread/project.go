@@ -47,6 +47,10 @@ type Backend struct {
 	Type string
 	Key  string
 
+	// Only for adhoc.
+	Allocate string
+	Discard  string
+
 	Systems SystemsMap
 
 	Prepare     string
@@ -436,9 +440,16 @@ func Load(path string) (*Project, error) {
 			backend.Type = bname
 		}
 		switch backend.Type {
-		case "linode", "lxd", "qemu":
+		case "linode", "lxd", "qemu", "adhoc":
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
+		}
+
+		if backend.Type != "adhoc" && (backend.Allocate != "" || backend.Discard != "") {
+			return nil, fmt.Errorf("%s cannot use allocate and dispose fields", backend)
+		}
+		if backend.Type == "adhoc" && strings.TrimSpace(backend.Allocate) == "" {
+			return nil, fmt.Errorf("%s requires an allocate field", backend)
 		}
 
 		backend.Prepare = strings.TrimSpace(backend.Prepare)

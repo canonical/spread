@@ -9,16 +9,18 @@ import (
 	"strconv"
 )
 
-func QEMU(b *Backend) Provider {
-	return &qemu{b}
+func QEMU(p *Project, b *Backend, o *Options) Provider {
+	return &qemuProvider{p, b, o}
 }
 
-type qemu struct {
+type qemuProvider struct {
+	project *Project
 	backend *Backend
+	options *Options
 }
 
 type qemuServer struct {
-	q *qemu
+	p *qemuProvider
 	d qemuServerData
 }
 
@@ -30,11 +32,11 @@ type qemuServerData struct {
 }
 
 func (s *qemuServer) String() string {
-	return fmt.Sprintf("%s:%s", s.q.backend.Name, s.d.System)
+	return fmt.Sprintf("%s:%s", s.p.backend.Name, s.d.System)
 }
 
 func (s *qemuServer) Provider() Provider {
-	return s.q
+	return s.p
 }
 
 func (s *qemuServer) Address() string {
@@ -42,9 +44,9 @@ func (s *qemuServer) Address() string {
 }
 
 func (s *qemuServer) System() *System {
-	system := s.q.backend.Systems[s.d.System]
+	system := s.p.backend.Systems[s.d.System]
 	if system == nil {
-		return removedSystem(s.q.backend, s.d.System)
+		return removedSystem(s.p.backend, s.d.System)
 	}
 	return system
 }
@@ -73,25 +75,25 @@ func (s *qemuServer) Discard() error {
 	return nil
 }
 
-func (q *qemu) Backend() *Backend {
-	return q.backend
+func (p *qemuProvider) Backend() *Backend {
+	return p.backend
 }
 
-func (q *qemu) Reuse(data []byte, password string) (Server, error) {
-	server := &qemuServer{}
-	err := yaml.Unmarshal(data, &server.d)
+func (p *qemuProvider) Reuse(data []byte) (Server, error) {
+	s := &qemuServer{}
+	err := yaml.Unmarshal(data, &s.d)
 	if err != nil {
 		return nil, fmt.Errorf("cannot unmarshal qemu reuse data: %v", err)
 	}
-	server.q = q
-	return server, nil
+	s.p = p
+	return s, nil
 }
 
 func systemPath(system *System) string {
 	return os.ExpandEnv("$HOME/.spread/qemu/" + system.Image + ".img")
 }
 
-func (q *qemu) Allocate(system *System, password string, keep bool) (Server, error) {
+func (p *qemuProvider) Allocate(system *System) (Server, error) {
 	// FIXME Find an available port more reliably.
 	port := 59301 + rand.Intn(99)
 
@@ -110,21 +112,21 @@ func (q *qemu) Allocate(system *System, password string, keep bool) (Server, err
 		return nil, &FatalError{fmt.Errorf("cannot launch qemu %s: %v", system, err)}
 	}
 
-	server := &qemuServer{
-		q: q,
+	s := &qemuServer{
+		p: p,
 		d: qemuServerData{
 			System:  system.Name,
 			Address: "localhost:" + strconv.Itoa(port),
-			Backend: q.backend.Name,
+			Backend: p.backend.Name,
 			PID:     cmd.Process.Pid,
 		},
 	}
 
-	printf("Waiting for %s to have an address...", system)
-	if err := waitPortUp(system, server.Address()); err != nil {
-		server.Discard()
-		return nil, fmt.Errorf("cannot connect to %s: %s", server, err)
+	printf("Waiting for %s to make SSH available...", system)
+	if err := waitPortUp(system, s.Address()); err != nil {
+		s.Discard()
+		return nil, fmt.Errorf("cannot connect to %s: %s", s, err)
 	}
-	printf("Allocated %s.", server)
-	return server, nil
+	printf("Allocated %s.", s)
+	return s, nil
 }

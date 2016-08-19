@@ -15,16 +15,18 @@ import (
 	"time"
 )
 
-func LXD(b *Backend) Provider {
-	return &lxd{b}
+func LXD(p *Project, b *Backend, o *Options) Provider {
+	return &lxdProvider{p, b, o}
 }
 
-type lxd struct {
+type lxdProvider struct {
+	project *Project
 	backend *Backend
+	options *Options
 }
 
 type lxdServer struct {
-	l *lxd
+	p *lxdProvider
 	d lxdServerData
 }
 
@@ -36,11 +38,11 @@ type lxdServerData struct {
 }
 
 func (s *lxdServer) String() string {
-	return fmt.Sprintf("%s:%s (%s)", s.l.backend.Name, s.d.System, s.d.Name)
+	return fmt.Sprintf("%s:%s (%s)", s.p.backend.Name, s.d.System, s.d.Name)
 }
 
 func (s *lxdServer) Provider() Provider {
-	return s.l
+	return s.p
 }
 
 func (s *lxdServer) Address() string {
@@ -48,9 +50,9 @@ func (s *lxdServer) Address() string {
 }
 
 func (s *lxdServer) System() *System {
-	system := s.l.backend.Systems[s.d.System]
+	system := s.p.backend.Systems[s.d.System]
 	if system == nil {
-		return removedSystem(s.l.backend, s.d.System)
+		return removedSystem(s.p.backend, s.d.System)
 	}
 	return system
 }
@@ -71,29 +73,29 @@ func (s *lxdServer) Discard() error {
 	return nil
 }
 
-func (l *lxd) Backend() *Backend {
-	return l.backend
+func (p *lxdProvider) Backend() *Backend {
+	return p.backend
 }
 
-func (l *lxd) Reuse(data []byte, password string) (Server, error) {
-	server := &lxdServer{}
-	err := yaml.Unmarshal(data, &server.d)
+func (p *lxdProvider) Reuse(data []byte) (Server, error) {
+	s := &lxdServer{}
+	err := yaml.Unmarshal(data, &s.d)
 	if err != nil {
 		return nil, fmt.Errorf("cannot unmarshal lxd reuse data: %v", err)
 	}
-	server.l = l
-	return server, nil
+	s.p = p
+	return s, nil
 }
 
-func (l *lxd) Allocate(system *System, password string, keep bool) (Server, error) {
-	lxdimage := l.lxdImage(system)
+func (p *lxdProvider) Allocate(system *System) (Server, error) {
+	lxdimage := p.lxdImage(system)
 	name, err := lxdName(system)
 	if err != nil {
 		return nil, err
 	}
 
 	args := []string{"launch", lxdimage, name}
-	if !keep {
+	if !p.options.Keep {
 		args = append(args, "--ephemeral")
 	}
 	output, err := exec.Command("lxc", args...).CombinedOutput()
@@ -105,12 +107,12 @@ func (l *lxd) Allocate(system *System, password string, keep bool) (Server, erro
 		return nil, &FatalError{fmt.Errorf("cannot launch lxd container: %v", err)}
 	}
 
-	server := &lxdServer{
-		l: l,
+	s := &lxdServer{
+		p: p,
 		d: lxdServerData{
 			Name:    name,
 			System:  system.Name,
-			Backend: l.backend.Name,
+			Backend: p.backend.Name,
 		},
 	}
 
@@ -119,35 +121,35 @@ func (l *lxd) Allocate(system *System, password string, keep bool) (Server, erro
 	retry := time.NewTicker(1 * time.Second)
 	defer retry.Stop()
 	for {
-		addr, err := l.address(name)
+		addr, err := p.address(name)
 		if err == nil {
-			server.d.Address = addr
+			s.d.Address = addr
 			break
 		}
 		if _, ok := err.(*lxdNoAddrError); !ok {
-			server.Discard()
+			s.Discard()
 			return nil, err
 		}
 
 		select {
 		case <-retry.C:
 		case <-timeout:
-			server.Discard()
+			s.Discard()
 			return nil, err
 		}
 	}
 
-	err = l.tuneSSH(name, password)
+	err = p.tuneSSH(name)
 	if err != nil {
-		server.Discard()
+		s.Discard()
 		return nil, err
 	}
 
-	printf("Allocated %s.", server)
-	return server, nil
+	printf("Allocated %s.", s)
+	return s, nil
 }
 
-func (l *lxd) lxdImage(system *System) string {
+func (p *lxdProvider) lxdImage(system *System) string {
 	if strings.Contains(system.Image, ":") {
 		return system.Image
 	}
@@ -242,12 +244,12 @@ func (e *lxdNoAddrError) Error() string {
 	return fmt.Sprintf("lxd server %s has no address available", e.name)
 }
 
-func (l *lxd) address(name string) (string, error) {
-	server, err := l.server(name)
+func (p *lxdProvider) address(name string) (string, error) {
+	sjson, err := p.serverJSON(name)
 	if err != nil {
 		return "", err
 	}
-	for _, addr := range server.State.Network["eth0"].Addresses {
+	for _, addr := range sjson.State.Network["eth0"].Addresses {
 		if addr.Family == "inet" && addr.Address != "" {
 			return addr.Address, nil
 		}
@@ -255,7 +257,7 @@ func (l *lxd) address(name string) (string, error) {
 	return "", &lxdNoAddrError{name}
 }
 
-func (l *lxd) server(name string) (*lxdServerJSON, error) {
+func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
 	var stderr bytes.Buffer
 	cmd := exec.Command("lxc", "list", "--format=json", name)
 	cmd.Stderr = &stderr
@@ -266,27 +268,27 @@ func (l *lxd) server(name string) (*lxdServerJSON, error) {
 		return nil, fmt.Errorf("cannot list lxd container: %v", err)
 	}
 
-	var servers []*lxdServerJSON
-	err = json.Unmarshal(output, &servers)
+	var sjsons []*lxdServerJSON
+	err = json.Unmarshal(output, &sjsons)
 	if err != nil {
 		return nil, fmt.Errorf("cannot unmarshal lxd list output: %v", err)
 	}
 
-	debugf("lxd list output: %# v\n", servers)
+	debugf("lxd list output: %# v\n", sjsons)
 
-	if len(servers) == 0 {
+	if len(sjsons) == 0 {
 		return nil, &lxdNoServerError{name}
 	}
-	if servers[0].Name != name {
+	if sjsons[0].Name != name {
 		return nil, fmt.Errorf("lxd returned invalid JSON listing for %q: %s", name, outputErr(output, nil))
 	}
-	return servers[0], nil
+	return sjsons[0], nil
 }
 
-func (l *lxd) tuneSSH(name, password string) error {
+func (p *lxdProvider) tuneSSH(name string) error {
 	cmds := [][]string{
 		{"sed", "-i", `s/\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/`, "/etc/ssh/sshd_config"},
-		{"/bin/bash", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", password)},
+		{"/bin/bash", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", p.options.Password)},
 		{"killall", "-HUP", "sshd"},
 	}
 	for _, args := range cmds {

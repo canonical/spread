@@ -17,11 +17,13 @@ Convenient full-system test (task) distribution
 [Fast iterations with reuse](#reuse)  
 [Debugging](#debugging)  
 [Keeping servers](#keeping)  
+[Passwords and usernames](#passwords)  
 [Including and excluding files](#including)  
 [Selecting which tasks to run](#selecting)  
 [LXD backend](#lxd)  
 [QEMU backend](#qemu)  
 [Linode backend](#linode)  
+[AdHoc](#adhoc)  
 [More on parallelism](#parallelism)  
 
 <a name="why"/>
@@ -518,6 +520,42 @@ Same as with `-debug`, after you're done iterating it's easy to get rid of the
 servers by performing one last run including the `-reuse` option, but leaving
 `-keep` out.
 
+
+<a name="passwords">
+Passwords and usernames
+-----------------------
+
+To keep things simple and convenient, Spread prepares systems to connect over SSH
+as the root user using a single password for all systems. Unless explicitly defined
+via the _-pass_ command line option, the password will be random and different on
+each run.
+
+Some of the supported backends may be unable to provide an image with the correct
+password in place, or with the correct SSH configuration for root to connect. In
+those cases, the system "username" and "password" fields may be used to tell
+Spread how to perform the inital SSH connection:
+
+_$PROJECT/spread.yaml_
+```
+backends:
+    qemu:
+        systems:
+            - debian-sid:
+                password: mypassword
+            - ubuntu-16.04:
+                username: ubuntu
+                password: ubuntu
+```
+
+If the password field is defined without a username, it specifies the password
+for root to connect over SSH.  If both username and password are provided,
+the credentials will be used to connect to the system and SSH access for root
+will be configured using sudo.
+
+In all cases the end result is the same: a system that root can connect to using
+the current session password.
+
+
 <a name="including"/>
 Including and excluding files
 -----------------------------
@@ -679,7 +717,6 @@ adt-buildvm-ubuntu-cloud
 When done move the downloaded image into the location described above.
 
 
-
 <a name="linode"/>
 Linode backend
 --------------
@@ -756,6 +793,50 @@ Some links to make your life easier:
 
   * [Users and permissions](https://manager.linode.com/user)
   * [API keys](https://manager.linode.com/profile/api)
+
+
+<a name="adhoc"/>
+AdHoc backend
+-------------
+
+The AdHoc backend allows scripting the procedure for allocating and deallocating
+systems directly in the body of the backend:
+
+_$PROJECT/spread.yaml_
+```
+backends:
+    adhoc:
+    	allocate: |
+            echo "Allocating $SPREAD_SYSTEM..."
+            echo disposable.machine.address:22
+        discard:
+            echo "Discarding $SPREAD_SYSTEM..."
+        systems:
+            - ubuntu-16.04
+```
+
+The only requirement is for the allocate script to print out the allocated
+system address as the last line. The following environment variables are
+available for the scripts:
+
+  * _SPREAD_BACKEND_ - Name of current backend.
+  * _SPREAD_SYSTEM_ - Name of the system being allocated.
+  * _SPREAD_PASSWORD_ - Password root will use to connect to the allocated system.
+    Not available if the system has a custom username or password defined.
+  * _SPREAD_SYSTEM_USERNAME_ - Username Spread will connect as for initial system setup.
+  * _SPREAD_SYSTEM_PASSWORD_ - Password Spread will connect as for initial system setup.
+  * _SPREAD_SYSTEM_ADDRESS_ - Address of the allocated system. Only available for discard.
+
+The system allocated by the allocate script must return a system that Spread can
+connect to over SSH. The system must be either setup to be accessible as root
+using the session password (random or specified with -pass), or be accessible
+with the username and password details specified under the system name
+(see [passwords and usernames](#passwords)).
+
+Note that the system returned by adhoc, although it can point to anything
+accessible over SSH, is supposed to be a disposable system oriented towards
+running the specified tasks only. It's atypical and dangerous for Spread to
+be run against important systems, as it will fiddle with their configuration.
 
 
 <a name="parallelism"/>

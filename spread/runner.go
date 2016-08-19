@@ -61,11 +61,13 @@ func Start(project *Project, options *Options) (*Runner, error) {
 	for bname, backend := range project.Backends {
 		switch backend.Type {
 		case "linode":
-			r.providers[bname] = Linode(backend)
+			r.providers[bname] = Linode(project, backend, options)
 		case "lxd":
-			r.providers[bname] = LXD(backend)
+			r.providers[bname] = LXD(project, backend, options)
 		case "qemu":
-			r.providers[bname] = QEMU(backend)
+			r.providers[bname] = QEMU(project, backend, options)
+		case "adhoc":
+			r.providers[bname] = AdHoc(project, backend, options)
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}
@@ -502,7 +504,7 @@ func (r *Runner) allocateServer(backend *Backend, system *System) *Client {
 Allocate:
 	for {
 		lerr := err
-		server, err = r.providers[backend.Name].Allocate(system, r.options.Password, r.options.Keep)
+		server, err = r.providers[backend.Name].Allocate(system)
 		if err == nil {
 			break
 		}
@@ -642,7 +644,7 @@ func (r *Runner) prepareReuse(addr string) {
 		printf("Cannot reuse %s: backend %q is missing", server, info.Backend)
 		return
 	}
-	server, err = provider.Reuse(data, r.options.Password)
+	server, err = provider.Reuse(data)
 	if err != nil {
 		printf("Cannot reuse %s on %s: %v", addr, info.Backend, err)
 		return

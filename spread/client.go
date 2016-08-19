@@ -541,6 +541,140 @@ func (c *Client) runCommand(session *ssh.Session, cmd string, stdout, stderr io.
 	panic("unreachable")
 }
 
+// runScript runs a local script in a polished manner.
+//
+// It's not used by the SSH client, but mimics its logic closely.
+func runScript(mode int, script, dir string, env *Environment, warnTimeout, killTimeout time.Duration) (stdout, stderr []byte, err error) {
+	script = strings.TrimSpace(script)
+	if len(script) == 0 {
+		return nil, nil, nil
+	}
+	script += "\n"
+
+	var buf bytes.Buffer
+	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
+	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
+
+	for _, k := range env.Keys() {
+		v := env.Get(k)
+		if len(v) == 0 || v[0] == '"' || v[0] == '\'' {
+			fmt.Fprintf(&buf, "export %s=%s\n", k, v)
+		} else {
+			fmt.Fprintf(&buf, "export %s=\"%s\"\n", k, v)
+		}
+	}
+
+	if mode == traceOutput {
+		// Don't trace environment variables so secrets don't leak.
+		fmt.Fprintf(&buf, "set -x\n")
+	}
+
+	fmt.Fprintf(&buf, "\n%s\n", script)
+
+	debugf("Running local script:\n-----\n%s\n------", buf.Bytes())
+
+	var outbuf, errbuf safeBuffer
+	cmd := exec.Command("/bin/bash", "-eu", "-")
+	cmd.Stdin = &buf
+	if dir != "" {
+		cmd.Dir = dir
+	}
+	switch mode {
+	case traceOutput, combinedOutput:
+		cmd.Stdout = &outbuf
+		cmd.Stderr = &outbuf
+	case splitOutput:
+		cmd.Stdout = &outbuf
+		cmd.Stderr = &errbuf
+	case shellOutput:
+		panic("internal error: runScript does not support shell mode")
+	default:
+		panic("internal error: invalid output mode")
+	}
+
+	err = cmd.Start()
+	if err != nil {
+		return nil, nil, fmt.Errorf("cannot start local command: %v", err)
+	}
+
+	done := make(chan error)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	if warnTimeout == 0 {
+		warnTimeout = defaultWarnTimeout
+	} else if warnTimeout == -1 {
+		warnTimeout = maxTimeout
+	}
+	if killTimeout == 0 {
+		killTimeout = defaultKillTimeout
+	} else if killTimeout == -1 {
+		killTimeout = maxTimeout
+	}
+
+	if killTimeout%warnTimeout == 0 {
+		// So message from kill won't race with warning.
+		killTimeout -= 1 * time.Second
+	}
+
+	var lastOut, lastErr int
+
+	kill := time.After(killTimeout)
+	warn := time.NewTicker(warnTimeout)
+	defer warn.Stop()
+Loop:
+	for {
+		select {
+		case err = <-done:
+			break Loop
+		case <-kill:
+			cmd.Process.Kill()
+			buf := &outbuf
+			if errbuf.Len() > 0 {
+				buf = &errbuf
+			}
+			buf.Write([]byte("\n<kill-timeout reached>"))
+			err = fmt.Errorf("kill-timeout reached")
+		case <-warn.C:
+			var output, errput []byte
+			output, lastOut = outbuf.Since(lastOut)
+			errput, lastErr = errbuf.Since(lastErr)
+			if len(output) == 0 || bytes.HasPrefix(errput, output) {
+				// Also avoids double (... same ...) message.
+				output = errput
+			} else if len(errput) > 0 {
+				output = append(output, '\n', '\n')
+				output = append(output, errput...)
+			}
+			if bytes.Equal(output, unchangedMarker) {
+				printf("WARNING: local script running late. Output unchanged.")
+			} else if len(output) == 0 {
+				printf("WARNING: local script running late. Output still empty.")
+			} else {
+				printf("WARNING: local script running late. Current output:\n-----\n%s\n-----", output)
+			}
+		}
+	}
+
+	if outbuf.Len() > 0 {
+		debugf("Output from running local script:\n-----\n%s\n-----", outbuf.Bytes())
+	}
+	if errbuf.Len() > 0 {
+		debugf("Error output from running script:\n-----\n%s\n-----", errbuf.Bytes())
+	}
+
+	if err != nil {
+		if errbuf.Len() > 0 {
+			err = outputErr(errbuf.Bytes(), err)
+		} else if outbuf.Len() > 0 {
+			err = outputErr(outbuf.Bytes(), err)
+		}
+		return nil, nil, err
+	}
+	return outbuf.Bytes(), errbuf.Bytes(), nil
+}
+
 type safeBuffer struct {
 	buf bytes.Buffer
 	mu  sync.Mutex

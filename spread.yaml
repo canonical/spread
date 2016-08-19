@@ -1,0 +1,15 @@
+project: spread
+
+environment:
+  TEST_RUN_PATH: /remote
+  TEST_RUN_SUB_PATH: $TEST_RUN_PATH/path
+  
+backends:
+    lxd:
+        systems: [ubuntu-16.04]
+
+suites:
+    tests/:
+        summary: Example tests
+
+path: /remote/path

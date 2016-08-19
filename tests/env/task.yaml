@@ -1,0 +1,19 @@
+summary: Demonstrate spread env handling
+environment:
+    TOP_DIR: /top
+    SUB_DIR: $TOP_DIR/sub
+    HOSTENV: $(HOST:env)
+execute: |
+    echo "Show that the environment from the task works"
+    if [ "$SUB_DIR" != "/top/sub" ]; then
+        echo "The expected SUB environment is not correct"
+        exit 1
+    fi
+
+    echo "Show that the environment from spread.yaml is also available"
+    if [ "$TEST_RUN_SUB_PATH" != "/remote/path" ]; then
+        echo "The expected $TEST_RUN_PATH from spread.yaml is not correct"
+    fi
+
+    echo "We can see the host env"
+    echo $HOSTENV

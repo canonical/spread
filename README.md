@@ -22,7 +22,7 @@ Convenient full-system test (task) distribution
 [LXD backend](#lxd)  
 [QEMU backend](#qemu)  
 [Linode backend](#linode)  
-[AdHoc](#adhoc)  
+[AdHoc backend](#adhoc)  
 [More on parallelism](#parallelism)  
 
 <a name="why"/>
@@ -785,9 +785,8 @@ backends:
             - ubuntu-16.04
 ```
 
-The only requirement is for the allocate script to print out the allocated
-system address as the last line. The following environment variables are
-available for the scripts:
+The allocate script must print out the allocated system address as the last line.
+The following environment variables are available for the scripts to do their job:
 
   * _SPREAD_BACKEND_ - Name of current backend.
   * _SPREAD_SYSTEM_ - Name of the system being allocated.
@@ -827,7 +826,7 @@ backends:
         systems:
             - ubuntu-14.04
             - ubuntu-16.04:
-	        workers: 2
+                workers: 2
 ```
 
 This will cause three different machines to be allocated for running tasks

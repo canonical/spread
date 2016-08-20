@@ -423,19 +423,25 @@ Typically only a few of those script slots will be used.
 Rebooting
 ---------
 
-Scripts can reboot the system at any point by simply including a comment
-inline at the exact point the reboot should happen:
+Scripts can reboot the system at any point by simply running the REBOOT
+function at the exact point the reboot should happen. The system will
+then reboot and the same script will be re-executed with the
+`$SPREAD_REBOOT` environment variable set to the number of times the
+script has rebooted the system.
 
 _$PROJECT/examples/hello/task.yaml_
 ```
 execute: |
-    echo "Before reboot"
-    # REBOOT
+    if [ $SPREAD_REBOOT = 0 ]; then
+        echo "Before reboot"
+        REBOOT
+    fi
     echo "After reboot"
 ```
 
-The system will reboot at that point and the script will continue where
-it left off once the system is back up.
+Alternatively the REBOOT function may also be called with a single
+parameter which will be used as the value of `$SPREAD_REBOOT` after
+the system reboots, instead of the count.
 
 
 <a name="timeouts"/>

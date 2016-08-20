@@ -582,7 +582,7 @@ Dial:
 			return nil
 		}
 		if username != "root" {
-			printf("Re-connecting as root...")
+			printf("Reconnecting to %s as root...", server)
 			client.Close()
 			username = "root"
 			password = r.options.Password

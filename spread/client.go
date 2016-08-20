@@ -14,6 +14,7 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 	"net"
 	"regexp"
+	"strconv"
 )
 
 type Client struct {
@@ -46,15 +47,17 @@ func Dial(server Server, username, password string) (*Client, error) {
 		config: config,
 		addr:   addr,
 	}
+	client.SetWarnTimeout(0)
+	client.SetKillTimeout(0)
 	return client, nil
 }
 
 func (c *Client) dialOnReboot() error {
 	// First wait until SSH isn't working anymore.
-	var timeout = time.After(1 * time.Minute)
-	var relog = time.NewTicker(30 * time.Second)
+	timeout := time.After(c.killTimeout)
+	relog := time.NewTicker(c.warnTimeout)
 	defer relog.Stop()
-	var retry = time.NewTicker(1 * time.Second)
+	retry := time.NewTicker(1 * time.Second)
 	defer retry.Stop()
 
 	waitConfig := *c.config
@@ -72,12 +75,11 @@ func (c *Client) dialOnReboot() error {
 		case <-relog.C:
 			printf("Reboot of %s is taking a while...", c.server)
 		case <-timeout:
-			return fmt.Errorf("reboot request on %s timed out", c.server)
+			return fmt.Errorf("kill-timeout reached, %s did not reboot after request", c.server)
 		}
 	}
 
 	// Then wait for it to come back up.
-	timeout = time.After(5 * time.Minute)
 	for {
 		sshc, err := ssh.Dial("tcp", c.addr, c.config)
 		if err == nil {
@@ -90,7 +92,7 @@ func (c *Client) dialOnReboot() error {
 		case <-relog.C:
 			printf("Reboot of %s is taking a while...", c.server)
 		case <-timeout:
-			return fmt.Errorf("cannot reconnect to %s after reboot: %v", c.server, err)
+			return fmt.Errorf("kill-timeout reached, cannot reconnect to %s after reboot: %v", c.server, err)
 		}
 	}
 }
@@ -103,12 +105,32 @@ func (c *Client) Server() Server {
 	return c.server
 }
 
-func (c *Client) SetWarnTimeout(warn time.Duration) {
-	c.warnTimeout = warn
+func (c *Client) SetWarnTimeout(timeout time.Duration) {
+	if timeout == 0 {
+		timeout = defaultWarnTimeout
+	} else if timeout == -1 {
+		timeout = maxTimeout
+	}
+	c.warnTimeout = timeout
+
+	if c.killTimeout%c.warnTimeout == 0 {
+		// So message from kill won't race with warning.
+		c.killTimeout -= 1 * time.Second
+	}
 }
 
-func (c *Client) SetKillTimeout(warn time.Duration) {
-	c.killTimeout = warn
+func (c *Client) SetKillTimeout(timeout time.Duration) {
+	if timeout == 0 {
+		timeout = defaultKillTimeout
+	} else if timeout == -1 {
+		timeout = maxTimeout
+	}
+	c.killTimeout = timeout
+
+	if c.killTimeout%c.warnTimeout == 0 {
+		// So message from kill won't race with warning.
+		c.killTimeout -= 1 * time.Second
+	}
 }
 
 func (c *Client) WriteFile(path string, data []byte) error {
@@ -203,37 +225,59 @@ func (c *Client) Shell(script string, dir string, env *Environment) error {
 	return err
 }
 
-var rebootDirective = regexp.MustCompile("(?m)^# *REBOOT *$")
+type rebootError struct {
+	Key string
+}
+
+func (e *rebootError) Error() string { return "reboot requested" }
+
+const maxReboots = 10
 
 func (c *Client) run(script string, dir string, env *Environment, mode int) (output []byte, err error) {
-	scripts := rebootDirective.Split(script, -1)
-	output, err = c.runPart(scripts[0], dir, env, mode, nil)
-	if err != nil || len(scripts) == 1 {
-		return output, err
+	if env == nil {
+		env = NewEnvironment()
 	}
+	rebootKey := ""
+	for reboot := 0; ; reboot++ {
+		if rebootKey == "" {
+			rebootKey = strconv.Itoa(reboot)
+		}
+		env.Set("SPREAD_REBOOT", rebootKey)
+		output, err = c.runPart(script, dir, env, mode, output)
+		rerr, ok := err.(*rebootError)
+		if !ok {
+			return output, err
+		}
+		if reboot > maxReboots {
+			return nil, fmt.Errorf("%s rebooted more than %d times", c.server)
+		}
 
-	for _, script := range scripts[1:] {
-		output = append(output, "\n<REBOOTED>\n\n"...)
+		printf("Rebooting %s as requested...", c.server)
 
-		err := c.Run("reboot &\nsleep 60", "", nil)
+		rebootKey = rerr.Key
+		output = append(output, '\n')
+
+		timedout := time.After(c.killTimeout)
+		err := c.Run(fmt.Sprintf("reboot &\nsleep %.0f", c.killTimeout.Seconds()), "", nil)
 		if err != nil {
 			err = c.Run("echo should-have-disconnected", "", nil)
 		}
 		if err == nil {
-			return nil, fmt.Errorf("reboot request on %s timed out", c.server)
+			select {
+			case <-timedout:
+				return nil, fmt.Errorf("kill-timeout reached while waiting for %s to reboot", c.server)
+			default:
+			}
+			return nil, fmt.Errorf("reboot request on %s failed", c.server)
 		}
-
 		if err := c.dialOnReboot(); err != nil {
 			return nil, err
 		}
-
-		output, err = c.runPart(script, dir, env, mode, output)
-		if err != nil {
-			return nil, err
-		}
 	}
-	return output, nil
+	panic("unreachable")
 }
+
+var rebootExp = regexp.MustCompile("^<REBOOT(?: (.*))?>$")
 
 func (c *Client) runPart(script string, dir string, env *Environment, mode int, previous []byte) (output []byte, err error) {
 	script = strings.TrimSpace(script)
@@ -248,6 +292,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode int, 
 	defer session.Close()
 
 	var buf bytes.Buffer
+	buf.WriteString("REBOOT() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<REBOOT>' || echo \"<REBOOT $1>\"; exit 213; }\n")
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
 
@@ -340,6 +385,13 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode int, 
 	}
 	if stderr.Len() > 0 {
 		debugf("Error output from running script on %s:\n-----\n%s\n-----", c.server, stderr.Bytes())
+	}
+
+	if e, ok := err.(*ssh.ExitError); ok && e.ExitStatus() == 213 {
+		lines := bytes.Split(bytes.TrimSpace(stdout.Bytes()), []byte{'\n'})
+		if match := rebootExp.FindSubmatch(lines[len(lines)-1]); len(match) > 0 {
+			return append(previous, stdout.Bytes()...), &rebootError{string(match[1])}
+		}
 	}
 
 	if err != nil {
@@ -480,28 +532,10 @@ func (c *Client) runCommand(session *ssh.Session, cmd string, stdout, stderr io.
 		done <- session.Wait()
 	}()
 
-	warnTimeout := c.warnTimeout
-	killTimeout := c.killTimeout
-	if warnTimeout == 0 {
-		warnTimeout = defaultWarnTimeout
-	} else if warnTimeout == -1 {
-		warnTimeout = maxTimeout
-	}
-	if killTimeout == 0 {
-		killTimeout = defaultKillTimeout
-	} else if killTimeout == -1 {
-		killTimeout = maxTimeout
-	}
-
-	if killTimeout%warnTimeout == 0 {
-		// So message from kill won't race with warning.
-		killTimeout -= 1 * time.Second
-	}
-
 	var lastOut, lastErr int
 
-	kill := time.After(killTimeout)
-	warn := time.NewTicker(warnTimeout)
+	kill := time.After(c.killTimeout)
+	warn := time.NewTicker(c.warnTimeout)
 	defer warn.Stop()
 	for {
 		select {

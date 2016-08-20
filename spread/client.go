@@ -312,9 +312,13 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode int, 
 		fmt.Fprintf(&buf, "set -x\n")
 	}
 
-	// Prevent any commands attempting to read from stdin to consume
-	// the shell script itself being sent to bash via its stdin.
-	fmt.Fprintf(&buf, "\n(\n%s\n) < /dev/null\n", script)
+	if mode == shellOutput {
+		fmt.Fprintf(&buf, "\n%s\n", script)
+	} else {
+		// Prevent any commands attempting to read from stdin to consume
+		// the shell script itself being sent to bash via its stdin.
+		fmt.Fprintf(&buf, "\n(\n%s\n) < /dev/null\n", script)
+	}
 
 	errch := make(chan error, 2)
 	if mode == shellOutput {

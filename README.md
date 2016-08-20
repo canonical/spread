@@ -8,7 +8,6 @@ Convenient full-system test (task) distribution
 [The cascading matrix](#matrix)  
 [Hello world](#hello-world)  
 [Environments](#environments)  
-[Environment interpolation](#interpolation)  
 [Variants](#variants)  
 [Blacklisting and whitelisting](#blacklisting)  
 [Preparing and restoring](#preparing)  
@@ -163,13 +162,21 @@ _$PROJECT/examples/hello/task.yaml_
 summary: Greet the planet
 environment:
     SUBJECT: world 
+    GREETING: Hello $SUBJECT!
 execute: |
-    echo "Hello $SUBJECT!"
+    echo "$GREETING"
     exit 1
 ```
 
-And we could set a default for this same environment variable by defining it at
-the suite level:
+The values defined for those variables are evaluated at the remote system and
+may contain references to other variables as well as commands using the typical
+`$(...)` shell syntax. As a special case, executing such commands locally at
+the host running Spread is also possible via the syntax `$(HOST:...)`. This is
+handy to feed local details such as API keys out of files or local environment
+variables as was done on the Linode example.
+
+Common variables and defaults are possible by defining them in the suite
+or earlier:
 
 _$PROJECT/spread.yaml_
 ```
@@ -186,51 +193,8 @@ The cascading happens in the following order:
 
  * _Project => Backend => System => Suite => Task_
 
-All of these can have an equivalent environment field.
-
-<a name="interpolation"/>
-Environment interpolation
--------------------------
-
-In the example above, the script was delivered as-is and the environment variables were
-evaluated by the remote server using the environment defined by Spread for the script
-execution. As an alternative, interpolation may also happen using the environment defined
-inside Spread itself by refering to variables as `$[NAME]`. This adds some convenience,
-specially when playing with cascading, and ensures the values reaching the server
-already hold their final value.
-
-Even trickier cases may be handled by shelling out into the local system for obtaining
-variable values or parts of them. This is done with the more typical `$(cmdline)` form.
-You may have noticed this being used before, when defining the Linode API key. We don't
-want such a key hardcoded on a public text file, so we can dig into the local environment
-for finding it out.
-
-For instance, an alternative spelling for the previous example might be:
-
-_$PROJECT/spread.yaml_
-```
-(...)
-
-suites:
-    examples/:
-        summary: Simple examples
-        environment:
-            GREETING: "Hello $[SUBJECT]!"
-```
-
-_$PROJECT/examples/hello/task.yaml_
-```
-summary: Greet the planet
-environment:
-    SUBJECT: $(echo world)
-execute: |
-    echo "$[GREETING]"
-    exit 1
-```
-
-Note that the evaluation of such variables actually happens after cascading
-takes place, so it's okay to make use of variables still undefined. Errors are
-caught and reported.
+All of these can have an equivalent environment field and their variables will
+be ordered accordingly on executed scripts.
 
 
 <a name="variants"/>

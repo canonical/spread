@@ -435,6 +435,10 @@ func Load(path string) (*Project, error) {
 		if !validName.MatchString(bname) {
 			return nil, fmt.Errorf("invalid backend name: %q", bname)
 		}
+		if backend == nil {
+			delete(project.Backends, bname)
+			continue
+		}
 		backend.Name = bname
 		if backend.Type == "" {
 			backend.Type = bname

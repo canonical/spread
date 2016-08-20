@@ -266,7 +266,10 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode int, 
 		// Don't trace environment variables so secrets don't leak.
 		fmt.Fprintf(&buf, "set -x\n")
 	}
-	fmt.Fprintf(&buf, "\n%s\n", script)
+
+	// Prevent any commands attempting to read from stdin to consume
+	// the shell script itself being sent to bash via its stdin.
+	fmt.Fprintf(&buf, "\n(\n%s\n) < /dev/null\n", script)
 
 	errch := make(chan error, 2)
 	if mode == shellOutput {
@@ -543,7 +546,7 @@ func (c *Client) runCommand(session *ssh.Session, cmd string, stdout, stderr io.
 
 // runScript runs a local script in a polished manner.
 //
-// It's not used by the SSH client, but mimics its logic closely.
+// It's not used by the SSH client, but mimics the Client.runPart+runCommand closely.
 func runScript(mode int, script, dir string, env *Environment, warnTimeout, killTimeout time.Duration) (stdout, stderr []byte, err error) {
 	script = strings.TrimSpace(script)
 	if len(script) == 0 {
@@ -569,7 +572,9 @@ func runScript(mode int, script, dir string, env *Environment, warnTimeout, kill
 		fmt.Fprintf(&buf, "set -x\n")
 	}
 
-	fmt.Fprintf(&buf, "\n%s\n", script)
+	// Prevent any commands attempting to read from stdin to consume
+	// the shell script itself being sent to bash via its stdin.
+	fmt.Fprintf(&buf, "\n(\n%s\n) < /dev/null\n", script)
 
 	debugf("Running local script:\n-----\n%s\n------", buf.Bytes())
 
@@ -735,6 +740,10 @@ func outputErr(output []byte, err error) error {
 }
 
 func waitPortUp(what fmt.Stringer, address string) error {
+	if !strings.Contains(address, ":") {
+		address += ":22"
+	}
+
 	var timeout = time.After(5 * time.Minute)
 	var relog = time.NewTicker(15 * time.Second)
 	defer relog.Stop()

@@ -537,6 +537,9 @@ func Load(path string) (*Project, error) {
 		suite.Tasks = make(map[string]*Task)
 		for _, tname := range tnames {
 			tfilename := filepath.Join(suite.Path, tname, "task.yaml")
+			if fi, _ := os.Stat(filepath.Dir(tfilename)); !fi.IsDir() {
+				continue
+			}
 			tdata, err := ioutil.ReadFile(tfilename)
 			if os.IsNotExist(err) {
 				debugf("Skipping %s/%s: task.yaml missing", sname, tname)

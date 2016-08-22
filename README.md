@@ -8,7 +8,6 @@ Convenient full-system test (task) distribution
 [The cascading matrix](#matrix)  
 [Hello world](#hello-world)  
 [Environments](#environments)  
-[Environment interpolation](#interpolation)  
 [Variants](#variants)  
 [Blacklisting and whitelisting](#blacklisting)  
 [Preparing and restoring](#preparing)  
@@ -17,11 +16,13 @@ Convenient full-system test (task) distribution
 [Fast iterations with reuse](#reuse)  
 [Debugging](#debugging)  
 [Keeping servers](#keeping)  
+[Passwords and usernames](#passwords)  
 [Including and excluding files](#including)  
 [Selecting which tasks to run](#selecting)  
 [LXD backend](#lxd)  
 [QEMU backend](#qemu)  
 [Linode backend](#linode)  
+[AdHoc backend](#adhoc)  
 [More on parallelism](#parallelism)  
 
 <a name="why"/>
@@ -161,13 +162,21 @@ _$PROJECT/examples/hello/task.yaml_
 summary: Greet the planet
 environment:
     SUBJECT: world 
+    GREETING: Hello $SUBJECT!
 execute: |
-    echo "Hello $SUBJECT!"
+    echo "$GREETING"
     exit 1
 ```
 
-And we could set a default for this same environment variable by defining it at
-the suite level:
+The values defined for those variables are evaluated at the remote system and
+may contain references to other variables as well as commands using the typical
+`$(...)` shell syntax. As a special case, executing such commands locally at
+the host running Spread is also possible via the syntax `$(HOST:...)`. This is
+handy to feed local details such as API keys out of files or local environment
+variables as was done on the Linode example.
+
+Common variables and defaults are possible by defining them in the suite
+or earlier:
 
 _$PROJECT/spread.yaml_
 ```
@@ -184,51 +193,8 @@ The cascading happens in the following order:
 
  * _Project => Backend => System => Suite => Task_
 
-All of these can have an equivalent environment field.
-
-<a name="interpolation"/>
-Environment interpolation
--------------------------
-
-In the example above, the script was delivered as-is and the environment variables were
-evaluated by the remote server using the environment defined by Spread for the script
-execution. As an alternative, interpolation may also happen using the environment defined
-inside Spread itself by refering to variables as `$[NAME]`. This adds some convenience,
-specially when playing with cascading, and ensures the values reaching the server
-already hold their final value.
-
-Even trickier cases may be handled by shelling out into the local system for obtaining
-variable values or parts of them. This is done with the more typical `$(cmdline)` form.
-You may have noticed this being used before, when defining the Linode API key. We don't
-want such a key hardcoded on a public text file, so we can dig into the local environment
-for finding it out.
-
-For instance, an alternative spelling for the previous example might be:
-
-_$PROJECT/spread.yaml_
-```
-(...)
-
-suites:
-    examples/:
-        summary: Simple examples
-        environment:
-            GREETING: "Hello $[SUBJECT]!"
-```
-
-_$PROJECT/examples/hello/task.yaml_
-```
-summary: Greet the planet
-environment:
-    SUBJECT: $(echo world)
-execute: |
-    echo "$[GREETING]"
-    exit 1
-```
-
-Note that the evaluation of such variables actually happens after cascading
-takes place, so it's okay to make use of variables still undefined. Errors are
-caught and reported.
+All of these can have an equivalent environment field and their variables will
+be ordered accordingly on executed scripts.
 
 
 <a name="variants"/>
@@ -421,19 +387,25 @@ Typically only a few of those script slots will be used.
 Rebooting
 ---------
 
-Scripts can reboot the system at any point by simply including a comment
-inline at the exact point the reboot should happen:
+Scripts can reboot the system at any point by simply running the REBOOT
+function at the exact point the reboot should happen. The system will
+then reboot and the same script will be re-executed with the
+`$SPREAD_REBOOT` environment variable set to the number of times the
+script has rebooted the system.
 
 _$PROJECT/examples/hello/task.yaml_
 ```
 execute: |
-    echo "Before reboot"
-    # REBOOT
+    if [ $SPREAD_REBOOT = 0 ]; then
+        echo "Before reboot"
+        REBOOT
+    fi
     echo "After reboot"
 ```
 
-The system will reboot at that point and the script will continue where
-it left off once the system is back up.
+Alternatively the REBOOT function may also be called with a single
+parameter which will be used as the value of `$SPREAD_REBOOT` after
+the system reboots, instead of the count.
 
 
 <a name="timeouts"/>
@@ -517,6 +489,42 @@ correct and more resilient.
 Same as with `-debug`, after you're done iterating it's easy to get rid of the
 servers by performing one last run including the `-reuse` option, but leaving
 `-keep` out.
+
+
+<a name="passwords">
+Passwords and usernames
+-----------------------
+
+To keep things simple and convenient, Spread prepares systems to connect over SSH
+as the root user using a single password for all systems. Unless explicitly defined
+via the _-pass_ command line option, the password will be random and different on
+each run.
+
+Some of the supported backends may be unable to provide an image with the correct
+password in place, or with the correct SSH configuration for root to connect. In
+those cases, the system "username" and "password" fields may be used to tell
+Spread how to perform the inital SSH connection:
+
+_$PROJECT/spread.yaml_
+```
+backends:
+    qemu:
+        systems:
+            - debian-sid:
+                password: mypassword
+            - ubuntu-16.04:
+                username: ubuntu
+                password: ubuntu
+```
+
+If the password field is defined without a username, it specifies the password
+for root to connect over SSH.  If both username and password are provided,
+the credentials will be used to connect to the system and SSH access for root
+will be configured using sudo.
+
+In all cases the end result is the same: a system that root can connect to using
+the current session password.
+
 
 <a name="including"/>
 Including and excluding files
@@ -679,7 +687,6 @@ adt-buildvm-ubuntu-cloud
 When done move the downloaded image into the location described above.
 
 
-
 <a name="linode"/>
 Linode backend
 --------------
@@ -758,6 +765,49 @@ Some links to make your life easier:
   * [API keys](https://manager.linode.com/profile/api)
 
 
+<a name="adhoc"/>
+AdHoc backend
+-------------
+
+The AdHoc backend allows scripting the procedure for allocating and deallocating
+systems directly in the body of the backend:
+
+_$PROJECT/spread.yaml_
+```
+backends:
+    adhoc:
+    	allocate: |
+            echo "Allocating $SPREAD_SYSTEM..."
+            echo disposable.machine.address:22
+        discard:
+            echo "Discarding $SPREAD_SYSTEM..."
+        systems:
+            - ubuntu-16.04
+```
+
+The allocate script must print out the allocated system address as the last line.
+The following environment variables are available for the scripts to do their job:
+
+  * _SPREAD_BACKEND_ - Name of current backend.
+  * _SPREAD_SYSTEM_ - Name of the system being allocated.
+  * _SPREAD_PASSWORD_ - Password root will use to connect to the allocated system.
+    Not available if the system has a custom username or password defined.
+  * _SPREAD_SYSTEM_USERNAME_ - Username Spread will connect as for initial system setup.
+  * _SPREAD_SYSTEM_PASSWORD_ - Password Spread will connect as for initial system setup.
+  * _SPREAD_SYSTEM_ADDRESS_ - Address of the allocated system. Only available for discard.
+
+The system allocated by the allocate script must return a system that Spread can
+connect to over SSH. The system must be either setup to be accessible as root
+using the session password (random or specified with -pass), or be accessible
+with the username and password details specified under the system name
+(see [passwords and usernames](#passwords)).
+
+Note that the system returned by adhoc, although it can point to anything
+accessible over SSH, is supposed to be a disposable system oriented towards
+running the specified tasks only. It's atypical and dangerous for Spread to
+be run against important systems, as it will fiddle with their configuration.
+
+
 <a name="parallelism"/>
 More on parallelism
 -------------------
@@ -776,7 +826,7 @@ backends:
         systems:
             - ubuntu-14.04
             - ubuntu-16.04:
-	        workers: 2
+                workers: 2
 ```
 
 This will cause three different machines to be allocated for running tasks

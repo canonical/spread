@@ -1,0 +1,14 @@
+summary: Demonstrate spread reboot handling
+execute: |
+    before_reboot_tasks() {
+        echo "Before reboot"
+        REBOOT
+    }
+    after_reboot_tasks() {
+        echo "After reboot"
+    }
+    if [ "$SPREAD_REBOOT" = 0 ]; then
+         before_reboot_tasks
+    elif [ "$SPREAD_REBOOT" = 1 ]; then
+         after_reboot_tasks
+    fi

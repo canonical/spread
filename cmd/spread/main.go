@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/kr/pretty"
+	"github.com/niemeyer/pretty"
 	"github.com/snapcore/spread/spread"
 	"time"
 )

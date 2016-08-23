@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kr/pretty"
+	"github.com/niemeyer/pretty"
 	"gopkg.in/yaml.v2"
 )
 

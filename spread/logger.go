@@ -2,9 +2,10 @@ package spread
 
 import (
 	"bytes"
-	"github.com/kr/pretty"
 	stdlog "log"
 	"sync"
+
+	"github.com/niemeyer/pretty"
 )
 
 // Logger defines the logger where messages should be sent to.

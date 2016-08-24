@@ -208,7 +208,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		return true
 	}
 	contextStr := job.StringFor(context)
-	logf("%s %s...", strings.Title(verb), contextStr)
+	logf("%s %s... (%d jobs left)", strings.Title(verb), contextStr, r.pendingJobs())
 	var dir string
 	if context == job.Backend || context == job.Project {
 		dir = r.project.RemotePath
@@ -383,6 +383,16 @@ func (r *Runner) worker(backend *Backend, system *System) {
 		printf("Discarding %s...", server)
 		r.discardServer(server)
 	}
+}
+
+func (r *Runner) pendingJobs() int {
+	n := 0
+	for _, job := range r.pending {
+		if job != nil {
+			n++
+		}
+	}
+	return n
 }
 
 func (r *Runner) job(backend *Backend, system *System, suite *Suite) *Job {

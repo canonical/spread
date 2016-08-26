@@ -557,7 +557,8 @@ func (p *linodeProvider) job(s *linodeServer, jobID int) (*linodeJob, error) {
 func (p *linodeProvider) waitJob(s *linodeServer, verb string, jobID int) (*linodeJob, error) {
 	logf("Waiting for %s to %s...", s, verb)
 
-	timeout := time.After(1 * time.Minute)
+	// Used to be 1 min up to Aug 2016, but disk allocation timeouts were frequently observed.
+	timeout := time.After(3 * time.Minute)
 	retry := time.NewTicker(5 * time.Second)
 	defer retry.Stop()
 

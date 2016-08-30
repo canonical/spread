@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/niemeyer/pretty"
+
+	"gopkg.in/tomb.v2"
 	"gopkg.in/yaml.v2"
 )
 
@@ -48,6 +50,8 @@ var client = &http.Client{}
 type linodeServer struct {
 	p *linodeProvider
 	d linodeServerData
+
+	watchTomb tomb.Tomb
 }
 
 type linodeServerData struct {
@@ -90,6 +94,35 @@ func (s *linodeServer) ReuseData() []byte {
 	return data
 }
 
+func (s *linodeServer) watch() {
+	s.watchTomb.Go(s.watchLoop)
+}
+
+func (s *linodeServer) watchLoop() error {
+	retry := time.NewTicker(5 * time.Second)
+	defer retry.Stop()
+	for s.watchTomb.Alive() {
+		select {
+		case <-s.watchTomb.Dying():
+			return nil
+		case <-retry.C:
+			status, err := s.p.status(s)
+			if err == nil && status == linodePoweredOff {
+				found, _, _ := s.p.hasActiveJob(s, "linode.boot")
+				if found {
+					continue
+				}
+				printf("Found %s powered off. Starting it again.", s)
+				_, err := s.p.boot(s, s.d.Config)
+				if err != nil {
+					printf("Cannot boot %s: %s", s, err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
 const (
 	linodeBeingCreated = -1
 	linodeBrandNew     = 0
@@ -128,6 +161,7 @@ func (p *linodeProvider) Reuse(data []byte) (Server, error) {
 		return nil, fmt.Errorf("cannot unmarshal Linode reuse data: %v", err)
 	}
 	s.p = p
+	s.watch()
 	return s, nil
 }
 
@@ -166,18 +200,28 @@ func (p *linodeProvider) Allocate(system *System) (Server, error) {
 		if (s.d.Status != linodeBrandNew && s.d.Status != linodePoweredOff) || !p.reserve(s) {
 			continue
 		}
-		err := p.setup(s, system)
+		found, latest, err := p.hasActiveJob(s, "")
+		if found || err != nil {
+			if err != nil {
+				printf("Cannot check %s for active jobs: %v", s, err)
+			}
+			continue
+		}
+		err = p.setup(s, system, latest)
 		if err != nil {
 			p.unreserve(s)
 			return nil, err
 		}
 		printf("Allocated %s.", s)
+		s.watch()
 		return s, nil
 	}
 	return nil, fmt.Errorf("no powered off servers in Linode account")
 }
 
 func (s *linodeServer) Discard() error {
+	s.watchTomb.Kill(nil)
+	s.watchTomb.Wait()
 	_, err1 := s.p.shutdown(s)
 	err2 := s.p.removeConfig(s, s.d.Config)
 	err3 := s.p.removeDisks(s, s.d.Root, s.d.Swap)
@@ -230,7 +274,7 @@ func (p *linodeProvider) status(s *linodeServer) (int, error) {
 	return result.Data[0].Status, nil
 }
 
-func (p *linodeProvider) setup(s *linodeServer, system *System) error {
+func (p *linodeProvider) setup(s *linodeServer, system *System, latestJob time.Time) error {
 	s.p = p
 	s.d.System = system.Name
 	s.d.Backend = p.backend.Name
@@ -252,14 +296,14 @@ func (p *linodeProvider) setup(s *linodeServer, system *System) error {
 		return err
 	} else if status != linodeBrandNew && status != linodePoweredOff {
 		p.removeDisks(s, s.d.Root, s.d.Swap)
-		return fmt.Errorf("server %s concurrently allocated, giving up on it.", s)
+		return fmt.Errorf("server %s concurrently allocated, giving up on it", s)
 	}
 	if conflict, err := p.hasRecentDisk(s, s.d.Root); err != nil {
 		p.removeDisks(s, s.d.Root, s.d.Swap)
 		return err
 	} else if conflict {
 		p.removeDisks(s, s.d.Root, s.d.Swap)
-		return fmt.Errorf("server %s concurrently allocated, giving up on it.", s)
+		return fmt.Errorf("server %s concurrently allocated, giving up on it", s)
 	}
 
 	ip, err := p.ip(s)
@@ -274,6 +318,16 @@ func (p *linodeProvider) setup(s *linodeServer, system *System) error {
 		return err
 	}
 	s.d.Config = configID
+
+	found, err := p.hasRecentBoot(s, latestJob)
+	if found || err != nil {
+		p.removeConfig(s, s.d.Config)
+		p.removeDisks(s, s.d.Root, s.d.Swap)
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("server %s has external boot activity, giving up on it", s)
+	}
 
 	bootJob, err := p.boot(s, configID)
 	if err == nil {
@@ -519,6 +573,10 @@ type linodeJob struct {
 	HostSuccess interface{} `json:"HOST_SUCCESS"`
 }
 
+func (job *linodeJob) Entered() time.Time {
+	return parseLinodeDT(job.EnteredDT)
+}
+
 func (job *linodeJob) err() error {
 	if job.HostSuccess == 1.0 || job.HostFinishDT == "" {
 		return nil
@@ -532,6 +590,22 @@ func (job *linodeJob) err() error {
 type linodeJobResult struct {
 	linodeResult
 	Data []*linodeJob `json:"DATA"`
+}
+
+func (p *linodeProvider) jobs(s *linodeServer) ([]*linodeJob, error) {
+	params := linodeParams{
+		"api_action": "linode.job.list",
+		"LinodeID":   s.d.ID,
+	}
+	var result linodeJobResult
+	err := p.do(params, &result)
+	if err == nil {
+		err = result.err()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("cannot get job details for %s: %v", s, err)
+	}
+	return result.Data, nil
 }
 
 func (p *linodeProvider) job(s *linodeServer, jobID int) (*linodeJob, error) {
@@ -590,6 +664,47 @@ func (p *linodeProvider) waitJob(s *linodeServer, verb string, jobID int) (*lino
 		}
 	}
 	panic("unreachable")
+}
+
+func (p *linodeProvider) hasActiveJob(s *linodeServer, action string) (found bool, latest time.Time, err error) {
+	kind := ""
+	if action != "" {
+		kind += " " + action
+	}
+	debugf("Checking %s for active%s jobs...", s, kind)
+	jobs, err := p.jobs(s)
+	if err != nil {
+		return false, time.Time{}, err
+	}
+	if len(jobs) > 0 {
+		latest = jobs[0].Entered()
+	}
+	for _, job := range jobs {
+		if job.HostFinishDT == "" && (action == "" || job.Action == action) {
+			return true, latest, nil
+		}
+	}
+	return false, latest, nil
+}
+
+func (p *linodeProvider) hasRecentBoot(s *linodeServer, since time.Time) (found bool, err error) {
+	debugf("Checking %s for recent boots...", s)
+	jobs, err := p.jobs(s)
+	if err != nil {
+		return false, fmt.Errorf("cannot check %s for recent boots: %v", s, err)
+	}
+	for _, job := range jobs {
+		if job.Action == "linode.shutdown" && job.HostFinishDT != "" {
+			return false, nil
+		}
+		if !job.Entered().After(since) {
+			return false, nil
+		}
+		if job.Action == "linode.boot" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 type linodeDisk struct {

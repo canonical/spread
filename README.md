@@ -443,7 +443,7 @@ Once you're done with the servers, throw them away using the same `-reuse`
 option and appending `-discard`. Reused systems will remain running for as long
 as desired by default, which may run the pool out of machines. With
 [Linode](#linode) you may define the `halt-timeout` option to allow Spread
-itself to garbage collect those entries.
+itself to shutdown those systems and use them, without destroying the data.
 
 
 <a name="debugging"/>
@@ -757,7 +757,7 @@ kernel.
 
 [Reused systems](#reuse) will remain running for as long as desired by default,
 which may run the pool out of machines. Define the `halt-timeout` option to allow
-Spread itself to garbage collect those entries:
+Spread itself to shutdown those systems and use them, without destroying the data:
 
 _$PROJECT/spread.yaml_
 ```

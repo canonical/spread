@@ -47,7 +47,11 @@ type Runner struct {
 }
 
 func Start(project *Project, options *Options) (*Runner, error) {
-	debugf("Starting runner with passsword %q.", options.Password)
+	if options.Keep {
+		debugf("Reuse servers with: -pass %s -reuse=<addr>[,<addr>] -keep", options.Password)
+	} else {
+		debugf("Starting runner with password %q.", options.Password)
+	}
 
 	r := &Runner{
 		project:   project,
@@ -597,7 +601,7 @@ Dial:
 		return nil
 	}
 
-	printf("Connected to %s.", server)
+	printf("Connected to %s at %s.", server, server.Address())
 	r.servers = append(r.servers, server)
 	return client
 }

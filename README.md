@@ -439,8 +439,11 @@ alone and reused on the next run. That said, the `spread.yaml` and `task.yaml`
 content considered is actually the one in the local machine, so any updates to
 those will always be taken in account on re-runs.
 
-Once you're done with the servers, throw them using the same `-reuse` option
-and appending `-discard`.
+Once you're done with the servers, throw them away using the same `-reuse`
+option and appending `-discard`. Reused systems will remain running for as long
+as desired by default, which may run the pool out of machines. With
+[Linode](#linode) you may define the `halt-timeout` option to allow Spread
+itself to garbage collect those entries.
 
 
 <a name="debugging"/>
@@ -751,6 +754,20 @@ kernel.
 [linode-distros]: https://www.linode.com/distributions
 [linode-images]: https://www.linode.com/docs/platform/linode-images
 [linode-grub2]: https://www.linode.com/docs/tools-reference/custom-kernels-distros/run-a-distribution-supplied-kernel-with-kvm
+
+[Reused systems](#reuse) will remain running for as long as desired by default,
+which may run the pool out of machines. Define the `halt-timeout` option to allow
+Spread itself to garbage collect those entries:
+
+_$PROJECT/spread.yaml_
+```
+backends:
+    linode:
+        key: (...)
+	halt-timeout: 6h
+	systems:
+	    - ubuntu-16.04
+```
 
 Note that in Linode you can create additional users inside your own account
 that have limited access to a selection of servers only, and with limited

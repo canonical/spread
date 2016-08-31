@@ -63,6 +63,7 @@ type Backend struct {
 
 	WarnTimeout Timeout `yaml:"warn-timeout"`
 	KillTimeout Timeout `yaml:"kill-timeout"`
+	HaltTimeout Timeout `yaml:"halt-timeout"`
 }
 
 func (b *Backend) String() string { return fmt.Sprintf("backend %q", b.Name) }

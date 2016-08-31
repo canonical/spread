@@ -67,6 +67,9 @@ type linodeServerData struct {
 }
 
 func (s *linodeServer) String() string {
+	if s.d.System == "" {
+		return fmt.Sprintf("%s:(%s)", s.p.backend.Name, s.d.Label)
+	}
 	return fmt.Sprintf("%s:%s (%s)", s.p.backend.Name, s.d.System, s.d.Label)
 }
 
@@ -194,20 +197,24 @@ func (p *linodeProvider) Allocate(system *System) (Server, error) {
 	if len(servers) == 0 {
 		return nil, FatalError{fmt.Errorf("no servers in Linode account")}
 	}
+
 	// Iterate out of order to reduce conflicts.
-	for _, i := range rnd.Perm(len(servers)) {
+	perm := rnd.Perm(len(servers))
+	lastjobs := make([]time.Time, len(servers))
+	for _, i := range perm {
 		s := servers[i]
 		if (s.d.Status != linodeBrandNew && s.d.Status != linodePoweredOff) || !p.reserve(s) {
 			continue
 		}
-		found, latest, err := p.hasActiveJob(s, "")
+		found, lastjob, err := p.hasActiveJob(s, "")
+		lastjobs[i] = lastjob
 		if found || err != nil {
 			if err != nil {
 				printf("Cannot check %s for active jobs: %v", s, err)
 			}
 			continue
 		}
-		err = p.setup(s, system, latest)
+		err = p.setup(s, system, lastjob)
 		if err != nil {
 			p.unreserve(s)
 			return nil, err
@@ -216,7 +223,61 @@ func (p *linodeProvider) Allocate(system *System) (Server, error) {
 		s.watch()
 		return s, nil
 	}
-	return nil, fmt.Errorf("no powered off servers in Linode account")
+	if len(servers) == 0 || p.backend.HaltTimeout.Duration == 0 {
+		return nil, fmt.Errorf("no powered off servers in Linode account")
+	}
+
+	// See it's time to shutdown servers based on halt-timeout.
+	var newest time.Time
+	for i, s := range servers {
+		lastjob := lastjobs[i]
+		if lastjob.IsZero() {
+			_, lastjob, _ = p.hasActiveJob(s, "")
+			lastjobs[i] = lastjob
+		}
+		if lastjob.After(newest) {
+			newest = lastjob
+		}
+	}
+	for _, i := range perm {
+		s := servers[i]
+		if !p.reserve(s) {
+			continue
+		}
+
+		// Take first in the permutation that timed out rather than
+		// oldest, to reduce chances of conflict.
+		lastjob := lastjobs[i]
+		if lastjob.IsZero() || lastjob.After(newest.Add(-p.backend.HaltTimeout.Duration)) {
+			continue
+		}
+
+		// Ensure no recent activity again.
+		found, _, err := p.hasActiveJob(s, "")
+		if found || err != nil {
+			if err != nil {
+				printf("Cannot check %s for active jobs: %v", s, err)
+			}
+			continue
+		}
+
+		printf("Server %s exceeds halt-timeout. Shutting it down...", s)
+		_, err = p.shutdown(s)
+		if err != nil {
+			printf("Cannot shutdown %s after halt-timeout: %v", s, err)
+			continue
+		}
+
+		err = p.setup(s, system, lastjob)
+		if err != nil {
+			p.unreserve(s)
+			return nil, err
+		}
+		printf("Allocated %s.", s)
+		s.watch()
+		return s, nil
+	}
+	return nil, fmt.Errorf("no powered off servers in Linode account exceed halt-timeout")
 }
 
 func (s *linodeServer) Discard() error {
@@ -274,7 +335,7 @@ func (p *linodeProvider) status(s *linodeServer) (int, error) {
 	return result.Data[0].Status, nil
 }
 
-func (p *linodeProvider) setup(s *linodeServer, system *System, latestJob time.Time) error {
+func (p *linodeProvider) setup(s *linodeServer, system *System, lastjob time.Time) error {
 	s.p = p
 	s.d.System = system.Name
 	s.d.Backend = p.backend.Name
@@ -319,7 +380,7 @@ func (p *linodeProvider) setup(s *linodeServer, system *System, latestJob time.T
 	}
 	s.d.Config = configID
 
-	found, err := p.hasRecentBoot(s, latestJob)
+	found, err := p.hasRecentBoot(s, lastjob)
 	if found || err != nil {
 		p.removeConfig(s, s.d.Config)
 		p.removeDisks(s, s.d.Root, s.d.Swap)
@@ -666,7 +727,7 @@ func (p *linodeProvider) waitJob(s *linodeServer, verb string, jobID int) (*lino
 	panic("unreachable")
 }
 
-func (p *linodeProvider) hasActiveJob(s *linodeServer, action string) (found bool, latest time.Time, err error) {
+func (p *linodeProvider) hasActiveJob(s *linodeServer, action string) (found bool, lastjob time.Time, err error) {
 	kind := ""
 	if action != "" {
 		kind += " " + action
@@ -677,14 +738,14 @@ func (p *linodeProvider) hasActiveJob(s *linodeServer, action string) (found boo
 		return false, time.Time{}, err
 	}
 	if len(jobs) > 0 {
-		latest = jobs[0].Entered()
+		lastjob = jobs[0].Entered()
 	}
 	for _, job := range jobs {
 		if job.HostFinishDT == "" && (action == "" || job.Action == action) {
-			return true, latest, nil
+			return true, lastjob, nil
 		}
 	}
-	return false, latest, nil
+	return false, lastjob, nil
 }
 
 func (p *linodeProvider) hasRecentBoot(s *linodeServer, since time.Time) (found bool, err error) {

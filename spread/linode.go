@@ -477,7 +477,7 @@ func (p *linodeProvider) createDisk(s *linodeServer, system *System) (root, swap
 		"Type":       "swap",
 	}
 
-	logf("Creating disk on %s with %s...", s, system.Name)
+	logf("Creating disk on %s with %s...", s, system.Image)
 	params := linodeParams{
 		"api_action":       "batch",
 		"api_requestArray": []linodeParams{createRoot, createSwap},

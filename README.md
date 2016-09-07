@@ -794,14 +794,24 @@ backends:
     adhoc:
     	allocate: |
             echo "Allocating $SPREAD_SYSTEM..."
-            echo disposable.machine.address:22
+            echo ADDRESS=disposable.machine.address:22
         discard:
             echo "Discarding $SPREAD_SYSTEM..."
         systems:
             - ubuntu-16.04
 ```
 
-The allocate script must print out the allocated system address as the last line.
+The AdHoc scripts communicate information back to Spread by printing _KEY=value_
+options into stdout. The following variables are currently understood:
+
+  * _ADDRESS=addr[:port]_ - SSH address of machine allocated.
+  * _ERROR=message_ - Error message. Operation may be retried.
+  * _FATAL=message_ - Fatal message. Operation won't be retried.
+  
+A failing script (non-zero exit) is equivalent to printing out an ERROR value,
+but rather than displaying a nice message, the whole script trace and output will
+be shown.
+
 The following environment variables are available for the scripts to do their job:
 
   * _SPREAD_BACKEND_ - Name of current backend.

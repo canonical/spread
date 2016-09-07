@@ -577,22 +577,6 @@ Dial:
 		r.discardServer(server)
 		return nil
 	}
-	if username != "root" || password != r.options.Password {
-		err = client.SetupRootAccess(r.options.Password)
-		if err != nil {
-			printf("Discarding %s, %v", server, err)
-			client.Close()
-			r.discardServer(server)
-			return nil
-		}
-		if username != "root" {
-			printf("Reconnecting to %s as root...", server)
-			client.Close()
-			username = "root"
-			password = r.options.Password
-			goto Dial
-		}
-	}
 	err = client.WriteFile("/.spread.yaml", server.ReuseData())
 	if err != nil {
 		printf("Discarding %s, cannot write reuse data: %s", server, err)

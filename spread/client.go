@@ -159,7 +159,7 @@ func (c *Client) WriteFile(path string, data []byte) error {
 
 	var stderr safeBuffer
 	session.Stderr = &stderr
-	cmd := fmt.Sprintf(`cat >"%s"`, path)
+	cmd := fmt.Sprintf(`%s/bin/bash -c "cat >'%s'"`, c.sudo(), path)
 	err = c.runCommand(session, cmd, nil, &stderr)
 	if err != nil {
 		err = outputErr(stderr.Bytes(), err)
@@ -184,7 +184,7 @@ func (c *Client) ReadFile(path string) ([]byte, error) {
 	var stdout, stderr safeBuffer
 	session.Stdout = &stdout
 	session.Stderr = &stderr
-	cmd := fmt.Sprintf(`cat "%s"`, path)
+	cmd := fmt.Sprintf(`%scat "%s"`, c.sudo(), path)
 	err = c.runCommand(session, cmd, nil, &stderr)
 	if err != nil {
 		err = outputErr(stderr.Bytes(), err)
@@ -292,6 +292,9 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode int, 
 	defer session.Close()
 
 	var buf bytes.Buffer
+	if dir != "" {
+		buf.WriteString(fmt.Sprintf("cd \"%s\"\n", dir))
+	}
 	buf.WriteString("REBOOT() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<REBOOT>' || echo \"<REBOOT $1>\"; exit 213; }\n")
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
@@ -346,14 +349,14 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode int, 
 	var cmd string
 	switch mode {
 	case traceOutput, combinedOutput:
-		cmd = "/bin/bash -eu - 2>&1"
+		cmd = c.sudo() + "/bin/bash -eu - 2>&1"
 		session.Stdout = &stdout
 	case splitOutput:
-		cmd = "/bin/bash -eu -"
+		cmd = c.sudo() + "/bin/bash -eu -"
 		session.Stdout = &stdout
 		session.Stderr = &stderr
 	case shellOutput:
-		cmd = "{\n" + buf.String() + "\n}"
+		cmd = fmt.Sprintf("{\nf=$(mktemp)\ntrap 'rm '$f EXIT\ncat > $f <<SCRIPT_END\n%s\nSCRIPT_END\n%s/bin/bash $f\n}", buf.String(), c.sudo())
 		session.Stdout = os.Stdout
 		session.Stderr = os.Stderr
 		w, h, err := terminal.GetSize(0)
@@ -365,10 +368,6 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode int, 
 		}
 	default:
 		panic("internal error: invalid output mode")
-	}
-
-	if dir != "" {
-		cmd = fmt.Sprintf(`cd "%s" && %s`, dir, cmd)
 	}
 
 	if mode == shellOutput {
@@ -411,6 +410,13 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode int, 
 		printf("Error writing script to %s: %v", c.server, err)
 	}
 	return append(previous, stdout.Bytes()...), nil
+}
+
+func (c *Client) sudo() string {
+	if c.config.User == "root" {
+		return ""
+	}
+	return "sudo -i "
 }
 
 func getenv(name, defaultValue string) string {
@@ -507,7 +513,7 @@ func (c *Client) Send(from, to string, include []string, exclude []string) error
 
 	var stdout safeBuffer
 	session.Stdout = &stdout
-	rcmd := fmt.Sprintf(`mkdir -p "%s" && cd "%s" && /bin/tar -xz 2>&1`, to, to)
+	rcmd := fmt.Sprintf(`%s/bin/bash -c "mkdir -p '%s' && cd '%s' && /bin/tar -xz 2>&1"`, c.sudo(), to, to)
 	err = c.runCommand(session, rcmd, &stdout, nil)
 	if err != nil {
 		return outputErr(stdout.Bytes(), err)

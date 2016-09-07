@@ -506,7 +506,7 @@ each run.
 Some of the supported backends may be unable to provide an image with the correct
 password in place, or with the correct SSH configuration for root to connect. In
 those cases, the system "username" and "password" fields may be used to tell
-Spread how to perform the inital SSH connection:
+Spread how to perform the SSH connection:
 
 _$PROJECT/spread.yaml_
 ```
@@ -522,11 +522,10 @@ backends:
 
 If the password field is defined without a username, it specifies the password
 for root to connect over SSH.  If both username and password are provided,
-the credentials will be used to connect to the system and SSH access for root
-will be configured using sudo.
+the credentials will be used to connect to the system, and password-less sudo
+must be available for the provided user.
 
-In all cases the end result is the same: a system that root can connect to using
-the current session password.
+In all cases the end result is the same: a system that executes scripts as root.
 
 
 <a name="including"/>

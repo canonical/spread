@@ -128,7 +128,7 @@ func (p *adhocProvider) run(script string, system *System, address string) (resu
 
 	result = make(map[string]string)
 	for _, line := range bytes.Split(bytes.TrimSpace(output), []byte{'\n'}) {
-		m := resultExp.FindStringSubmatch(string(bytes.TrimSpace(line)))
+		m := commandExp.FindStringSubmatch(string(bytes.TrimSpace(line)))
 		if m != nil {
 			result[m[1]] = m[2]
 		}

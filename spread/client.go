@@ -15,6 +15,7 @@ import (
 	"net"
 	"regexp"
 	"strconv"
+	"syscall"
 )
 
 type Client struct {
@@ -588,6 +589,8 @@ func (c *Client) runCommand(session *ssh.Session, cmd string, stdout, stderr io.
 	panic("unreachable")
 }
 
+var commandExp = regexp.MustCompile("^<([A-Z_]+)(?: (.*))?>$")
+
 // runScript runs a local script in a polished manner.
 //
 // It's not used by the SSH client, but mimics the Client.runPart+runCommand closely.
@@ -599,6 +602,9 @@ func runScript(mode int, script, dir string, env *Environment, warnTimeout, kill
 	script += "\n"
 
 	var buf bytes.Buffer
+	buf.WriteString("ADDRESS() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ADDRESS>' || echo \"<ADDRESS $1>\"; }\n")
+	buf.WriteString("FATAL() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<FATAL>' || echo \"<FATAL $@>\"; exit 213; }\n")
+	buf.WriteString("ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n")
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
 
@@ -713,6 +719,17 @@ Loop:
 		debugf("Error output from running script:\n-----\n%s\n-----", errbuf.Bytes())
 	}
 
+	if exitStatus(err) == 213 {
+		lines := bytes.Split(bytes.TrimSpace(outbuf.Bytes()), []byte{'\n'})
+		m := commandExp.FindSubmatch(lines[len(lines)-1])
+		if len(m) > 0 && string(m[1]) == "ERROR" {
+			return nil, nil, fmt.Errorf("%s", m[2])
+		}
+		if len(m) > 0 && string(m[1]) == "FATAL" {
+			return nil, nil, &FatalError{fmt.Errorf("%s", m[2])}
+		}
+	}
+
 	if err != nil {
 		if errbuf.Len() > 0 {
 			err = outputErr(errbuf.Bytes(), err)
@@ -722,6 +739,21 @@ Loop:
 		return nil, nil, err
 	}
 	return outbuf.Bytes(), errbuf.Bytes(), nil
+}
+
+func exitStatus(err error) int {
+	if err == nil {
+		return 0
+	}
+	exit, ok := err.(*exec.ExitError)
+	if !ok {
+		return 1
+	}
+	wait, ok := exit.ProcessState.Sys().(syscall.WaitStatus)
+	if !ok {
+		return 1
+	}
+	return wait.ExitStatus()
 }
 
 type safeBuffer struct {

@@ -577,12 +577,15 @@ Dial:
 		r.discardServer(server)
 		return nil
 	}
-	err = client.WriteFile("/.spread.yaml", server.ReuseData())
-	if err != nil {
-		printf("Discarding %s, cannot write reuse data: %s", server, err)
-		client.Close()
-		r.discardServer(server)
-		return nil
+	if reuseData := server.ReuseData(); reuseData != nil {
+		err = client.WriteFile("/.spread.yaml", reuseData)
+
+		if err != nil {
+			printf("Discarding %s, cannot write reuse data: %s", server, err)
+			client.Close()
+			r.discardServer(server)
+			return nil
+		}
 	}
 
 	printf("Connected to %s at %s.", server, server.Address())

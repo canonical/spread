@@ -51,11 +51,7 @@ func (s *adhocServer) System() *System {
 }
 
 func (s *adhocServer) ReuseData() []byte {
-	data, err := yaml.Marshal(&s.d)
-	if err != nil {
-		panic(err)
-	}
-	return data
+	return nil
 }
 
 func (s *adhocServer) Discard() error {

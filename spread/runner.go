@@ -577,7 +577,7 @@ Dial:
 		r.discardServer(server)
 		return nil
 	}
-	err = client.WriteFile("/.spread.yaml", server.ReuseData())
+	err = client.WriteFile("$HOME/.spread-server.yaml", server.ReuseData())
 	if err != nil {
 		printf("Discarding %s, cannot write reuse data: %s", server, err)
 		client.Close()
@@ -614,7 +614,7 @@ func (r *Runner) prepareReuse(addr string) {
 		printf("Cannot connect to %s: %v", addr, err)
 		return
 	}
-	data, err := client.ReadFile("/.spread.yaml")
+	data, err := client.ReadFile("$HOME/.spread-server.yaml")
 	if err != nil {
 		printf("Cannot read reuse data for %s: %v", server, err)
 		return

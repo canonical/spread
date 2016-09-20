@@ -64,12 +64,17 @@ func (c *Client) dialOnReboot() error {
 	waitConfig := *c.config
 	waitConfig.Timeout = 5 * time.Second
 	for {
+		before := time.Now()
 		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
 		if err != nil {
 			// It's gone.
 			break
 		}
 		sshc.Close()
+		// Dial was observed not respecting the timeout by a long shot. Enforce it.
+		if time.Now().After(before.Add(waitConfig.Timeout)) {
+			break
+		}
 
 		select {
 		case <-retry.C:

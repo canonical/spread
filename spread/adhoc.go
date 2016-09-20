@@ -134,7 +134,7 @@ func (p *adhocProvider) run(script string, system *System, address string) (resu
 		}
 	}
 
-	logf("%s allocation results: %# v", system, result)
+	debugf("Allocation results of %s: %# v", system, result)
 
 	fatal := result["FATAL"]
 	if fatal != "" {

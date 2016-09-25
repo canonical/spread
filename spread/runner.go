@@ -1,13 +1,11 @@
 package spread
 
 import (
-	"bytes"
 	"fmt"
+	"os"
 	"sync"
 
 	"gopkg.in/tomb.v2"
-	"gopkg.in/yaml.v2"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,8 +15,8 @@ import (
 type Options struct {
 	Password string
 	Filter   Filter
-	Reuse    []string
-	Keep     bool
+	Reuse    bool
+	ReusePid int
 	Debug    bool
 	Shell    bool
 	Abend    bool
@@ -38,26 +36,23 @@ type Runner struct {
 	done  chan bool
 	alive int
 
-	reuse   map[Server]*Client
+	reuse   *Reuse
+	reused  map[string]bool
 	servers []Server
 	pending []*Job
 	stats   stats
+
+	allocated bool
 
 	suiteWorkers map[[3]string]int
 }
 
 func Start(project *Project, options *Options) (*Runner, error) {
-	if options.Keep {
-		debugf("Reuse servers with: -pass %s -reuse=<addr>[,<addr>] -keep", options.Password)
-	} else {
-		debugf("Starting runner with password %q.", options.Password)
-	}
-
 	r := &Runner{
 		project:   project,
 		options:   options,
 		providers: make(map[string]Provider),
-		reuse:     make(map[Server]*Client),
+		reused:    make(map[string]bool),
 
 		suiteWorkers: make(map[[3]string]int),
 	}
@@ -83,8 +78,23 @@ func Start(project *Project, options *Options) (*Runner, error) {
 	}
 	r.pending = pending
 
+	r.reuse, err = OpenReuse(r.reusePath())
+	if err != nil {
+		return nil, err
+	}
+
 	r.tomb.Go(r.loop)
 	return r, nil
+}
+
+func (r *Runner) reusePath() string {
+	if r.options.ReusePid != 0 {
+		return filepath.Join(r.project.Path, fmt.Sprintf(".spread-reuse.%d.yaml", r.options.ReusePid))
+	}
+	if r.options.Reuse {
+		return filepath.Join(r.project.Path, ".spread-reuse.yaml")
+	}
+	return filepath.Join(r.project.Path, fmt.Sprintf(".spread-reuse.%d.yaml", os.Getpid()))
 }
 
 func (r *Runner) Wait() error {
@@ -97,29 +107,6 @@ func (r *Runner) Stop() error {
 }
 
 func (r *Runner) loop() (err error) {
-	// Discover all servers for which reuse was requested.
-	r.done = make(chan bool, r.alive)
-	for _, addr := range r.options.Reuse {
-		go r.prepareReuse(addr)
-	}
-	for range r.options.Reuse {
-		<-r.done
-	}
-	if len(r.reuse) != len(r.options.Reuse) {
-		seen := make(map[string]bool)
-		for server, client := range r.reuse {
-			seen[server.Address()] = true
-			client.Close()
-		}
-		missing := make([]string, 0, len(r.options.Reuse))
-		for _, addr := range r.options.Reuse {
-			if !seen[addr] {
-				missing = append(missing, addr)
-			}
-		}
-		return fmt.Errorf("cannot reuse address%s: %s", nth(len(missing), "", "", "es"), strings.Join(missing, ", "))
-	}
-
 	defer func() {
 		if !r.options.Discard {
 			logNames(debugf, "Pending jobs after workers returned", r.pending, taskName)
@@ -130,26 +117,25 @@ func (r *Runner) loop() (err error) {
 			}
 			r.stats.log()
 		}
-		if r.options.Keep && len(r.servers) > 0 {
-			for _, server := range r.servers {
-				printf("Keeping %s at %s", server, server.Address())
-			}
-			printf("Reuse with: %s %s", os.Args[0], r.reuseArgs())
-		}
-		if !r.options.Keep {
+		if !r.options.Reuse || r.options.Discard {
 			for len(r.servers) > 0 {
 				printf("Discarding %s...", r.servers[0])
 				r.discardServer(r.servers[0])
 			}
+			if !r.options.Reuse {
+				os.Remove(r.reusePath())
+			}
 		}
+		if len(r.servers) > 0 {
+			for _, server := range r.servers {
+				printf("Keeping %s at %s", server, server.Address())
+			}
+		}
+		r.reuse.Close()
 		if err == nil && (len(r.stats.TaskAbort) > 0 || r.stats.errorCount() > 0) {
 			err = fmt.Errorf("unsuccessful run")
 		}
 	}()
-
-	if r.options.Discard {
-		return nil
-	}
 
 	// Find out how many workers are needed for each backend system.
 	// Even if multiple workers per system are requested, must not
@@ -249,7 +235,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 
 func (r *Runner) shellEnv(job *Job, env *Environment) *Environment {
 	senv := env.Copy()
-	senv.Set("PS1", `'\$SPREAD_BACKEND:\$SPREAD_SYSTEM \${PWD/#\$SPREAD_PATH/...}\\$ '`)
+	senv.Set("PS1", `'\$SPREAD_BACKEND:\$SPREAD_SYSTEM \${PWD/#\$SPREAD_PATH/...}# '`)
 	return senv
 }
 
@@ -383,7 +369,7 @@ func (r *Runner) worker(backend *Backend, system *System) {
 	}
 	server := client.Server()
 	client.Close()
-	if !r.options.Keep {
+	if !r.options.Reuse {
 		printf("Discarding %s...", server)
 		r.discardServer(server)
 	}
@@ -480,6 +466,9 @@ func (r *Runner) discardServer(server Server) {
 	if err := server.Discard(); err != nil {
 		printf("Error discarding %s: %v", server, err)
 	}
+	if err := r.reuse.Remove(server); err != nil {
+		printf("Error removing %s from reuse file: %v", server, err)
+	}
 	r.mu.Lock()
 	for i, s := range r.servers {
 		if s == server {
@@ -491,8 +480,7 @@ func (r *Runner) discardServer(server Server) {
 }
 
 func (r *Runner) allocateServer(backend *Backend, system *System) *Client {
-	if len(r.options.Reuse) > 0 {
-		printf("Reuse requested but none left for %s, aborting.", system)
+	if r.options.Discard {
 		return nil
 	}
 
@@ -532,6 +520,17 @@ Allocate:
 	if err != nil {
 		return nil
 	}
+
+	if err := r.reuse.Add(server, r.options.Password); err != nil {
+		printf("Error adding %s to reuse file: %v", server, err)
+	}
+
+	r.mu.Lock()
+	if !r.allocated && !r.options.Reuse && r.options.ReusePid == 0 {
+		printf("If killed, discard servers with: spread -reuse-pid=%d -discard", os.Getpid())
+	}
+	r.allocated = true
+	r.mu.Unlock()
 
 	printf("Connecting to %s...", server)
 
@@ -577,13 +576,6 @@ Dial:
 		r.discardServer(server)
 		return nil
 	}
-	err = client.WriteFile("$HOME/.spread-server.yaml", server.ReuseData())
-	if err != nil {
-		printf("Discarding %s, cannot write reuse data: %s", server, err)
-		client.Close()
-		r.discardServer(server)
-		return nil
-	}
 
 	printf("Connected to %s at %s.", server, server.Address())
 	r.servers = append(r.servers, server)
@@ -591,86 +583,46 @@ Dial:
 }
 
 func (r *Runner) reuseServer(backend *Backend, system *System) *Client {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	provider := r.providers[backend.Name]
 
-	for server, client := range r.reuse {
-		if server.Provider().Backend() == backend && server.System() == system {
-			delete(r.reuse, server)
-			printf("Reusing %s...", server)
-			return client
+	for _, rsystem := range r.reuse.ReuseSystems(system) {
+		r.mu.Lock()
+		reused := r.reused[rsystem.Address]
+		r.reused[rsystem.Address] = true
+		r.mu.Unlock()
+		if reused {
+			continue
 		}
+
+		server, err := provider.Reuse(rsystem, system)
+		if err != nil {
+			printf("Discarding %s at %s, cannot reuse: %v", system, rsystem.Address, err)
+			r.discardServer(server)
+			continue
+		}
+
+		if r.options.Discard {
+			printf("Discarding %s...", server)
+			r.discardServer(server)
+			return nil
+		}
+
+		username := rsystem.Username
+		password := rsystem.Password
+		if username == "" {
+			username = "root"
+		}
+		client, err := Dial(server, username, password)
+		if err != nil {
+			printf("Discarding %s, cannot connect: %v", server, err)
+			r.discardServer(server)
+			continue
+		}
+
+		printf("Reusing %s...", server)
+		return client
 	}
 	return nil
-}
-
-func (r *Runner) prepareReuse(addr string) {
-	defer func() { r.done <- true }()
-
-	printf("Connecting to %s for reuse...", addr)
-	var server Server = &UnknownServer{addr}
-	client, err := Dial(server, "root", r.options.Password)
-	if err != nil {
-		printf("Cannot connect to %s: %v", addr, err)
-		return
-	}
-	data, err := client.ReadFile("$HOME/.spread-server.yaml")
-	if err != nil {
-		printf("Cannot read reuse data for %s: %v", server, err)
-		return
-	}
-	var info struct {
-		Backend string
-	}
-	err = yaml.Unmarshal(data, &info)
-	if err != nil {
-		printf("Cannot read reuse data for %s: %v", server, err)
-		return
-	}
-	provider, ok := r.providers[info.Backend]
-	if !ok {
-		printf("Cannot reuse %s: backend %q is missing", server, info.Backend)
-		return
-	}
-	server, err = provider.Reuse(data)
-	if err != nil {
-		printf("Cannot reuse %s on %s: %v", addr, info.Backend, err)
-		return
-	}
-	client.server = server
-
-	r.mu.Lock()
-	r.reuse[server] = client
-	r.servers = append(r.servers, server)
-	debugf("Prepared %s:%s server for reuse.", server.Provider().Backend().Name, server.System())
-	r.mu.Unlock()
-}
-
-func (r *Runner) reuseArgs() string {
-	buf := &bytes.Buffer{}
-	var addrs []string
-	for _, server := range r.servers {
-		addrs = append(addrs, server.Address())
-	}
-	sort.Strings(addrs)
-	buf.WriteString("-pass=")
-	buf.WriteString(r.options.Password)
-	buf.WriteString(" -reuse=")
-	buf.WriteString(strings.Join(addrs, ","))
-	if r.options.Keep {
-		buf.WriteString(" -keep")
-	}
-	switch {
-	case r.options.Debug:
-		buf.WriteString(" -debug")
-	case r.options.Shell:
-		buf.WriteString(" -shell")
-	case r.options.Abend:
-		buf.WriteString(" -abend")
-	case r.options.Restore:
-		buf.WriteString(" -restore")
-	}
-	return buf.String()
 }
 
 type stats struct {

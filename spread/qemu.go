@@ -2,7 +2,6 @@ package spread
 
 import (
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -22,17 +21,17 @@ type qemuProvider struct {
 type qemuServer struct {
 	p *qemuProvider
 	d qemuServerData
+
+	system  *System
+	address string
 }
 
 type qemuServerData struct {
-	Backend string
-	System  string
-	Address string
-	PID     int
+	PID int
 }
 
 func (s *qemuServer) String() string {
-	return fmt.Sprintf("%s:%s", s.p.backend.Name, s.d.System)
+	return s.system.String()
 }
 
 func (s *qemuServer) Provider() Provider {
@@ -40,23 +39,15 @@ func (s *qemuServer) Provider() Provider {
 }
 
 func (s *qemuServer) Address() string {
-	return s.d.Address
+	return s.address
 }
 
 func (s *qemuServer) System() *System {
-	system := s.p.backend.Systems[s.d.System]
-	if system == nil {
-		return removedSystem(s.p.backend, s.d.System)
-	}
-	return system
+	return s.system
 }
 
-func (s *qemuServer) ReuseData() []byte {
-	data, err := yaml.Marshal(&s.d)
-	if err != nil {
-		panic(err)
-	}
-	return data
+func (s *qemuServer) ReuseData() interface{} {
+	return &s.d
 }
 
 func (s *qemuServer) Discard() error {
@@ -79,13 +70,16 @@ func (p *qemuProvider) Backend() *Backend {
 	return p.backend
 }
 
-func (p *qemuProvider) Reuse(data []byte) (Server, error) {
-	s := &qemuServer{}
-	err := yaml.Unmarshal(data, &s.d)
+func (p *qemuProvider) Reuse(rsystem *ReuseSystem, system *System) (Server, error) {
+	s := &qemuServer{
+		p:       p,
+		system:  system,
+		address: rsystem.Address,
+	}
+	err := rsystem.UnmarshalData(&s.d)
 	if err != nil {
 		return nil, fmt.Errorf("cannot unmarshal qemu reuse data: %v", err)
 	}
-	s.p = p
 	return s, nil
 }
 
@@ -115,15 +109,14 @@ func (p *qemuProvider) Allocate(system *System) (Server, error) {
 	s := &qemuServer{
 		p: p,
 		d: qemuServerData{
-			System:  system.Name,
-			Address: "localhost:" + strconv.Itoa(port),
-			Backend: p.backend.Name,
-			PID:     cmd.Process.Pid,
+			PID: cmd.Process.Pid,
 		},
+		system:  system,
+		address: "localhost:" + strconv.Itoa(port),
 	}
 
 	printf("Waiting for %s to make SSH available...", system)
-	if err := waitPortUp(system, s.Address()); err != nil {
+	if err := waitPortUp(system, s.address); err != nil {
 		s.Discard()
 		return nil, fmt.Errorf("cannot connect to %s: %s", s, err)
 	}

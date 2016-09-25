@@ -20,8 +20,8 @@ var (
 	vverbose = flag.Bool("vv", false, "Show debugging messages as well")
 	list     = flag.Bool("list", false, "Just show list of jobs that would run")
 	pass     = flag.String("pass", "", "Server password to use, defaults to random")
-	keep     = flag.Bool("keep", false, "Keep servers running for reuse")
-	reuse    = flag.String("reuse", "", "Reuse servers held running by -keep")
+	reuse    = flag.Bool("reuse", false, "Keep servers running for reuse")
+	reusePid = flag.Int("reuse-pid", 0, "Reuse servers from crashed process")
 	resend   = flag.Bool("resend", false, "Resend project data to reused servers")
 	debug    = flag.Bool("debug", false, "Run shell after script errors")
 	shell    = flag.Bool("shell", false, "Run shell instead of task scripts")
@@ -44,13 +44,6 @@ func run() error {
 	spread.Logger = log.New(os.Stdout, "", log.LstdFlags)
 	spread.Verbose = *verbose
 	spread.Debug = *vverbose
-
-	if *reuse != "" && *pass == "" {
-		return fmt.Errorf("cannot have -reuse without -pass")
-	}
-	if *keep && *discard {
-		return fmt.Errorf("cannot have both -keep and -discard")
-	}
 
 	var other bool
 	for _, b := range []bool{*debug, *shell, *abend, *restore} {
@@ -83,7 +76,8 @@ func run() error {
 	options := &spread.Options{
 		Password: password,
 		Filter:   filter,
-		Keep:     *keep,
+		Reuse:    *reuse,
+		ReusePid: *reusePid,
 		Resend:   *resend,
 		Debug:    *debug,
 		Shell:    *shell,
@@ -108,8 +102,8 @@ func run() error {
 		return nil
 	}
 
-	if *reuse != "" {
-		options.Reuse = strings.Split(*reuse, ",")
+	if options.Discard && options.ReusePid == 0 {
+		options.Reuse = true
 	}
 
 	runner, err := spread.Start(project, options)

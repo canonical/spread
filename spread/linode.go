@@ -16,7 +16,6 @@ import (
 	"github.com/niemeyer/pretty"
 
 	"gopkg.in/tomb.v2"
-	"gopkg.in/yaml.v2"
 )
 
 func Linode(p *Project, b *Backend, o *Options) Provider {
@@ -51,26 +50,23 @@ type linodeServer struct {
 	p *linodeProvider
 	d linodeServerData
 
+	system  *System
+	address string
+
 	watchTomb tomb.Tomb
 }
 
 type linodeServerData struct {
-	ID      int    `json:"LINODEID"`
-	Label   string `json:"LABEL"`
-	Status  int    `json:"STATUS" yaml:"-"`
-	Backend string `json:"-"`
-	System  string `json:"-"`
-	Address string `json:"-"`
-	Config  int    `json:"-"`
-	Root    int    `json:"-"`
-	Swap    int    `json:"-"`
+	ID     int    `json:"LINODEID"`
+	Label  string `json:"LABEL"`
+	Status int    `json:"STATUS" yaml:"-"`
+	Config int    `json:"-"`
+	Root   int    `json:"-"`
+	Swap   int    `json:"-"`
 }
 
 func (s *linodeServer) String() string {
-	if s.d.System == "" {
-		return fmt.Sprintf("%s:(%s)", s.p.backend.Name, s.d.Label)
-	}
-	return fmt.Sprintf("%s:%s (%s)", s.p.backend.Name, s.d.System, s.d.Label)
+	return fmt.Sprintf("%s (%s)", s.system, s.d.Label)
 }
 
 func (s *linodeServer) Provider() Provider {
@@ -78,23 +74,15 @@ func (s *linodeServer) Provider() Provider {
 }
 
 func (s *linodeServer) Address() string {
-	return s.d.Address
+	return s.address
 }
 
 func (s *linodeServer) System() *System {
-	system := s.p.backend.Systems[s.d.System]
-	if system == nil {
-		return removedSystem(s.p.backend, s.d.System)
-	}
-	return system
+	return s.system
 }
 
-func (s *linodeServer) ReuseData() []byte {
-	data, err := yaml.Marshal(s.d)
-	if err != nil {
-		panic(err)
-	}
-	return data
+func (s *linodeServer) ReuseData() interface{} {
+	return &s.d
 }
 
 func (s *linodeServer) watch() {
@@ -153,17 +141,16 @@ func (p *linodeProvider) Backend() *Backend {
 	return p.backend
 }
 
-func (p *linodeProvider) Reuse(data []byte) (Server, error) {
-	if err := p.checkKey(); err != nil {
-		return nil, err
+func (p *linodeProvider) Reuse(rsystem *ReuseSystem, system *System) (Server, error) {
+	s := &linodeServer{
+		p:       p,
+		address: rsystem.Address,
+		system:  system,
 	}
-
-	s := &linodeServer{}
-	err := yaml.Unmarshal(data, &s.d)
+	err := rsystem.UnmarshalData(&s.d)
 	if err != nil {
 		return nil, fmt.Errorf("cannot unmarshal Linode reuse data: %v", err)
 	}
-	s.p = p
 	s.watch()
 	return s, nil
 }
@@ -337,8 +324,7 @@ func (p *linodeProvider) status(s *linodeServer) (int, error) {
 
 func (p *linodeProvider) setup(s *linodeServer, system *System, lastjob time.Time) error {
 	s.p = p
-	s.d.System = system.Name
-	s.d.Backend = p.backend.Name
+	s.system = system
 
 	rootJob, swapJob, err := p.createDisk(s, system)
 	if err != nil {
@@ -371,7 +357,7 @@ func (p *linodeProvider) setup(s *linodeServer, system *System, lastjob time.Tim
 	if err != nil {
 		return err
 	}
-	s.d.Address = ip.IPAddress
+	s.address = ip.IPAddress
 
 	configID, err := p.createConfig(s, system, s.d.Root, s.d.Swap)
 	if err != nil {
@@ -572,7 +558,11 @@ func (p *linodeProvider) createConfig(s *linodeServer, system *System, rootID, s
 		return 0, err
 	}
 
-	comments := fmt.Sprintf("USER=%q spread\n-pass=%q -reuse=%s -keep=%v", username(), p.options.Password, s.Address(), p.options.Keep)
+	reuse := ""
+	if p.options.Reuse {
+		reuse = " -reuse"
+	}
+	comments := fmt.Sprintf("USER=%q spread\n-pass=%q %s", username(), p.options.Password, reuse)
 
 	params := linodeParams{
 		"api_action":             "linode.config.create",

@@ -15,7 +15,6 @@ Convenient full-system test (task) distribution
 [Timeouts](#timeouts)  
 [Fast iterations with reuse](#reuse)  
 [Debugging](#debugging)  
-[Keeping servers](#keeping)  
 [Passwords and usernames](#passwords)  
 [Including and excluding files](#including)  
 [Selecting which tasks to run](#selecting)  
@@ -430,20 +429,27 @@ Fast iterations with reuse
 
 For fast iterations during development or debugging, it's best to keep the
 servers around so they're not allocated and discarded on every run. To do
-that just provide the `-keep` flag. As long as allocation worked, at the
-end of the run the servers will not be discarded and Spread will inform
-the exact line to reuse them via `-reuse`.
+that just provide the `-reuse` flag. On any successful allocation the server
+details are immediately written down for tracking. Then, just provide `-reuse`
+again on follow up runs and servers already alive will be used whenever
+possible, and new ones will be allocated and also tracked down if necessary to
+perform follow up operations.
 
 Without the `-resend` flag, the project files previously sent are also left
 alone and reused on the next run. That said, the `spread.yaml` and `task.yaml`
 content considered is actually the one in the local machine, so any updates to
 those will always be taken in account on re-runs.
 
-Once you're done with the servers, throw them away using the same `-reuse`
-option and appending `-discard`. Reused systems will remain running for as long
-as desired by default, which may run the pool out of machines. With
-[Linode](#linode) you may define the `halt-timeout` option to allow Spread
-itself to shutdown those systems and use them, without destroying the data.
+Once you're done with the servers, throw them away with `-discard`. Reused
+systems will remain running for as long as desired by default, which may run
+the pool out of machines. With [Linode](#linode) you may define the
+`halt-timeout` option to allow Spread itself to shutdown those systems and use
+them, without destroying the data.
+
+The obvious caveat when reusing machines like this is that failing restore
+scripts or bogus ones may leave the server in a bad state which affects the
+next run improperly. In such cases the restore scripts should be fixed to be
+correct and more resilient.
 
 
 <a name="debugging"/>
@@ -465,33 +471,10 @@ opened.
 
 If you'd prefer to debug by logging in from an independent ssh session, the
 `-abend` option will abruptly stop the execution on failures, without running
-any of the restore scripts. You'll probably want to pair that with the `-keep`
+any of the restore scripts. You'll probably want to pair that with the `-reuse`
 option so the server is not discarded, and after you're done with the debugging
-it may be necessary to do a run with the `-restore` flag, to clean up the
-state left behind by the task.
-
-
-<a name="keeping"/>
-Keeping servers
----------------
-
-Even if server allocation is fast, not allocating at all is even faster.
-Just add `-keep` to your current set of options and servers will remain running
-after workers are done with them. At the end of the process, Spread will report
-how to reuse them.
-
-Unlike the debug mode described above, this will not alter the running process
-otherwise. The remote project is still removed at the end of the run and
-re-sent on the next iteration as if the machine was brand new.
-
-The obvious caveat when reusing machines like this is that failing restore
-scripts or bogus ones may leave the server in a bad state which affects the
-next run improperly. In such cases the restore scripts should be fixed to be
-correct and more resilient.
-
-Same as with `-debug`, after you're done iterating it's easy to get rid of the
-servers by performing one last run including the `-reuse` option, but leaving
-`-keep` out.
+in this style it may be necessary to do a run with the `-restore` flag, to
+clean up the state left behind by the task.
 
 
 <a name="passwords">
@@ -712,7 +695,7 @@ the local `$LINODE_API_KEY` environment variable (we don't want that in
 `spread.yaml`), and look for a powered-off server available on that user
 account that. When it finds one, it creates a brand new configuration and
 disk set to run the tasks. That means you can even reuse existing servers to
-run the tasks, if you wish. When discarding the server, assuming no `-keep` or
+run the tasks, if you wish. When discarding the server, assuming no `-reuse` or
 `-debug`, it will power off the server and remove the created configuration
 and disks, leaving it ready for the next run.
 

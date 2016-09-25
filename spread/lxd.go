@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -28,17 +27,17 @@ type lxdProvider struct {
 type lxdServer struct {
 	p *lxdProvider
 	d lxdServerData
+
+	system  *System
+	address string
 }
 
 type lxdServerData struct {
-	Name    string
-	Backend string
-	System  string
-	Address string
+	Name string
 }
 
 func (s *lxdServer) String() string {
-	return fmt.Sprintf("%s:%s (%s)", s.p.backend.Name, s.d.System, s.d.Name)
+	return fmt.Sprintf("%s (%s)", s.system, s.d.Name)
 }
 
 func (s *lxdServer) Provider() Provider {
@@ -46,23 +45,15 @@ func (s *lxdServer) Provider() Provider {
 }
 
 func (s *lxdServer) Address() string {
-	return s.d.Address
+	return s.address
 }
 
 func (s *lxdServer) System() *System {
-	system := s.p.backend.Systems[s.d.System]
-	if system == nil {
-		return removedSystem(s.p.backend, s.d.System)
-	}
-	return system
+	return s.system
 }
 
-func (s *lxdServer) ReuseData() []byte {
-	data, err := yaml.Marshal(&s.d)
-	if err != nil {
-		panic(err)
-	}
-	return data
+func (s *lxdServer) ReuseData() interface{} {
+	return &s.d
 }
 
 func (s *lxdServer) Discard() error {
@@ -77,13 +68,16 @@ func (p *lxdProvider) Backend() *Backend {
 	return p.backend
 }
 
-func (p *lxdProvider) Reuse(data []byte) (Server, error) {
-	s := &lxdServer{}
-	err := yaml.Unmarshal(data, &s.d)
+func (p *lxdProvider) Reuse(rsystem *ReuseSystem, system *System) (Server, error) {
+	s := &lxdServer{
+		p:       p,
+		system:  system,
+		address: rsystem.Address,
+	}
+	err := rsystem.UnmarshalData(&s.d)
 	if err != nil {
 		return nil, fmt.Errorf("cannot unmarshal lxd reuse data: %v", err)
 	}
-	s.p = p
 	return s, nil
 }
 
@@ -95,7 +89,7 @@ func (p *lxdProvider) Allocate(system *System) (Server, error) {
 	}
 
 	args := []string{"launch", lxdimage, name}
-	if !p.options.Keep {
+	if !p.options.Reuse {
 		args = append(args, "--ephemeral")
 	}
 	output, err := exec.Command("lxc", args...).CombinedOutput()
@@ -110,10 +104,9 @@ func (p *lxdProvider) Allocate(system *System) (Server, error) {
 	s := &lxdServer{
 		p: p,
 		d: lxdServerData{
-			Name:    name,
-			System:  system.Name,
-			Backend: p.backend.Name,
+			Name: name,
 		},
+		system: system,
 	}
 
 	printf("Waiting for lxd container %s to have an address...", name)
@@ -123,7 +116,7 @@ func (p *lxdProvider) Allocate(system *System) (Server, error) {
 	for {
 		addr, err := p.address(name)
 		if err == nil {
-			s.d.Address = addr
+			s.address = addr
 			break
 		}
 		if _, ok := err.(*lxdNoAddrError); !ok {

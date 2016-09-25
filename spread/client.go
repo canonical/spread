@@ -314,7 +314,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode int, 
 		}
 	}
 	if mode == shellOutput && env.Get("PS1") != "" {
-		fmt.Fprintf(&buf, `echo PS1=\''%s'\' > $HOME/.bashrc`, env.Get("PS1"))
+		fmt.Fprintf(&buf, "echo PS1=\\''%s'\\' > /root/.bashrc\n", env.Get("PS1"))
 	}
 	if mode == traceOutput {
 		// Don't trace environment variables so secrets don't leak.

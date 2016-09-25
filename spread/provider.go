@@ -11,7 +11,7 @@ var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
 type Provider interface {
 	Backend() *Backend
 	Allocate(system *System) (Server, error)
-	Reuse(data []byte) (Server, error)
+	Reuse(rsystem *ReuseSystem, system *System) (Server, error)
 }
 
 type Server interface {
@@ -19,7 +19,7 @@ type Server interface {
 	Address() string
 	Discard() error
 	System() *System
-	ReuseData() []byte
+	ReuseData() interface{}
 	String() string
 }
 
@@ -46,9 +46,9 @@ func removedSystem(backend *Backend, sysname string) *System {
 	}
 }
 
-func (s *UnknownServer) String() string     { return "server " + s.Addr }
-func (s *UnknownServer) Provider() Provider { return nil }
-func (s *UnknownServer) Address() string    { return s.Addr }
-func (s *UnknownServer) Discard() error     { return nil }
-func (s *UnknownServer) ReuseData() []byte  { return nil }
-func (s *UnknownServer) System() *System    { return nil }
+func (s *UnknownServer) String() string         { return "server " + s.Addr }
+func (s *UnknownServer) Provider() Provider     { return nil }
+func (s *UnknownServer) Address() string        { return s.Addr }
+func (s *UnknownServer) Discard() error         { return nil }
+func (s *UnknownServer) ReuseData() interface{} { return nil }
+func (s *UnknownServer) System() *System        { return nil }

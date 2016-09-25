@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-
-	"gopkg.in/yaml.v2"
 )
 
 func AdHoc(p *Project, b *Backend, o *Options) Provider {
@@ -21,17 +19,13 @@ type adhocProvider struct {
 
 type adhocServer struct {
 	p *adhocProvider
-	d adhocServerData
-}
 
-type adhocServerData struct {
-	Backend string
-	System  string
-	Address string
+	system  *System
+	address string
 }
 
 func (s *adhocServer) String() string {
-	return fmt.Sprintf("%s:%s", s.p.backend.Name, s.d.System)
+	return s.system.String()
 }
 
 func (s *adhocServer) Provider() Provider {
@@ -39,27 +33,19 @@ func (s *adhocServer) Provider() Provider {
 }
 
 func (s *adhocServer) Address() string {
-	return s.d.Address
+	return s.address
 }
 
 func (s *adhocServer) System() *System {
-	system := s.p.backend.Systems[s.d.System]
-	if system == nil {
-		return removedSystem(s.p.backend, s.d.System)
-	}
-	return system
+	return s.system
 }
 
-func (s *adhocServer) ReuseData() []byte {
-	data, err := yaml.Marshal(&s.d)
-	if err != nil {
-		panic(err)
-	}
-	return data
+func (s *adhocServer) ReuseData() interface{} {
+	return nil
 }
 
 func (s *adhocServer) Discard() error {
-	_, err := s.p.run(s.p.backend.Discard, s.System(), s.Address())
+	_, err := s.p.run(s.p.backend.Discard, s.system, s.address)
 	if err != nil {
 		return err
 	}
@@ -70,13 +56,12 @@ func (p *adhocProvider) Backend() *Backend {
 	return p.backend
 }
 
-func (p *adhocProvider) Reuse(data []byte) (Server, error) {
-	s := &adhocServer{}
-	err := yaml.Unmarshal(data, &s.d)
-	if err != nil {
-		return nil, fmt.Errorf("cannot unmarshal adhoc reuse data: %v", err)
+func (p *adhocProvider) Reuse(rsystem *ReuseSystem, system *System) (Server, error) {
+	s := &adhocServer{
+		p:       p,
+		system:  system,
+		address: rsystem.Address,
 	}
-	s.p = p
 	return s, nil
 }
 
@@ -91,16 +76,13 @@ func (p *adhocProvider) Allocate(system *System) (Server, error) {
 	}
 
 	s := &adhocServer{
-		p: p,
-		d: adhocServerData{
-			System:  system.Name,
-			Address: addr,
-			Backend: p.backend.Name,
-		},
+		p:       p,
+		system:  system,
+		address: addr,
 	}
 
 	printf("Waiting for %s to make SSH available at %s...", system, addr)
-	if err := waitPortUp(system, s.Address()); err != nil {
+	if err := waitPortUp(system, s.address); err != nil {
 		s.Discard()
 		return nil, fmt.Errorf("cannot connect to %s at %s: %s", s, s.Address(), err)
 	}

@@ -403,19 +403,25 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode int, 
 		}
 	}
 
-	if err != nil {
-		if mode == splitOutput {
-			output = stderr.Bytes()
-		} else {
-			output = stdout.Bytes()
-		}
-		return nil, outputErr(append(previous, output...), err)
+	if err == nil || mode != splitOutput {
+		output = stdout.Bytes()
+	} else if mode == splitOutput {
+		output = stderr.Bytes()
 	}
 
+	// When running scripts under Go's non-shell ssh session, this fails:
+	// # echo echo ok | /bin/bash -c "/bin/bash --login" 2>&1 | cat
+	const errmsg = "mesg: ttyname failed: Inappropriate ioctl for device"
+	output = bytes.TrimSpace(bytes.TrimPrefix(output, []byte(errmsg)))
+
+	output = append(previous, output...)
+	if err != nil {
+		return nil, outputErr(output, err)
+	}
 	if err := <-errch; err != nil {
 		printf("Error writing script to %s: %v", c.server, err)
 	}
-	return append(previous, stdout.Bytes()...), nil
+	return output, nil
 }
 
 func (c *Client) sudo() string {

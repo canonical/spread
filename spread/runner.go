@@ -192,7 +192,7 @@ const (
 	restoring = "restoring"
 )
 
-func (r *Runner) run(client *Client, job *Job, verb string, context interface{}, script string, abend *bool) bool {
+func (r *Runner) run(client *Client, job *Job, verb string, context interface{}, script, debug string, abend *bool) bool {
 	script = strings.TrimSpace(script)
 	if len(script) == 0 {
 		return true
@@ -219,6 +219,14 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	_, err := client.Trace(script, dir, job.Environment)
 	if err != nil {
 		printf("Error %s %s : %v", verb, contextStr, err)
+		if debug != "" {
+			output, err := client.Trace(debug, dir, job.Environment)
+			if err != nil {
+				printf("Error debugging %s : %v", contextStr, err)
+			} else if len(output) > 0 {
+				printf("Debug output for %s : %v", contextStr, outputErr(output, nil))
+			}
+		}
 		if r.options.Debug {
 			printf("Starting shell to debug...")
 			err = client.Shell("/bin/bash", dir, r.shellEnv(job, job.Environment))
@@ -294,7 +302,7 @@ func (r *Runner) worker(backend *Backend, system *System) {
 		if insideSuite != nil && insideSuite != job.Suite {
 			if false {
 				printf("WARNING: Was inside missing suite %s on last run, so cannot restore it.", insideSuite)
-			} else if !r.run(client, last, restoring, insideSuite, insideSuite.Restore, &abend) {
+			} else if !r.run(client, last, restoring, insideSuite, insideSuite.Restore, insideSuite.Debug, &abend) {
 				r.add(&stats.SuiteRestoreError, last)
 				r.add(&stats.TaskAbort, job)
 				badProject = true
@@ -307,7 +315,7 @@ func (r *Runner) worker(backend *Backend, system *System) {
 
 		if !insideProject {
 			insideProject = true
-			if !r.options.Restore && !r.run(client, job, preparing, r.project, r.project.Prepare, &abend) {
+			if !r.options.Restore && !r.run(client, job, preparing, r.project, r.project.Prepare, r.project.Debug, &abend) {
 				r.add(&stats.ProjectPrepareError, job)
 				r.add(&stats.TaskAbort, job)
 				badProject = true
@@ -315,7 +323,7 @@ func (r *Runner) worker(backend *Backend, system *System) {
 			}
 
 			insideBackend = true
-			if !r.options.Restore && !r.run(client, job, preparing, backend, backend.Prepare, &abend) {
+			if !r.options.Restore && !r.run(client, job, preparing, backend, backend.Prepare, backend.Debug, &abend) {
 				r.add(&stats.BackendPrepareError, job)
 				r.add(&stats.TaskAbort, job)
 				badProject = true
@@ -325,7 +333,7 @@ func (r *Runner) worker(backend *Backend, system *System) {
 
 		if insideSuite != job.Suite {
 			insideSuite = job.Suite
-			if !r.options.Restore && !r.run(client, job, preparing, job.Suite, job.Suite.Prepare, &abend) {
+			if !r.options.Restore && !r.run(client, job, preparing, job.Suite, job.Suite.Prepare, job.Suite.Debug, &abend) {
 				r.add(&stats.SuitePrepareError, job)
 				r.add(&stats.TaskAbort, job)
 				badSuite[job.Suite] = true
@@ -333,36 +341,39 @@ func (r *Runner) worker(backend *Backend, system *System) {
 			}
 		}
 
+		debug := job.Debug()
 		if r.options.Restore {
 			// Do not prepare or execute.
-		} else if !r.options.Restore && !r.run(client, job, preparing, job, job.Prepare(), &abend) {
+		} else if !r.options.Restore && !r.run(client, job, preparing, job, job.Prepare(), debug, &abend) {
 			r.add(&stats.TaskPrepareError, job)
 			r.add(&stats.TaskAbort, job)
-		} else if !r.options.Restore && r.run(client, job, executing, job, job.Task.Execute, &abend) {
+			debug = ""
+		} else if !r.options.Restore && r.run(client, job, executing, job, job.Task.Execute, debug, &abend) {
 			r.add(&stats.TaskDone, job)
 		} else if !r.options.Restore {
 			r.add(&stats.TaskError, job)
+			debug = ""
 		}
-		if !abend && !r.run(client, job, restoring, job, job.Restore(), &abend) {
+		if !abend && !r.run(client, job, restoring, job, job.Restore(), debug, &abend) {
 			r.add(&stats.TaskRestoreError, job)
 			badProject = true
 		}
 	}
 
 	if !abend && insideSuite != nil {
-		if !r.run(client, last, restoring, insideSuite, insideSuite.Restore, &abend) {
+		if !r.run(client, last, restoring, insideSuite, insideSuite.Restore, insideSuite.Debug, &abend) {
 			r.add(&stats.SuiteRestoreError, last)
 		}
 		insideSuite = nil
 	}
 	if !abend && insideBackend {
-		if !r.run(client, last, restoring, backend, backend.Restore, &abend) {
+		if !r.run(client, last, restoring, backend, backend.Restore, backend.Debug, &abend) {
 			r.add(&stats.BackendRestoreError, last)
 		}
 		insideBackend = false
 	}
 	if !abend && insideProject {
-		if !r.run(client, last, restoring, r.project, r.project.Restore, &abend) {
+		if !r.run(client, last, restoring, r.project, r.project.Restore, r.project.Debug, &abend) {
 			r.add(&stats.ProjectRestoreError, last)
 		}
 		insideProject = false

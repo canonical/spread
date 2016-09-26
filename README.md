@@ -381,6 +381,11 @@ project restore
 
 Typically only a few of those script slots will be used.
 
+In addition to preparing and restoring scripts, `debug` and `debug-each`
+scripts may also be defined in the same places. These are only run when other
+scripts fail, and their purpose is to display further information which might
+be helpful when trying to understand what went wrong.
+
 
 <a name="rebooting"/>
 Rebooting
@@ -475,6 +480,25 @@ any of the restore scripts. You'll probably want to pair that with the `-reuse`
 option so the server is not discarded, and after you're done with the debugging
 in this style it may be necessary to do a run with the `-restore` flag, to
 clean up the state left behind by the task.
+
+Besides manual debugging through those flags, it's often handy to have more
+details displayed once something does break. Next to
+(preparing and restoring)[#preparing] scripts, Spread supports
+specifying `debug` scripts that are run in trace mode and have their output
+reported when a failure happens:
+
+_$PROJECT/examples/hello/task.yaml_
+```
+execute: |
+    echo "Something went wrong."
+    exit 1
+debug: |
+    dmesg | tail
+```
+
+In a similar way to prepare and restore scripts, these can also be defined
+as a `debug-each` script at the project, backend, and suite levels, so they
+are aggregated and repeated for every task under them.
 
 
 <a name="passwords">

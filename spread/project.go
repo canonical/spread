@@ -24,8 +24,10 @@ type Project struct {
 
 	Prepare     string
 	Restore     string
+	Debug       string
 	PrepareEach string `yaml:"prepare-each"`
 	RestoreEach string `yaml:"restore-each"`
+	DebugEach   string `yaml:"debug-each"`
 
 	Suites map[string]*Suite
 
@@ -55,8 +57,10 @@ type Backend struct {
 
 	Prepare     string
 	Restore     string
+	Debug       string
 	PrepareEach string `yaml:"prepare-each"`
 	RestoreEach string `yaml:"restore-each"`
+	DebugEach   string `yaml:"debug-each"`
 
 	Environment *Environment
 	Variants    []string
@@ -262,8 +266,10 @@ type Suite struct {
 
 	Prepare     string
 	Restore     string
+	Debug       string
 	PrepareEach string `yaml:"prepare-each"`
 	RestoreEach string `yaml:"restore-each"`
+	DebugEach   string `yaml:"debug-each"`
 
 	Name  string           `yaml:"-"`
 	Path  string           `yaml:"-"`
@@ -289,6 +295,7 @@ type Task struct {
 	Prepare string
 	Restore string
 	Execute string
+	Debug   string
 
 	Disable string
 
@@ -339,6 +346,10 @@ func (job *Job) Prepare() string {
 
 func (job *Job) Restore() string {
 	return join(job.Task.Restore, job.Suite.RestoreEach, job.Backend.RestoreEach, job.Project.RestoreEach)
+}
+
+func (job *Job) Debug() string {
+	return join(job.Task.Debug, job.Suite.DebugEach, job.Backend.DebugEach, job.Project.DebugEach)
 }
 
 func (job *Job) WarnTimeoutFor(context interface{}) time.Duration {
@@ -425,8 +436,10 @@ func Load(path string) (*Project, error) {
 
 	project.Prepare = strings.TrimSpace(project.Prepare)
 	project.Restore = strings.TrimSpace(project.Restore)
+	project.Debug = strings.TrimSpace(project.Debug)
 	project.PrepareEach = strings.TrimSpace(project.PrepareEach)
 	project.RestoreEach = strings.TrimSpace(project.RestoreEach)
+	project.DebugEach = strings.TrimSpace(project.DebugEach)
 
 	if err := checkEnv(project, &project.Environment); err != nil {
 		return nil, err
@@ -459,8 +472,10 @@ func Load(path string) (*Project, error) {
 
 		backend.Prepare = strings.TrimSpace(backend.Prepare)
 		backend.Restore = strings.TrimSpace(backend.Restore)
+		backend.Debug = strings.TrimSpace(backend.Debug)
 		backend.PrepareEach = strings.TrimSpace(backend.PrepareEach)
 		backend.RestoreEach = strings.TrimSpace(backend.RestoreEach)
+		backend.DebugEach = strings.TrimSpace(backend.DebugEach)
 
 		for sysname, system := range backend.Systems {
 			system.Backend = backend.Name
@@ -509,8 +524,10 @@ func Load(path string) (*Project, error) {
 		suite.Summary = strings.TrimSpace(suite.Summary)
 		suite.Prepare = strings.TrimSpace(suite.Prepare)
 		suite.Restore = strings.TrimSpace(suite.Restore)
+		suite.Debug = strings.TrimSpace(suite.Debug)
 		suite.PrepareEach = strings.TrimSpace(suite.PrepareEach)
 		suite.RestoreEach = strings.TrimSpace(suite.RestoreEach)
+		suite.DebugEach = strings.TrimSpace(suite.DebugEach)
 
 		project.Suites[suite.Name] = suite
 
@@ -559,6 +576,7 @@ func Load(path string) (*Project, error) {
 			task.Summary = strings.TrimSpace(task.Summary)
 			task.Prepare = strings.TrimSpace(task.Prepare)
 			task.Restore = strings.TrimSpace(task.Restore)
+			task.Debug = strings.TrimSpace(task.Debug)
 			if !validTask.MatchString(task.Name) {
 				return nil, fmt.Errorf("invalid task name: %q", task.Name)
 			}

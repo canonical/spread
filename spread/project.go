@@ -1001,9 +1001,6 @@ func evalstr(what string, strmaps ...strmap) ([]string, error) {
 	for name := range final {
 		strs = append(strs, name)
 	}
-	if len(strs) == 0 {
-		return nil, fmt.Errorf("no %s specified for %s", what, strmaps[len(strmaps)-1].context)
-	}
 	return strs, nil
 }
 

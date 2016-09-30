@@ -452,7 +452,7 @@ func (p *linodeProvider) createDisk(s *linodeServer, system *System) (root, swap
 	createRoot := linodeParams{
 		"LinodeID": s.d.ID,
 		"Label":    SystemLabel(system, "root"),
-		"Size":     4096,
+		"Size":     8192,
 		"rootPass": p.options.Password,
 	}
 	createSwap := linodeParams{

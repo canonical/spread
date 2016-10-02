@@ -36,11 +36,11 @@ type Runner struct {
 	done  chan bool
 	alive int
 
-	reuse   *Reuse
-	reused  map[string]bool
-	servers []Server
-	pending []*Job
-	stats   stats
+	reuse    *Reuse
+	reserved map[string]bool
+	servers  []Server
+	pending  []*Job
+	stats    stats
 
 	allocated bool
 
@@ -52,7 +52,7 @@ func Start(project *Project, options *Options) (*Runner, error) {
 		project:   project,
 		options:   options,
 		providers: make(map[string]Provider),
-		reused:    make(map[string]bool),
+		reserved:  make(map[string]bool),
 
 		suiteWorkers: make(map[[3]string]int),
 	}
@@ -380,7 +380,9 @@ func (r *Runner) worker(backend *Backend, system *System) {
 	}
 	server := client.Server()
 	client.Close()
-	if !r.options.Reuse {
+	if r.options.Reuse {
+		r.unreserve(server.Address())
+	} else {
 		printf("Discarding %s...", server)
 		r.discardServer(server)
 	}
@@ -480,6 +482,7 @@ func (r *Runner) discardServer(server Server) {
 	if err := r.reuse.Remove(server); err != nil {
 		printf("Error removing %s from reuse file: %v", server, err)
 	}
+	r.unreserve(server.Address())
 	r.mu.Lock()
 	for i, s := range r.servers {
 		if s == server {
@@ -531,6 +534,9 @@ Allocate:
 	if err != nil {
 		return nil
 	}
+
+	// Must reserve before adding to reuse, otherwise it might end up used twice.
+	r.reserve(server.Address())
 
 	if err := r.reuse.Add(server, r.options.Password); err != nil {
 		printf("Error adding %s to reuse file: %v", server, err)
@@ -593,15 +599,30 @@ Dial:
 	return client
 }
 
+func (r *Runner) unreserve(addr string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.reserved[addr] {
+		panic(fmt.Errorf("attempting to unreserve a system that is not reserved: %s", addr))
+	}
+	delete(r.reserved, addr)
+}
+
+func (r *Runner) reserve(addr string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.reserved[addr] {
+		return false
+	}
+	r.reserved[addr] = true
+	return true
+}
+
 func (r *Runner) reuseServer(backend *Backend, system *System) *Client {
 	provider := r.providers[backend.Name]
 
 	for _, rsystem := range r.reuse.ReuseSystems(system) {
-		r.mu.Lock()
-		reused := r.reused[rsystem.Address]
-		r.reused[rsystem.Address] = true
-		r.mu.Unlock()
-		if reused {
+		if !r.reserve(rsystem.Address) {
 			continue
 		}
 
@@ -618,6 +639,7 @@ func (r *Runner) reuseServer(backend *Backend, system *System) *Client {
 			return nil
 		}
 
+		printf("Reusing %s...", server)
 		username := rsystem.Username
 		password := rsystem.Password
 		if username == "" {
@@ -630,7 +652,6 @@ func (r *Runner) reuseServer(backend *Backend, system *System) *Client {
 			continue
 		}
 
-		printf("Reusing %s...", server)
 		return client
 	}
 	return nil

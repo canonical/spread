@@ -481,7 +481,7 @@ func (c *Client) MissingOrEmpty(dir string) (bool, error) {
 	return true, nil
 }
 
-func (c *Client) Send(from, to string, include []string, exclude []string) error {
+func (c *Client) Send(from, to string, include, exclude []string) error {
 	empty, err := c.MissingOrEmpty(to)
 	if err != nil {
 		return err
@@ -502,16 +502,23 @@ func (c *Client) Send(from, to string, include []string, exclude []string) error
 	}
 	defer stdin.Close()
 
-	args := []string{"-cz"}
+	args := []string{
+		"-cz",
+		"--exclude=.spread-reuse*",
+	}
 	for _, pattern := range exclude {
 		args = append(args, "--exclude="+pattern)
 	}
 	for _, pattern := range include {
 		args = append(args, pattern)
 	}
+
+	var stderr bytes.Buffer
+
 	cmd := exec.Command("tar", args...)
 	cmd.Dir = from
 	cmd.Stdout = stdin
+	cmd.Stderr = &stderr
 	err = cmd.Start()
 	if err != nil {
 		return fmt.Errorf("cannot start local tar command: %v", err)
@@ -532,7 +539,7 @@ func (c *Client) Send(from, to string, include []string, exclude []string) error
 	}
 
 	if err := <-errch; err != nil {
-		return fmt.Errorf("local tar command returned error: %v", err)
+		return fmt.Errorf("local tar command returned error: %v", outputErr(stderr.Bytes(), err))
 	}
 	return nil
 }

@@ -335,7 +335,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 
 func (r *Runner) shellEnv(job *Job, env *Environment) *Environment {
 	senv := env.Copy()
-	senv.Set("PS1", `'\$SPREAD_BACKEND:\$SPREAD_SYSTEM \${PWD/#\$SPREAD_PATH/...}# '`)
+	senv.Set("PS1", `\$SPREAD_BACKEND:\$SPREAD_SYSTEM \${PWD/#\$SPREAD_PATH/...}# `)
 	return senv
 }
 

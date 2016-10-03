@@ -1,15 +1,19 @@
 package spread
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"os"
-	"sync"
-
-	"gopkg.in/tomb.v2"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+
+	"gopkg.in/tomb.v2"
 )
 
 type Options struct {
@@ -32,6 +36,10 @@ type Runner struct {
 	project   *Project
 	options   *Options
 	providers map[string]Provider
+
+	contentTomb tomb.Tomb
+	contentFile *os.File
+	contentSize int64
 
 	done  chan bool
 	alive int
@@ -97,6 +105,82 @@ func (r *Runner) reusePath() string {
 	return filepath.Join(r.project.Path, fmt.Sprintf(".spread-reuse.%d.yaml", os.Getpid()))
 }
 
+type projectContent struct {
+	fd  *os.File
+	err error
+}
+
+func (r *Runner) prepareContent() (err error) {
+	if r.options.Discard {
+		return nil
+	}
+
+	file, err := ioutil.TempFile("", fmt.Sprintf("spread-content.%d.", os.Getpid()))
+	if err != nil {
+		return fmt.Errorf("cannot create temporary content file: %v", err)
+	}
+	defer func() {
+		if err != nil {
+			file.Close()
+			r.tomb.Kill(err)
+		}
+	}()
+
+	if err = os.Remove(file.Name()); err != nil {
+		return fmt.Errorf("cannot remove temporary content file: %v", err)
+	}
+
+	args := []string{"cz", "--exclude=.spread-reuse.*"}
+	for _, pattern := range r.project.Exclude {
+		args = append(args, "--exclude="+pattern)
+	}
+	for _, pattern := range r.project.Include {
+		args = append(args, pattern)
+	}
+
+	var stderr bytes.Buffer
+	cmd := exec.Command("tar", args...)
+	cmd.Dir = r.project.Path
+	cmd.Stdout = file
+	cmd.Stderr = &stderr
+	err = cmd.Start()
+	if err != nil {
+		return fmt.Errorf("cannot start local tar command: %v", err)
+	}
+
+	errch := make(chan error, 1)
+	go func() {
+		errch <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-errch:
+		if err != nil {
+			return fmt.Errorf("cannot tar project tree: %v", outputErr(stderr.Bytes(), err))
+		}
+	case <-r.contentTomb.Dying():
+		cmd.Process.Kill()
+		cmd.Wait()
+		return fmt.Errorf("tar command killed")
+	}
+
+	st, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("cannot stat temporary content file: %v", err)
+	}
+
+	r.contentSize = st.Size()
+	r.contentFile = file
+	return nil
+}
+
+func (r *Runner) waitContent() (io.Reader, error) {
+	if err := r.contentTomb.Wait(); err != nil {
+		return nil, err
+	}
+	return io.NewSectionReader(r.contentFile, 0, r.contentSize), nil
+}
+
 func (r *Runner) Wait() error {
 	return r.tomb.Wait()
 }
@@ -108,6 +192,12 @@ func (r *Runner) Stop() error {
 
 func (r *Runner) loop() (err error) {
 	defer func() {
+		r.contentTomb.Kill(nil)
+		r.contentTomb.Wait()
+		if r.contentFile != nil {
+			r.contentFile.Close()
+		}
+
 		if !r.options.Discard {
 			logNames(debugf, "Pending jobs after workers returned", r.pending, taskName)
 			for _, job := range r.pending {
@@ -136,6 +226,8 @@ func (r *Runner) loop() (err error) {
 			err = fmt.Errorf("unsuccessful run")
 		}
 	}()
+
+	r.contentTomb.Go(r.prepareContent)
 
 	// Find out how many workers are needed for each backend system.
 	// Even if multiple workers per system are requested, must not
@@ -455,8 +547,14 @@ func (r *Runner) client(backend *Backend, system *System) *Client {
 
 		if send {
 			printf("Sending project data to %s...", server)
-			err := client.Send(r.project.Path, r.project.RemotePath, r.project.Include, r.project.Exclude)
+			content, err := r.waitContent()
 			if err != nil {
+				printf("Discarding %s, cannot send project data: %s", server, err)
+				r.discardServer(server)
+				client.Close()
+				return nil
+			}
+			if err = client.SendTar(content, r.project.RemotePath); err != nil {
 				if reused {
 					printf("Cannot send project data to %s: %v", server, err)
 				} else {

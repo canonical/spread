@@ -504,7 +504,7 @@ func (c *Client) Send(from, to string, include, exclude []string) error {
 
 	args := []string{
 		"-cz",
-		"--exclude=.spread-reuse*",
+		"--exclude=.spread-reuse.*",
 	}
 	for _, pattern := range exclude {
 		args = append(args, "--exclude="+pattern)
@@ -540,6 +540,32 @@ func (c *Client) Send(from, to string, include, exclude []string) error {
 
 	if err := <-errch; err != nil {
 		return fmt.Errorf("local tar command returned error: %v", outputErr(stderr.Bytes(), err))
+	}
+	return nil
+}
+
+func (c *Client) SendTar(tar io.Reader, unpackDir string) error {
+	empty, err := c.MissingOrEmpty(unpackDir)
+	if err != nil {
+		return err
+	}
+	if !empty {
+		return fmt.Errorf("remote directory %s is not empty", unpackDir)
+	}
+
+	session, err := c.sshc.NewSession()
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+
+	var stdout safeBuffer
+	session.Stdin = tar
+	session.Stdout = &stdout
+	cmd := fmt.Sprintf(`%s/bin/bash -c "mkdir -p '%s' && cd '%s' && /bin/tar xz 2>&1"`, c.sudo(), unpackDir, unpackDir)
+	err = c.runCommand(session, cmd, &stdout, nil)
+	if err != nil {
+		return outputErr(stdout.Bytes(), err)
 	}
 	return nil
 }

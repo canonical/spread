@@ -428,9 +428,6 @@ func Load(path string) (*Project, error) {
 	if project.RemotePath == "" {
 		return nil, fmt.Errorf("missing project path field with remote project location")
 	}
-	if project.Include == nil {
-		project.Include = []string{"."}
-	}
 
 	project.Path = filepath.Dir(filename)
 

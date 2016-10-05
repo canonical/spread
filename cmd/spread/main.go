@@ -22,7 +22,7 @@ var (
 	pass     = flag.String("pass", "", "Server password to use, defaults to random")
 	reuse    = flag.Bool("reuse", false, "Keep servers running for reuse")
 	reusePid = flag.Int("reuse-pid", 0, "Reuse servers from crashed process")
-	resend   = flag.Bool("resend", false, "Resend project data to reused servers")
+	resend   = flag.Bool("resend", false, "Resend project content to reused servers")
 	debug    = flag.Bool("debug", false, "Run shell after script errors")
 	shell    = flag.Bool("shell", false, "Run shell instead of task scripts")
 	abend    = flag.Bool("abend", false, "Stop without restoring on first error")

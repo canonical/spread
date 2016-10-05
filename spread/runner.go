@@ -120,7 +120,10 @@ func (r *Runner) prepareContent() (err error) {
 		return fmt.Errorf("cannot create temporary content file: %v", err)
 	}
 	defer func() {
-		if err != nil {
+		if err == nil {
+			logf("Project content is ready for delivery.")
+		} else {
+			printf("Error preparing project content for delivery: %v", err)
 			file.Close()
 			r.tomb.Kill(err)
 		}
@@ -134,9 +137,14 @@ func (r *Runner) prepareContent() (err error) {
 	for _, pattern := range r.project.Exclude {
 		args = append(args, "--exclude="+pattern)
 	}
-	for _, pattern := range r.project.Include {
-		args = append(args, pattern)
+	include := r.project.Include
+	if len(include) == 0 {
+		include, err = filterDir(r.project.Path)
+		if err != nil {
+			return fmt.Errorf("cannot list project directory: %v", err)
+		}
 	}
+	args = append(args, include...)
 
 	var stderr bytes.Buffer
 	cmd := exec.Command("tar", args...)
@@ -828,4 +836,23 @@ func logNames(f func(format string, args ...interface{}), prefix string, jobs []
 	sort.Strings(names)
 	const dash = "\n    - "
 	f("%s: %d%s%s", prefix, len(names), dash, strings.Join(names, dash))
+}
+
+func filterDir(path string) (names []string, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	names, err = f.Readdirnames(0)
+	if err != nil {
+		return nil, err
+	}
+	var filtered []string
+	for _, name := range names {
+		if !strings.HasPrefix(name, ".spread-reuse.") {
+			filtered = append(filtered, name)
+		}
+	}
+	return filtered, nil
 }

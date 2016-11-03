@@ -103,7 +103,15 @@ func (p *adhocProvider) run(script string, system *System, address string) (resu
 	if system.Password == "" {
 		env.Set("SPREAD_PASSWORD", p.options.Password)
 	}
-	output, _, err := runScript(traceOutput, script, p.project.Path, env, p.backend.WarnTimeout.Duration, p.backend.KillTimeout.Duration)
+	lscript := localScript{
+		script:      script,
+		dir:         p.project.Path,
+		env:         env,
+		warnTimeout: p.backend.WarnTimeout.Duration,
+		killTimeout: p.backend.KillTimeout.Duration,
+		mode:        traceOutput,
+	}
+	output, _, err := lscript.run()
 	if err != nil {
 		return nil, err
 	}

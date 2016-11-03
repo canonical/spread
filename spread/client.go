@@ -202,8 +202,10 @@ func (c *Client) ReadFile(path string) ([]byte, error) {
 	return output, nil
 }
 
+type outputMode int
+
 const (
-	traceOutput = iota
+	traceOutput outputMode = iota
 	combinedOutput
 	splitOutput
 	shellOutput
@@ -239,7 +241,7 @@ func (e *rebootError) Error() string { return "reboot requested" }
 
 const maxReboots = 10
 
-func (c *Client) run(script string, dir string, env *Environment, mode int) (output []byte, err error) {
+func (c *Client) run(script string, dir string, env *Environment, mode outputMode) (output []byte, err error) {
 	if env == nil {
 		env = NewEnvironment()
 	}
@@ -283,9 +285,7 @@ func (c *Client) run(script string, dir string, env *Environment, mode int) (out
 	panic("unreachable")
 }
 
-var rebootExp = regexp.MustCompile("^<REBOOT(?: (.*))?>$")
-
-func (c *Client) runPart(script string, dir string, env *Environment, mode int, previous []byte) (output []byte, err error) {
+func (c *Client) runPart(script string, dir string, env *Environment, mode outputMode, previous []byte) (output []byte, err error) {
 	script = strings.TrimSpace(script)
 	if len(script) == 0 {
 		return nil, nil
@@ -301,9 +301,19 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode int, 
 	if dir != "" {
 		buf.WriteString(fmt.Sprintf("cd \"%s\"\n", dir))
 	}
+	if c.sudo() != "" {
+		buf.WriteString("unset SUDO_COMMAND\n")
+		buf.WriteString("unset SUDO_USER\n")
+		buf.WriteString("unset SUDO_UID\n")
+		buf.WriteString("unset SUDO_GID\n")
+	}
+	buf.WriteString("unset HISTFILE\n")
 	buf.WriteString("REBOOT() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<REBOOT>' || echo \"<REBOOT $1>\"; exit 213; }\n")
+	buf.WriteString("ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n")
+	buf.WriteString("MATCH() { { set +xu; } 2> /dev/null; local stdin=$(cat); echo $stdin | grep -q -e \"$@\" || { echo \"error: pattern not found on stdin:\\n$output\">&2; return 1; }; }\n")
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
+	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n")
 
 	for _, k := range env.Keys() {
 		v := env.Get(k)
@@ -398,8 +408,12 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode int, 
 
 	if e, ok := err.(*ssh.ExitError); ok && e.ExitStatus() == 213 {
 		lines := bytes.Split(bytes.TrimSpace(stdout.Bytes()), []byte{'\n'})
-		if match := rebootExp.FindSubmatch(lines[len(lines)-1]); len(match) > 0 {
-			return append(previous, stdout.Bytes()...), &rebootError{string(match[1])}
+		m := commandExp.FindSubmatch(lines[len(lines)-1])
+		if len(m) > 0 && string(m[1]) == "REBOOT" {
+			return append(previous, stdout.Bytes()...), &rebootError{string(m[2])}
+		}
+		if len(m) > 0 && string(m[1]) == "ERROR" {
+			return nil, fmt.Errorf("%s", m[2])
 		}
 	}
 
@@ -635,11 +649,22 @@ func (c *Client) runCommand(session *ssh.Session, cmd string, stdout, stderr io.
 
 var commandExp = regexp.MustCompile("^<([A-Z_]+)(?: (.*))?>$")
 
-// runScript runs a local script in a polished manner.
+// localScript holds and runs a local script in a polished manner.
 //
 // It's not used by the SSH client, but mimics the Client.runPart+runCommand closely.
-func runScript(mode int, script, dir string, env *Environment, warnTimeout, killTimeout time.Duration) (stdout, stderr []byte, err error) {
-	script = strings.TrimSpace(script)
+type localScript struct {
+	script      string
+	dir         string
+	env         *Environment
+	warnTimeout time.Duration
+	killTimeout time.Duration
+	mode        outputMode
+	extraFiles  []*os.File
+	stop        <-chan struct{}
+}
+
+func (s *localScript) run() (stdout, stderr []byte, err error) {
+	script := strings.TrimSpace(s.script)
 	if len(script) == 0 {
 		return nil, nil, nil
 	}
@@ -649,11 +674,13 @@ func runScript(mode int, script, dir string, env *Environment, warnTimeout, kill
 	buf.WriteString("ADDRESS() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ADDRESS>' || echo \"<ADDRESS $1>\"; }\n")
 	buf.WriteString("FATAL() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<FATAL>' || echo \"<FATAL $@>\"; exit 213; }\n")
 	buf.WriteString("ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n")
+	buf.WriteString("MATCH() { { set +xu; } 2> /dev/null; local stdin=$(cat); echo $stdin | grep -q -e \"$@\" || { echo \"error: pattern not found on stdin:\\n$output\">&2; return 1; }; }\n")
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
+	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n")
 
-	for _, k := range env.Keys() {
-		v := env.Get(k)
+	for _, k := range s.env.Keys() {
+		v := s.env.Get(k)
 		if len(v) == 0 || v[0] == '"' || v[0] == '\'' {
 			fmt.Fprintf(&buf, "export %s=%s\n", k, v)
 		} else {
@@ -661,7 +688,7 @@ func runScript(mode int, script, dir string, env *Environment, warnTimeout, kill
 		}
 	}
 
-	if mode == traceOutput {
+	if s.mode == traceOutput {
 		// Don't trace environment variables so secrets don't leak.
 		fmt.Fprintf(&buf, "set -x\n")
 	}
@@ -675,10 +702,9 @@ func runScript(mode int, script, dir string, env *Environment, warnTimeout, kill
 	var outbuf, errbuf safeBuffer
 	cmd := exec.Command("/bin/bash", "-eu", "-")
 	cmd.Stdin = &buf
-	if dir != "" {
-		cmd.Dir = dir
-	}
-	switch mode {
+	cmd.Dir = s.dir
+	cmd.ExtraFiles = s.extraFiles
+	switch s.mode {
 	case traceOutput, combinedOutput:
 		cmd.Stdout = &outbuf
 		cmd.Stderr = &outbuf
@@ -701,6 +727,8 @@ func runScript(mode int, script, dir string, env *Environment, warnTimeout, kill
 		done <- cmd.Wait()
 	}()
 
+	warnTimeout := s.warnTimeout
+	killTimeout := s.killTimeout
 	if warnTimeout == 0 {
 		warnTimeout = defaultWarnTimeout
 	} else if warnTimeout == -1 {
@@ -726,6 +754,10 @@ Loop:
 	for {
 		select {
 		case err = <-done:
+			break Loop
+		case <-s.stop:
+			buf.Write([]byte("\n<interrupted>"))
+			err = fmt.Errorf("interrupted")
 			break Loop
 		case <-kill:
 			cmd.Process.Kill()

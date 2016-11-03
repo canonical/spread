@@ -99,7 +99,7 @@ func (s *linodeServer) watchLoop() error {
 		case <-retry.C:
 			status, err := s.p.status(s)
 			if err == nil && status == linodePoweredOff {
-				found, _, _ := s.p.hasActiveJob(s, "linode.boot")
+				found, _, _ := s.p.hasActiveJob(s, "linode.boot", noLog)
 				if found {
 					continue
 				}
@@ -193,7 +193,7 @@ func (p *linodeProvider) Allocate(system *System) (Server, error) {
 		if (s.d.Status != linodeBrandNew && s.d.Status != linodePoweredOff) || !p.reserve(s) {
 			continue
 		}
-		found, lastjob, err := p.hasActiveJob(s, "")
+		found, lastjob, err := p.hasActiveJob(s, "", 0)
 		lastjobs[i] = lastjob
 		if found || err != nil {
 			if err != nil {
@@ -219,7 +219,7 @@ func (p *linodeProvider) Allocate(system *System) (Server, error) {
 	for i, s := range servers {
 		lastjob := lastjobs[i]
 		if lastjob.IsZero() {
-			_, lastjob, _ = p.hasActiveJob(s, "")
+			_, lastjob, _ = p.hasActiveJob(s, "", 0)
 			lastjobs[i] = lastjob
 		}
 		if lastjob.After(newest) {
@@ -240,7 +240,7 @@ func (p *linodeProvider) Allocate(system *System) (Server, error) {
 		}
 
 		// Ensure no recent activity again.
-		found, _, err := p.hasActiveJob(s, "")
+		found, _, err := p.hasActiveJob(s, "", 0)
 		if found || err != nil {
 			if err != nil {
 				printf("Cannot check %s for active jobs: %v", s, err)
@@ -645,13 +645,13 @@ type linodeJobResult struct {
 	Data []*linodeJob `json:"DATA"`
 }
 
-func (p *linodeProvider) jobs(s *linodeServer) ([]*linodeJob, error) {
+func (p *linodeProvider) jobs(s *linodeServer, flags doFlags) ([]*linodeJob, error) {
 	params := linodeParams{
 		"api_action": "linode.job.list",
 		"LinodeID":   s.d.ID,
 	}
 	var result linodeJobResult
-	err := p.do(params, &result)
+	err := p.dofl(params, &result, flags)
 	if err == nil {
 		err = result.err()
 	}
@@ -719,13 +719,15 @@ func (p *linodeProvider) waitJob(s *linodeServer, verb string, jobID int) (*lino
 	panic("unreachable")
 }
 
-func (p *linodeProvider) hasActiveJob(s *linodeServer, action string) (found bool, lastjob time.Time, err error) {
+func (p *linodeProvider) hasActiveJob(s *linodeServer, action string, flags doFlags) (found bool, lastjob time.Time, err error) {
 	kind := ""
 	if action != "" {
 		kind += " " + action
 	}
-	debugf("Checking %s for active%s jobs...", s, kind)
-	jobs, err := p.jobs(s)
+	if flags&noLog == 0 {
+		debugf("Checking %s for active%s jobs...", s, kind)
+	}
+	jobs, err := p.jobs(s, flags)
 	if err != nil {
 		return false, time.Time{}, err
 	}
@@ -742,7 +744,7 @@ func (p *linodeProvider) hasActiveJob(s *linodeServer, action string) (found boo
 
 func (p *linodeProvider) hasRecentBoot(s *linodeServer, since time.Time) (found bool, err error) {
 	debugf("Checking %s for recent boots...", s)
-	jobs, err := p.jobs(s)
+	jobs, err := p.jobs(s, 0)
 	if err != nil {
 		return false, fmt.Errorf("cannot check %s for recent boots: %v", s, err)
 	}
@@ -1065,8 +1067,21 @@ func (p *linodeProvider) checkKey() error {
 
 type linodeParams map[string]interface{}
 
+type doFlags int
+
+const (
+	noLog doFlags = 1
+)
+
 func (p *linodeProvider) do(params linodeParams, result interface{}) error {
-	debugf("Linode request: %# v\n", params)
+	return p.dofl(params, result, 0)
+}
+
+func (p *linodeProvider) dofl(params linodeParams, result interface{}, flags doFlags) error {
+	log := flags&noLog == 0
+	if log {
+		debugf("Linode request: %# v\n", params)
+	}
 
 	values := make(url.Values)
 	for k, v := range params {
@@ -1098,7 +1113,7 @@ func (p *linodeProvider) do(params linodeParams, result interface{}) error {
 		return fmt.Errorf("cannot read Linode response: %v", err)
 	}
 
-	if Debug {
+	if log && Debug {
 		var r interface{}
 		if err := json.Unmarshal(data, &r); err == nil {
 			debugf("Linode response: %# v\n", r)

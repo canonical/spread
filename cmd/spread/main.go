@@ -16,18 +16,20 @@ import (
 )
 
 var (
-	verbose  = flag.Bool("v", false, "Show detailed progress information")
-	vverbose = flag.Bool("vv", false, "Show debugging messages as well")
-	list     = flag.Bool("list", false, "Just show list of jobs that would run")
-	pass     = flag.String("pass", "", "Server password to use, defaults to random")
-	reuse    = flag.Bool("reuse", false, "Keep servers running for reuse")
-	reusePid = flag.Int("reuse-pid", 0, "Reuse servers from crashed process")
-	resend   = flag.Bool("resend", false, "Resend project content to reused servers")
-	debug    = flag.Bool("debug", false, "Run shell after script errors")
-	shell    = flag.Bool("shell", false, "Run shell instead of task scripts")
-	abend    = flag.Bool("abend", false, "Stop without restoring on first error")
-	restore  = flag.Bool("restore", false, "Run only the restore scripts")
-	discard  = flag.Bool("discard", false, "Discard reused servers without running")
+	verbose     = flag.Bool("v", false, "Show detailed progress information")
+	vverbose    = flag.Bool("vv", false, "Show debugging messages as well")
+	list        = flag.Bool("list", false, "Just show list of jobs that would run")
+	pass        = flag.String("pass", "", "Server password to use, defaults to random")
+	reuse       = flag.Bool("reuse", false, "Keep servers running for reuse")
+	reusePid    = flag.Int("reuse-pid", 0, "Reuse servers from crashed process")
+	resend      = flag.Bool("resend", false, "Resend project content to reused servers")
+	debug       = flag.Bool("debug", false, "Run shell after script errors")
+	shell       = flag.Bool("shell", false, "Run shell instead of task scripts")
+	shellBefore = flag.Bool("shell-before", false, "Run shell before task scripts")
+	shellAfter  = flag.Bool("shell-after", false, "Run shell after task scripts")
+	abend       = flag.Bool("abend", false, "Stop without restoring on first error")
+	restore     = flag.Bool("restore", false, "Run only the restore scripts")
+	discard     = flag.Bool("discard", false, "Discard reused servers without running")
 )
 
 func main() {
@@ -46,9 +48,9 @@ func run() error {
 	spread.Debug = *vverbose
 
 	var other bool
-	for _, b := range []bool{*debug, *shell, *abend, *restore} {
+	for _, b := range []bool{*debug, *shell, *shellBefore || *shellAfter, *abend, *restore} {
 		if b && other {
-			return fmt.Errorf("cannot have more than one of -debug, -shell, -abend, and -restore")
+			return fmt.Errorf("cannot have more than one of -debug, -shell, -shell-before/after, -abend, and -restore")
 
 		}
 		other = other || b
@@ -74,16 +76,18 @@ func run() error {
 	}
 
 	options := &spread.Options{
-		Password: password,
-		Filter:   filter,
-		Reuse:    *reuse,
-		ReusePid: *reusePid,
-		Resend:   *resend,
-		Debug:    *debug,
-		Shell:    *shell,
-		Abend:    *abend,
-		Restore:  *restore,
-		Discard:  *discard,
+		Password:    password,
+		Filter:      filter,
+		Reuse:       *reuse,
+		ReusePid:    *reusePid,
+		Resend:      *resend,
+		Debug:       *debug,
+		Shell:       *shell,
+		ShellBefore: *shellBefore,
+		ShellAfter:  *shellAfter,
+		Abend:       *abend,
+		Restore:     *restore,
+		Discard:     *discard,
 	}
 
 	project, err := spread.Load(".")

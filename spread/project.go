@@ -22,6 +22,7 @@ type Project struct {
 
 	Environment *Environment
 
+	Repack      string
 	Prepare     string
 	Restore     string
 	Debug       string
@@ -35,6 +36,7 @@ type Project struct {
 
 	Include []string
 	Exclude []string
+	Rename  []string
 
 	Path string `yaml:"-"`
 
@@ -153,6 +155,24 @@ func (e *Environment) Copy() *Environment {
 		copy.vals[k] = v
 	}
 	return copy
+}
+
+func (e *Environment) Variant(variant string) *Environment {
+	env := e.Copy()
+NextKey:
+	for _, key := range env.keys {
+		ekey, evariants := SplitVariants(key)
+		for _, evariant := range evariants {
+			if evariant == variant {
+				env.Replace(key, ekey, env.Get(key))
+				continue NextKey
+			}
+		}
+		if len(evariants) > 0 {
+			env.Unset(key)
+		}
+	}
+	return env
 }
 
 func (e *Environment) UnmarshalYAML(u func(interface{}) error) error {
@@ -327,7 +347,7 @@ func (job *Job) String() string {
 func (job *Job) StringFor(context interface{}) string {
 	switch context {
 	case job.Project:
-		return fmt.Sprintf("project on %s:%s", job.Backend.Name, job.System)
+		return fmt.Sprintf("project on %s:%s", job.Backend.Name, job.System.Name)
 	case job.Backend, job.System:
 		return fmt.Sprintf("%s:%s", job.Backend.Name, job.System.Name)
 	case job.Suite:
@@ -431,6 +451,7 @@ func Load(path string) (*Project, error) {
 
 	project.Path = filepath.Dir(filename)
 
+	project.Repack = strings.TrimSpace(project.Repack)
 	project.Prepare = strings.TrimSpace(project.Prepare)
 	project.Restore = strings.TrimSpace(project.Restore)
 	project.Debug = strings.TrimSpace(project.Debug)
@@ -713,10 +734,21 @@ func (p *Project) backendNames() []string {
 func (p *Project) Jobs(options *Options) ([]*Job, error) {
 	var jobs []*Job
 
+	backendHasJob := make(map[string]bool)
+
 	cmdcache := make(map[string]string)
 	penv := envmap{p, p.Environment}
 	pevr := strmap{p, evars(p.Environment, "")}
 	pbke := strmap{p, p.backendNames()}
+
+	value, err := evalone("remote project path", p.RemotePath, cmdcache, true, penv)
+	if err != nil {
+		return nil, err
+	}
+	p.RemotePath = filepath.Clean(value)
+	if !filepath.IsAbs(p.RemotePath) || filepath.Dir(p.RemotePath) == p.RemotePath {
+		return nil, fmt.Errorf("remote project path must be absolute and not /: %s", p.RemotePath)
+	}
 
 	for _, suite := range p.Suites {
 		senv := envmap{suite, suite.Environment}
@@ -795,29 +827,18 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 							"SPREAD_VARIANT", job.Variant,
 						)}
 
-						env, err := evalenv(cmdcache, false, penv, benv, yenv, senv, tenv, sprenv)
+						env, err := evalenv(cmdcache, true, penv, benv, yenv, senv, tenv, sprenv)
 						if err != nil {
 							return nil, err
 						}
-					NextKey:
-						for _, key := range env.Keys() {
-							ekey, evariants := SplitVariants(key)
-							for _, evariant := range evariants {
-								if evariant == variant {
-									env.Replace(key, ekey, env.Get(key))
-									continue NextKey
-								}
-							}
-							if len(evariants) > 0 {
-								env.Unset(key)
-							}
-						}
-						job.Environment = env
+						job.Environment = env.Variant(variant)
 
 						if options.Filter != nil && !options.Filter.Pass(job) {
 							continue
 						}
 						jobs = append(jobs, job)
+
+						backendHasJob[job.Backend.Name] = true
 					}
 				}
 
@@ -825,22 +846,33 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 		}
 	}
 
-	value, err := evalone("remote project path", p.RemotePath, cmdcache, penv)
+	env, err := evalenv(cmdcache, true, penv)
 	if err != nil {
 		return nil, err
 	}
-	p.RemotePath = filepath.Clean(value)
-	if !filepath.IsAbs(p.RemotePath) || filepath.Dir(p.RemotePath) == p.RemotePath {
-		return nil, fmt.Errorf("remote project path must be absolute and not /: %s", p.RemotePath)
-	}
+	p.Environment = env
+	p.Environment.Set("SPREAD_BACKENDS", strings.Join(sortedKeys(backendHasJob), " "))
+
+	// TODO Should probably cascade environments, so that backend.Environment contains
+	// project.Environment, and suite.Environmnet contains both project.Environment and
+	// backend.Environment, etc. This would make logic such as the one below saner.
+	// Also, should probably have Enviornment.Evaluate instead of evalone and evalenv.
 
 	for bname, backend := range p.Backends {
 		benv := envmap{backend, backend.Environment}
-		value, err := evalone(bname+" backend key", backend.Key, cmdcache, penv, benv)
+		value, err := evalone(bname+" backend key", backend.Key, cmdcache, true, penv, benv)
 		if err != nil {
 			return nil, err
 		}
 		backend.Key = strings.TrimSpace(value)
+	}
+
+	for i, expr := range p.Rename {
+		value, err := evalone("rename expression", expr, cmdcache, false, penv)
+		if err != nil {
+			return nil, err
+		}
+		p.Rename[i] = value
 	}
 
 	if len(jobs) == 0 {
@@ -886,28 +918,36 @@ type stringer string
 func (s stringer) String() string { return string(s) }
 
 var (
-	varcmd  = regexp.MustCompile(`\$\(HOST:.+?\)`)
 	varname = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*(?:/[a-zA-Z0-9_]+)?$`)
+	varcmd  = regexp.MustCompile(`\$\(HOST:.+?\)`)
+	varref  = regexp.MustCompile(`\$(?:\(HOST:.+?\)|[a-zA-Z_][a-zA-Z0-9_]*|\{[a-zA-Z_][a-zA-Z0-9_]*\})`)
 )
 
-func evalone(context string, value string, cmdcache map[string]string, maps ...envmap) (string, error) {
+func evalone(context string, value string, cmdcache map[string]string, hostOnly bool, maps ...envmap) (string, error) {
 	const key = "SPREAD_INTERNAL_EVAL"
 	m := envmap{stringer(context), NewEnvironment(key, value)}
-	out, err := evalenv(cmdcache, false, append(maps, m)...)
+	out, err := evalenv(cmdcache, hostOnly, append(maps, m)...)
 	if err != nil {
 		return "", err
 	}
 	return out.Get(key), nil
 }
 
-func evalenv(cmdcache map[string]string, partial bool, maps ...envmap) (*Environment, error) {
+func evalenv(cmdcache map[string]string, hostOnly bool, maps ...envmap) (*Environment, error) {
 	result := NewEnvironment()
 	for _, m := range maps {
 		for _, key := range m.env.Keys() {
 			var failed error
-			value := varcmd.ReplaceAllStringFunc(m.env.Get(key), func(ref string) string {
+			varexp := varref
+			if hostOnly {
+				varexp = varcmd
+			}
+			value := varexp.ReplaceAllStringFunc(m.env.Get(key), func(ref string) string {
 				if failed != nil {
 					return ""
+				}
+				if !strings.HasPrefix(ref, "$(") {
+					return result.Get(strings.Trim(ref, "${}"))
 				}
 				inner := ref[len("$(HOST:") : len(ref)-len(")")]
 				if output, ok := cmdcache[inner]; ok {
@@ -1014,4 +1054,15 @@ func (t *Timeout) UnmarshalYAML(u func(interface{}) error) error {
 	}
 	t.Duration = d
 	return nil
+}
+
+func sortedKeys(m map[string]bool) []string {
+	keys := make([]string, len(m))
+	i := 0
+	for key := range m {
+		keys[i] = key
+		i++
+	}
+	sort.Strings(keys)
+	return keys
 }

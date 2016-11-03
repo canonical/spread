@@ -11,18 +11,20 @@ Convenient full-system test (task) distribution
 [Variants](#variants)  
 [Blacklisting and whitelisting](#blacklisting)  
 [Preparing and restoring](#preparing)  
+[Functions](#functions)
 [Rebooting](#rebooting)  
 [Timeouts](#timeouts)  
 [Fast iterations with reuse](#reuse)  
 [Debugging](#debugging)  
 [Passwords and usernames](#passwords)  
-[Including and excluding files](#including)  
+[Including, excluding, and renaming files](#including)  
 [Selecting which tasks to run](#selecting)  
 [LXD backend](#lxd)  
 [QEMU backend](#qemu)  
 [Linode backend](#linode)  
 [AdHoc backend](#adhoc)  
 [More on parallelism](#parallelism)  
+[Repacking and delta uploads](#repacking)  
 
 <a name="why"/>
 Why?
@@ -387,6 +389,19 @@ scripts fail, and their purpose is to display further information which might
 be helpful when trying to understand what went wrong.
 
 
+<a name="functions"/>
+Functions
+---------
+
+A few helper functions are available for scripts to use:
+
+ * _REBOOT_ - Reboot the system. See [below](#rebooting) for details.
+ * _MATCH_ - Run `grep -q -e` on stdin. Without match, print error including content.
+ * _ERROR_ - Fail script with provided error message only instead of script trace.
+ * _FATAL_ - Similar to ERROR, but prevents retries. Specific to [adhoc backend](#adhoc).
+ * _ADDRESS_ - Set allocated system address. Specific to [adhoc backend](#adhoc).
+
+
 <a name="rebooting"/>
 Rebooting
 ---------
@@ -410,7 +425,6 @@ execute: |
 Alternatively the REBOOT function may also be called with a single
 parameter which will be used as the value of `$SPREAD_REBOOT` after
 the system reboots, instead of the count.
-
 
 <a name="timeouts"/>
 Timeouts
@@ -468,11 +482,11 @@ exact point you get a failure, with the exact same environment as the script
 had.  Exit the shell and the process continues, until the next failure, no
 matter which backend or system it was in.
 
-A similar option is to use `-shell`. Rather than stopping on failures, this
-will run the shell _instead of_ the original task scripts, for every job
-that was selected to run. You'll most probably want to filter down what is
-being run when using that mode, to avoid having a troubling sequence of shells
-opened.
+Similarly, `-shell`, `-shell-before`, and `-shell-after` allow running an
+interactive shell instead of, before, and after the original task script,
+respectively, for every job that was selected to run. You'll most probably want
+to filter down what is being run when using that mode, to avoid having a
+troubling sequence of shells opened.
 
 If you'd prefer to debug by logging in from an independent ssh session, the
 `-abend` option will abruptly stop the execution on failures, without running
@@ -536,11 +550,11 @@ In all cases the end result is the same: a system that executes scripts as root.
 
 
 <a name="including"/>
-Including and excluding files
------------------------------
+Including, excluding, and renaming files
+----------------------------------------
 
-There are three fields that control what is pushed to the remote servers after
-each server is allocated:
+The following fields define what is pushed to the remote servers after
+each server is allocated and where that content is placed:
 
 _$PROJECT/spread.yaml_
 ```
@@ -552,11 +566,24 @@ include:
     - src/*
 exclude:
     - src/*.o
+
+rename:
+    - s,path/one,path/two,
 ```
 
-The `path` option must be provided, while `include` defaults to a single
-entry with `*` which causes everything inside the project directory to be sent
-over.  Nothing is excluded by default.
+The `path` option must be provided to define the base directory where the
+content will live under, while `include` defaults to a single entry with `*`
+which causes everything inside the project directory to be sent over.
+
+The remote tree will usually look the same as the local one, but that
+may be changed using the `rename` field. It takes a list of regular
+expressions that act on the full relative name of each entry, and also
+on the target of symbolic links. To avoid touching the target of symbolic
+links append the `S` modifier as a suffix of the expression.
+
+Note that Spread will still expect tasks to live in the same directories as
+they do locally, so these directories cannot be moved.
+
 
 <a name="selecting"/>
 Selecting which tasks to run
@@ -889,3 +916,57 @@ backends:
 
 This is generally not necessary, but may be useful when fine-tuning control
 over the use of sets of remote machines.
+
+
+<a name="repacking"/>
+Repacking and delta uploads
+---------------------------
+
+When working over slow networks even small uploads tend to take a bit too
+long. Spread offers a general "repacking" mechanism that may be used to
+transform the data being delivered in arbitrary ways, even into a delta
+of content that the remote servers can obtain by themselves, for example.
+
+The `repack` script is run with file descriptors 3 and 4 used as pipes for
+the [specified](#including) project content into and out of the script,
+respectively, in _tar_ format. In other words, the original specified
+project content _may_ be read from file descriptor 3, and the new project
+content _must_ be writen into file descriptor 4.
+
+To illustrate, the following repack script will preserve content unchanged:
+
+_$PROJECT/spread.yaml_
+```
+repack: |
+    cat <&3 >&4
+```
+
+As a more complex example, the following setup explores that feature to ship a
+delta from a GitHub repository, computed on top of a tag or commit reference
+that is knowingly part of the history for all clients:
+
+```
+environment:
+    DELTA_REF: v1.23
+
+rename:
+    - s,^,$DELTA_REF,S
+
+exclude:
+    - .git
+
+repack: |
+    trap "rm -f delta-ref.tar current.delta" EXIT
+    git archive -o delta-ref.tar --format=tar --prefix=$DELTA_PREFIX $DELTA_REF
+    xdelta3 -s delta-ref.tar <&3 > current.delta
+    tar c current.delta >&4
+
+prepare: |
+    apt-get install xdelta3
+    curl -s -o - https://codeload.github.com/myrepo/myproject/tar.gz/$DELTA_REF | gunzip > delta-ref.tar
+    xdelta3 -d -s delta-ref.tar current.delta | tar x --strip-components=1
+    rm -f delta-ref.tar current.delta
+```
+
+The `rename` and `exclude` settings used above ensure that the tarball that goes
+into `repack` looks like the one offered by GitHub.

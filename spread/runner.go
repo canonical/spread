@@ -2,6 +2,7 @@ package spread
 
 import (
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -17,16 +18,18 @@ import (
 )
 
 type Options struct {
-	Password string
-	Filter   Filter
-	Reuse    bool
-	ReusePid int
-	Debug    bool
-	Shell    bool
-	Abend    bool
-	Restore  bool
-	Resend   bool
-	Discard  bool
+	Password    string
+	Filter      Filter
+	Reuse       bool
+	ReusePid    int
+	Debug       bool
+	Shell       bool
+	ShellBefore bool
+	ShellAfter  bool
+	Abend       bool
+	Restore     bool
+	Resend      bool
+	Discard     bool
 }
 
 type Runner struct {
@@ -110,85 +113,6 @@ type projectContent struct {
 	err error
 }
 
-func (r *Runner) prepareContent() (err error) {
-	if r.options.Discard {
-		return nil
-	}
-
-	file, err := ioutil.TempFile("", fmt.Sprintf("spread-content.%d.", os.Getpid()))
-	if err != nil {
-		return fmt.Errorf("cannot create temporary content file: %v", err)
-	}
-	defer func() {
-		if err == nil {
-			logf("Project content is ready for delivery.")
-		} else {
-			printf("Error preparing project content for delivery: %v", err)
-			file.Close()
-			r.tomb.Kill(err)
-		}
-	}()
-
-	if err = os.Remove(file.Name()); err != nil {
-		return fmt.Errorf("cannot remove temporary content file: %v", err)
-	}
-
-	args := []string{"cz", "--exclude=.spread-reuse.*"}
-	for _, pattern := range r.project.Exclude {
-		args = append(args, "--exclude="+pattern)
-	}
-	include := r.project.Include
-	if len(include) == 0 {
-		include, err = filterDir(r.project.Path)
-		if err != nil {
-			return fmt.Errorf("cannot list project directory: %v", err)
-		}
-	}
-	args = append(args, include...)
-
-	var stderr bytes.Buffer
-	cmd := exec.Command("tar", args...)
-	cmd.Dir = r.project.Path
-	cmd.Stdout = file
-	cmd.Stderr = &stderr
-	err = cmd.Start()
-	if err != nil {
-		return fmt.Errorf("cannot start local tar command: %v", err)
-	}
-
-	errch := make(chan error, 1)
-	go func() {
-		errch <- cmd.Wait()
-	}()
-
-	select {
-	case err := <-errch:
-		if err != nil {
-			return fmt.Errorf("cannot tar project tree: %v", outputErr(stderr.Bytes(), err))
-		}
-	case <-r.contentTomb.Dying():
-		cmd.Process.Kill()
-		cmd.Wait()
-		return fmt.Errorf("tar command killed")
-	}
-
-	st, err := file.Stat()
-	if err != nil {
-		return fmt.Errorf("cannot stat temporary content file: %v", err)
-	}
-
-	r.contentSize = st.Size()
-	r.contentFile = file
-	return nil
-}
-
-func (r *Runner) waitContent() (io.Reader, error) {
-	if err := r.contentTomb.Wait(); err != nil {
-		return nil, err
-	}
-	return io.NewSectionReader(r.contentFile, 0, r.contentSize), nil
-}
-
 func (r *Runner) Wait() error {
 	return r.tomb.Wait()
 }
@@ -236,6 +160,12 @@ func (r *Runner) loop() (err error) {
 	}()
 
 	r.contentTomb.Go(r.prepareContent)
+
+	// Make it sequential for now.
+	_, err = r.waitContent()
+	if err != nil {
+		return err
+	}
 
 	// Find out how many workers are needed for each backend system.
 	// Even if multiple workers per system are requested, must not
@@ -286,6 +216,168 @@ func (r *Runner) loop() (err error) {
 	return nil
 }
 
+func (r *Runner) prepareContent() (err error) {
+	if r.options.Discard {
+		return nil
+	}
+
+	file, err := ioutil.TempFile("", fmt.Sprintf("spread-content.%d.", os.Getpid()))
+	if err != nil {
+		return fmt.Errorf("cannot create temporary content file: %v", err)
+	}
+	defer func() {
+		var size string
+		if r.contentSize < 1024*1024 {
+			size = fmt.Sprintf("%.2fKB", float64(r.contentSize)/1024)
+		} else {
+			size = fmt.Sprintf("%.2fMB", float64(r.contentSize)/(1024*1024))
+		}
+		if err == nil {
+			logf("Project content is packed for delivery (%s).", size)
+		} else {
+			printf("Error packing project content for delivery: %v", err)
+			file.Close()
+			r.tomb.Killf("cannot pack project content for delivery")
+		}
+	}()
+
+	if err = os.Remove(file.Name()); err != nil {
+		return fmt.Errorf("cannot remove temporary content file: %v", err)
+	}
+
+	args := []string{"c", "--sort=name", "--exclude=.spread-reuse.*"}
+	if r.project.Repack == "" {
+		args[0] = "cz"
+	}
+	for _, pattern := range r.project.Exclude {
+		args = append(args, "--exclude="+pattern)
+	}
+	for _, pattern := range r.project.Rename {
+		args = append(args, "--transform="+pattern)
+	}
+	include := r.project.Include
+	if len(include) == 0 {
+		include, err = filterDir(r.project.Path)
+		if err != nil {
+			return fmt.Errorf("cannot list project directory: %v", err)
+		}
+	}
+	args = append(args, include...)
+
+	var stderr bytes.Buffer
+	cmd := exec.Command("tar", args...)
+	cmd.Dir = r.project.Path
+	cmd.Stderr = &stderr
+
+	errch := make(chan error, 1)
+
+	var pack func()
+	if r.project.Repack == "" {
+		// tar cz => temporary file.
+		cmd.Stdout = file
+		pack = func() {
+			err := cmd.Wait()
+			errch <- outputErr(stderr.Bytes(), err)
+		}
+	} else {
+		// tar c => repack => gzip => temporary file
+		// repack acts via fd 3 and 4
+		tarr, tarw, err := os.Pipe()
+		if err != nil {
+			return fmt.Errorf("cannot create pipe for repack: %v", err)
+		}
+		gzr, gzw, err := os.Pipe()
+		if err != nil {
+			return fmt.Errorf("cannot create pipe for repack: %v", err)
+		}
+		cmd.Stdout = tarw
+		lscript := localScript{
+			script:      r.project.Repack,
+			dir:         r.project.Path,
+			env:         r.project.Environment,
+			warnTimeout: r.project.WarnTimeout.Duration,
+			killTimeout: r.project.KillTimeout.Duration,
+			mode:        traceOutput,
+			extraFiles:  []*os.File{tarr, gzw},
+			stop:        r.contentTomb.Dying(),
+		}
+		gz := gzip.NewWriter(file)
+		pack = func() {
+			tarerr := make(chan error, 1)
+			runerr := make(chan error, 1)
+			gzerr := make(chan error, 1)
+
+			go func() {
+				err := cmd.Wait()
+				tarerr <- outputErr(stderr.Bytes(), err)
+			}()
+			go func() {
+				_, _, err := lscript.run()
+				runerr <- err
+			}()
+			go func() {
+				_, err := io.Copy(gz, gzr)
+				gzerr <- firstErr(err, gz.Close())
+			}()
+
+			var err1, err2, err3 error
+
+			select {
+			case err1 = <-tarerr:
+				tarerr <- nil
+			case err1 = <-runerr:
+				runerr <- nil
+			case err1 = <-gzerr:
+				gzerr <- nil
+			}
+
+			cmd.Process.Kill()
+			tarw.Close()
+			gzw.Close()
+
+			_ = <-tarerr
+			err2 = <-runerr
+			err3 = <-gzerr
+
+			errch <- firstErr(err1, err2, err3)
+		}
+	}
+
+	err = cmd.Start()
+	if err != nil {
+		return fmt.Errorf("cannot start local tar command: %v", err)
+	}
+
+	go pack()
+
+	select {
+	case err := <-errch:
+		if err != nil {
+			return fmt.Errorf("cannot pack project tree: %v", err)
+		}
+	case <-r.contentTomb.Dying():
+		cmd.Process.Kill()
+		<-errch
+		return fmt.Errorf("project packing interrupted")
+	}
+
+	st, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("cannot stat temporary content file: %v", err)
+	}
+
+	r.contentSize = st.Size()
+	r.contentFile = file
+	return nil
+}
+
+func (r *Runner) waitContent() (io.Reader, error) {
+	if err := r.contentTomb.Wait(); err != nil {
+		return nil, err
+	}
+	return io.NewSectionReader(r.contentFile, 0, r.contentSize), nil
+}
+
 const (
 	preparing = "preparing"
 	executing = "executing"
@@ -305,14 +397,16 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	} else {
 		dir = filepath.Join(r.project.RemotePath, job.Task.Name)
 	}
-	if r.options.Shell && verb == executing {
+	if (r.options.Shell || r.options.ShellBefore) && verb == executing {
 		printf("Starting shell instead of %s %s...", verb, job)
 		err := client.Shell("/bin/bash", dir, r.shellEnv(job, job.Environment))
 		if err != nil {
 			printf("Error running debug shell: %v", err)
 		}
 		printf("Continuing...")
-		return true
+		if r.options.Shell {
+			return true
+		}
 	}
 	client.SetWarnTimeout(job.WarnTimeoutFor(context))
 	client.SetKillTimeout(job.KillTimeoutFor(context))
@@ -327,7 +421,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 				printf("Debug output for %s : %v", contextStr, outputErr(output, nil))
 			}
 		}
-		if r.options.Debug {
+		if r.options.Debug || r.options.ShellAfter {
 			printf("Starting shell to debug...")
 			err = client.Shell("/bin/bash", dir, r.shellEnv(job, job.Environment))
 			if err != nil {
@@ -338,6 +432,15 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		*abend = r.options.Abend
 		return false
 	}
+	if r.options.ShellAfter && verb == executing {
+		printf("Starting shell after %s %s...", verb, job)
+		err := client.Shell("/bin/bash", dir, r.shellEnv(job, job.Environment))
+		if err != nil {
+			printf("Error running debug shell: %v", err)
+		}
+		printf("Continuing...")
+	}
+
 	return true
 }
 
@@ -554,19 +657,19 @@ func (r *Runner) client(backend *Backend, system *System) *Client {
 		}
 
 		if send {
-			printf("Sending project data to %s...", server)
+			printf("Sending project content to %s...", server)
 			content, err := r.waitContent()
 			if err != nil {
-				printf("Discarding %s, cannot send project data: %s", server, err)
+				printf("Discarding %s, cannot send project content: %s", server, err)
 				r.discardServer(server)
 				client.Close()
 				return nil
 			}
 			if err = client.SendTar(content, r.project.RemotePath); err != nil {
 				if reused {
-					printf("Cannot send project data to %s: %v", server, err)
+					printf("Cannot send project content to %s: %v", server, err)
 				} else {
-					printf("Discarding %s, cannot send project data: %s", server, err)
+					printf("Discarding %s, cannot send project content: %s", server, err)
 					r.discardServer(server)
 				}
 				client.Close()

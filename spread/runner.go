@@ -399,7 +399,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	}
 	if (r.options.Shell || r.options.ShellBefore) && verb == executing {
 		printf("Starting shell instead of %s %s...", verb, job)
-		err := client.Shell("/bin/bash", dir, r.shellEnv(job, job.Environment))
+		err := client.Shell("", dir, r.shellEnv(job, job.Environment))
 		if err != nil {
 			printf("Error running debug shell: %v", err)
 		}
@@ -423,7 +423,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		}
 		if r.options.Debug || r.options.ShellAfter {
 			printf("Starting shell to debug...")
-			err = client.Shell("/bin/bash", dir, r.shellEnv(job, job.Environment))
+			err = client.Shell("", dir, r.shellEnv(job, job.Environment))
 			if err != nil {
 				printf("Error running debug shell: %v", err)
 			}
@@ -434,7 +434,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	}
 	if r.options.ShellAfter && verb == executing {
 		printf("Starting shell after %s %s...", verb, job)
-		err := client.Shell("/bin/bash", dir, r.shellEnv(job, job.Environment))
+		err := client.Shell("", dir, r.shellEnv(job, job.Environment))
 		if err != nil {
 			printf("Error running debug shell: %v", err)
 		}

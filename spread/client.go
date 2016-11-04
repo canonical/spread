@@ -285,9 +285,16 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 	panic("unreachable")
 }
 
+var toBashRC = map[string]bool{
+	"PS1":            true,
+	"SPREAD_PATH":    true,
+	"SPREAD_BACKEND": true,
+	"SPREAD_SYSTEM":  true,
+}
+
 func (c *Client) runPart(script string, dir string, env *Environment, mode outputMode, previous []byte) (output []byte, err error) {
 	script = strings.TrimSpace(script)
-	if len(script) == 0 {
+	if len(script) == 0 && mode != shellOutput {
 		return nil, nil
 	}
 	script += "\n"
@@ -298,6 +305,16 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	defer session.Close()
 
 	var buf bytes.Buffer
+	var rc = func(use bool, s string) string { return s }
+	if mode == shellOutput {
+		buf.WriteString("true > /root/.bashrc\n")
+		rc = func(use bool, s string) string {
+			if !use {
+				return ""
+			}
+			return "cat >> /root/.bashrc <<'END'\n" + s + "END\n"
+		}
+	}
 	if dir != "" {
 		buf.WriteString(fmt.Sprintf("cd \"%s\"\n", dir))
 	}
@@ -307,24 +324,25 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		buf.WriteString("unset SUDO_UID\n")
 		buf.WriteString("unset SUDO_GID\n")
 	}
-	buf.WriteString("unset HISTFILE\n")
-	buf.WriteString("REBOOT() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<REBOOT>' || echo \"<REBOOT $1>\"; exit 213; }\n")
-	buf.WriteString("ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n")
-	buf.WriteString("MATCH() { { set +xu; } 2> /dev/null; local stdin=$(cat); echo $stdin | grep -q -e \"$@\" || { echo \"error: pattern not found on stdin:\\n$output\">&2; return 1; }; }\n")
+	buf.WriteString(rc(false, "REBOOT() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<REBOOT>' || echo \"<REBOOT $1>\"; exit 213; }\n"))
+	buf.WriteString(rc(false, "ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n"))
+	buf.WriteString(rc(true, "MATCH() { { set +xu; } 2> /dev/null; [ ${#@} -gt 0 ] || { echo \"error: missing regexp argument\"; return 1; }; local stdin=\"$(cat)\"; echo $stdin | grep -q -e \"$@\" || { echo \"error: pattern not found, got:\n$stdin\">&2; return 1; }; }\n"))
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
 	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n")
 
 	for _, k := range env.Keys() {
 		v := env.Get(k)
+		var kv string
 		if len(v) == 0 || v[0] == '"' || v[0] == '\'' {
-			fmt.Fprintf(&buf, "export %s=%s\n", k, v)
+			kv = fmt.Sprintf("export %s=%s\n", k, v)
 		} else {
-			fmt.Fprintf(&buf, "export %s=\"%s\"\n", k, v)
+			kv = fmt.Sprintf("export %s=\"%s\"\n", k, v)
 		}
-	}
-	if mode == shellOutput && env.Get("PS1") != "" {
-		fmt.Fprintf(&buf, "echo PS1=\\''%s'\\' > /root/.bashrc\n", env.Get("PS1"))
+		if toBashRC[k] {
+			kv = rc(true, kv)
+		}
+		buf.WriteString(kv)
 	}
 	if mode == traceOutput {
 		// Don't trace environment variables so secrets don't leak.
@@ -332,7 +350,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	}
 
 	if mode == shellOutput {
-		fmt.Fprintf(&buf, "\n%s\n", script)
+		fmt.Fprintf(&buf, "\n/bin/bash\n")
 	} else {
 		// Prevent any commands attempting to read from stdin to consume
 		// the shell script itself being sent to bash via its stdin.
@@ -372,7 +390,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		session.Stdout = &stdout
 		session.Stderr = &stderr
 	case shellOutput:
-		cmd = fmt.Sprintf("{\nf=$(mktemp)\ntrap 'rm '$f EXIT\ncat > $f <<SCRIPT_END\n%s\nSCRIPT_END\n%s/bin/bash $f\n}", buf.String(), c.sudo())
+		cmd = fmt.Sprintf("{\n%s/bin/bash -eu - <<'SCRIPT_END'\n%s\nSCRIPT_END\n}", buf.String(), c.sudo())
 		session.Stdout = os.Stdout
 		session.Stderr = os.Stderr
 		w, h, err := terminal.GetSize(0)

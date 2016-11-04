@@ -460,7 +460,7 @@ func (c *Client) sudo() string {
 	if c.config.User == "root" {
 		return ""
 	}
-	return "sudo -i "
+	return "sudo -i env -u SUDO_USER -u SUDO_UID -u SUDO_GID "
 }
 
 func getenv(name, defaultValue string) string {

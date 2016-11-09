@@ -1,0 +1,48 @@
+summary: Ensure it works.
+
+environment:
+    TASK_ONE: task
+    TASK_ALL: $PROJECT_ONE $BACKEND_ONE $SUITE_ONE $TASK_ONE
+    TASK_VAR/a,b: task/a,b
+    TASK_VAR/c: task/c
+
+execute: |
+    (
+    echo "PROJECT_ONE=$PROJECT_ONE"
+    echo "PROJECT_ALL=$PROJECT_ALL"
+    echo "PROJECT_VAR=$PROJECT_VAR"
+    echo "BACKEND_ONE=$BACKEND_ONE"
+    echo "BACKEND_ALL=$BACKEND_ALL"
+    echo "BACKEND_VAR=$BACKEND_VAR"
+    echo "SUITE_ONE=$SUITE_ONE"
+    echo "SUITE_ALL=$SUITE_ALL"
+    echo "SUITE_VAR=$SUITE_VAR"
+    echo "TASK_ONE=$TASK_ONE"
+    echo "TASK_ALL=$TASK_ALL"
+    echo "TASK_VAR=$TASK_VAR"
+    ) > task.out
+
+    case $SPREAD_VARIANT in
+    a|b)
+        variant=a,b ;;
+    c)
+        variant=c ;;
+    esac
+
+    cat task.out | grep "PROJECT_ONE=project"
+    cat task.out | grep "PROJECT_ALL=project"
+    cat task.out | grep "PROJECT_VAR=project/$variant"
+    cat task.out | grep "BACKEND_ONE=backend"
+    cat task.out | grep "BACKEND_ALL=project backend"
+    cat task.out | grep "BACKEND_VAR=backend/$variant"
+    cat task.out | grep "SUITE_ONE=suite"
+    cat task.out | grep "SUITE_ALL=project backend suite"
+    cat task.out | grep "SUITE_VAR=suite/$variant"
+    cat task.out | grep "TASK_ONE=task"
+    cat task.out | grep "TASK_ALL=project backend suite task"
+    cat task.out | grep "TASK_VAR=task/$variant"
+
+    echo WORKS/$SPREAD_VARIANT
+
+debug: |
+    cat task.out || true

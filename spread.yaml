@@ -1,15 +1,77 @@
+# This spread setup is used to test spread with spread itself. For that, the
+# spread interpreting this file is assumed to be working based on prior
+# testing, while the spread code being shipped to the remote server is being
+# verified for correctness. See the tests to have an idea of how that's done.
+
 project: spread
 
 environment:
-  TEST_RUN_PATH: /remote
-  TEST_RUN_SUB_PATH: $TEST_RUN_PATH/path
-  
+    GOVERSION: 1.7.3
+    GOPATH: /home/test
+    PATH: $GOPATH/bin:$PATH
+    CACHE_DISABLED: $(HOST:[ "$SEND_CACHE" = 1 ] && echo false || echo tests/cache)
+
 backends:
-    lxd:
-        systems: [ubuntu-16.04]
+    qemu:
+        systems:
+            - ubuntu-16.04:
+                username: ubuntu
+                password: ubuntu
+
+exclude:
+    - .spread-reuse.yaml
+    - tests/.spread-reuse.yaml
+    - $CACHE_DISABLED
+
+path: /home/test/src/github.com/snapcore/spread
 
 suites:
-    tests/:
-        summary: Example tests
+    tests/: 
+        summary: Integration tests
 
-path: /remote/path
+prepare: |
+    DEBS="git lxd"
+    if ! dpkg -l $DEBS; then
+        apt-get update
+        apt-get install -y $DEBS
+    fi
+
+    # Cache is only available if SEND_CACHE=1 is set.
+
+    # Cache image with: mkdir tests/cache/lxd-ubuntu-16.04 && lxc export ubuntu:16.04 tests/cache/lxd-ubuntu-16.04
+    if ! lxc image list | grep '16\.04'; then
+        lxc image import tests/cache/lxd-ubuntu-16.04/meta-* tests/cache/lxd-ubuntu-16.04/[a-f0-9]* os=ubuntu version=16.04 architecture=amd64 remote=ubuntu
+    fi
+
+    # Cache Go deb with: cd tests/cache && godeb download $GOVERSION
+    if ! dpkg -l go; then
+        if [ ! -f tests/cache/go_$GOVERSION-*.deb ]; then
+            (
+                cd tests/cache
+                if [ ! -f godeb ]; then
+                    wget https://godeb.s3.amazonaws.com/godeb-amd64.tar.gz
+                    tar xzvf godeb-amd64.tar.gz
+                fi
+                ./godeb download $GOVERSION
+            )
+        fi
+        dpkg -i tests/cache/go_$GOVERSION-*.deb
+    fi
+    go get ./cmd/spread
+
+    # Enable IPv4 in LXD.
+    if [ -z "$(source /etc/default/lxd-bridge && echo $LXD_IPV4_ADDR)" ]; then
+        cat >> /etc/default/lxd-bridge <<END
+    LXD_IPV4_ADDR="10.0.8.1"
+    LXD_IPV4_NETMASK="255.255.255.0"
+    LXD_IPV4_NETWORK="10.0.8.1/24"
+    LXD_IPV4_DHCP_RANGE="10.0.8.2,10.0.8.254"
+    LXD_IPV4_DHCP_MAX="250"
+    LXD_IPV4_NAT="true"
+    END
+        systemctl stop lxd lxd-bridge
+        systemctl start lxd lxd-bridge
+    fi
+
+
+# vim:ts=4:sw=4:et

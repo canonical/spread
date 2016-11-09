@@ -1,1 +1,6 @@
+.spread-reuse.yaml
 cmd/spread/spread
+tests/cache/*
+parts
+prime
+stage

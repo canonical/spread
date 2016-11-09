@@ -1,0 +1,10 @@
+summary: Ensure it works.
+
+execute: |
+    echo "From the original tar:"
+    ls -l task.yaml
+
+    echo "From the repacked tar:"
+    ls -l ../../added
+
+    echo "WORKS"

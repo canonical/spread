@@ -1,0 +1,25 @@
+summary: Ensure it works.
+
+execute: |
+    echo "REBOOT=$SPREAD_REBOOT"
+    case $SPREAD_REBOOT in
+    0)
+        REBOOT
+        ;;
+    1)
+        REBOOT
+        ;;
+    2)
+        REBOOT foo
+        ;;
+    foo)
+        REBOOT bar
+        ;;
+    bar)
+        echo WORKS
+        ;;
+    *)
+        echo 'Unexpected $SPREAD_REBOOT value:' $SPREAD_REBOOT
+        exit 1
+        ;;
+    esac

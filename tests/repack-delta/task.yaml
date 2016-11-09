@@ -1,4 +1,4 @@
-summary: Test spread environment handling.
+summary: Test features that delta uploads depend on.
 
 prepare: |
     touch /run/spread-reuse.yaml
@@ -7,7 +7,6 @@ prepare: |
 execute: |
     spread -vv -reuse -resend &> task.out
 
-    cat task.out | awk -F= '/^REBOOT=/ {printf "%s,",$2}' | grep '0,1,2,foo,bar,'
     cat task.out | grep '^WORKS$'
 
 debug: |

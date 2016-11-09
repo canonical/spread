@@ -870,12 +870,11 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 		backend.Key = strings.TrimSpace(value)
 	}
 
-	for i, expr := range p.Rename {
-		value, err := evalone("rename expression", expr, cmdcache, false, penv)
-		if err != nil {
-			return nil, err
-		}
-		p.Rename[i] = value
+	err1 := evalslice("rename expression", p.Rename, cmdcache, false, penv)
+	err2 := evalslice("include list", p.Include, cmdcache, false, penv)
+	err3 := evalslice("exclude list", p.Exclude, cmdcache, false, penv)
+	if err := firstErr(err1, err2, err3); err != nil {
+		return nil, err
 	}
 
 	if len(jobs) == 0 {
@@ -921,10 +920,21 @@ type stringer string
 func (s stringer) String() string { return string(s) }
 
 var (
-	varname = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*(?:/[a-zA-Z0-9_]+)?$`)
+	varname = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*(?:/[a-zA-Z0-9_]+(?:,[a-zA-Z0-9_]+)*)?$`)
 	varcmd  = regexp.MustCompile(`\$\(HOST:.+?\)`)
 	varref  = regexp.MustCompile(`\$(?:\(HOST:.+?\)|[a-zA-Z_][a-zA-Z0-9_]*|\{[a-zA-Z_][a-zA-Z0-9_]*\})`)
 )
+
+func evalslice(context string, values []string, cmdcache map[string]string, hostOnly bool, maps ...envmap) error {
+	for i, value := range values {
+		value, err := evalone(context, value, cmdcache, hostOnly, maps...)
+		if err != nil {
+			return err
+		}
+		values[i] = value
+	}
+	return nil
+}
 
 func evalone(context string, value string, cmdcache map[string]string, hostOnly bool, maps ...envmap) (string, error) {
 	const key = "SPREAD_INTERNAL_EVAL"

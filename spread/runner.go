@@ -47,11 +47,12 @@ type Runner struct {
 	done  chan bool
 	alive int
 
-	reuse    *Reuse
-	reserved map[string]bool
-	servers  []Server
-	pending  []*Job
-	stats    stats
+	reuse     *Reuse
+	reserved  map[string]bool
+	servers   []Server
+	pending   []*Job
+	remaining int
+	stats     stats
 
 	allocated bool
 
@@ -88,6 +89,7 @@ func Start(project *Project, options *Options) (*Runner, error) {
 		return nil, err
 	}
 	r.pending = pending
+	r.remaining = len(pending)
 
 	r.reuse, err = OpenReuse(r.reusePath())
 	if err != nil {
@@ -411,7 +413,13 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		return true
 	}
 	contextStr := job.StringFor(context)
-	logf("%s %s... (%d jobs left)", strings.Title(verb), contextStr, r.pendingJobs())
+	if verb == executing {
+		r.mu.Lock()
+		logf("%s %s (%d/%d)...", strings.Title(verb), contextStr, len(r.pending)-r.remaining, len(r.pending))
+		r.mu.Unlock()
+	} else {
+		logf("%s %s...", strings.Title(verb), contextStr)
+	}
 	var dir string
 	if context == job.Backend || context == job.Project {
 		dir = r.project.RemotePath
@@ -612,16 +620,6 @@ func (r *Runner) worker(backend *Backend, system *System) {
 	}
 }
 
-func (r *Runner) pendingJobs() int {
-	n := 0
-	for _, job := range r.pending {
-		if job != nil {
-			n++
-		}
-	}
-	return n
-}
-
 func (r *Runner) job(backend *Backend, system *System, suite *Suite) *Job {
 	var best = -1
 	var bestWorkers = 1000000
@@ -646,6 +644,7 @@ func (r *Runner) job(backend *Backend, system *System, suite *Suite) *Job {
 	if best >= 0 {
 		job := r.pending[best]
 		r.pending[best] = nil
+		r.remaining--
 		return job
 	}
 	return nil

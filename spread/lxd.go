@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -82,7 +83,10 @@ func (p *lxdProvider) Reuse(rsystem *ReuseSystem, system *System) (Server, error
 }
 
 func (p *lxdProvider) Allocate(system *System) (Server, error) {
-	lxdimage := p.lxdImage(system)
+	lxdimage, err := p.lxdImage(system)
+	if err != nil {
+		return nil, err
+	}
 	name, err := lxdName(system)
 	if err != nil {
 		return nil, err
@@ -142,20 +146,180 @@ func (p *lxdProvider) Allocate(system *System) (Server, error) {
 	return s, nil
 }
 
-func (p *lxdProvider) lxdImage(system *System) string {
-	if strings.Contains(system.Image, ":") {
-		return system.Image
-	}
-	parts := strings.Split(system.Image, "-")
-	if parts[0] == "ubuntu" {
-		return "ubuntu:" + strings.Join(parts[1:], "/")
-	}
-	switch parts[len(parts)-1] {
+func isDebArch(s string) bool {
+	switch s {
 	case "amd64", "i386", "armel", "armhf", "arm64", "powerpc", "ppc64el", "s390x":
-	default:
+		return true
+	}
+	return false
+}
+
+func (p *lxdProvider) lxdImage(system *System) (string, error) {
+	// LXD loves the network. Force it to use a local image if available.
+	fingerprint, err := p.lxdLocalImage(system)
+	if err == nil {
+		return fingerprint, nil
+	}
+	if err != errNoImage {
+		return "", err
+	}
+
+	logf("Cannot find cached LXD image for %s.", system)
+
+	// If a remote was explicitly provided, use LXD image name as-is.
+	if strings.Contains(system.Image, ":") {
+		return system.Image, nil
+	}
+
+	// Translate spread-like name to LXD-like URL.
+	parts := strings.Split(system.Image, "-")
+	if !isDebArch(parts[len(parts)-1]) {
 		parts = append(parts, "amd64")
 	}
-	return "images:" + strings.Join(parts, "/")
+	if parts[0] == "ubuntu" {
+		return "ubuntu:" + strings.Join(parts[1:], "/"), nil
+	}
+	return "images:" + strings.Join(parts, "/"), nil
+}
+
+type lxdImageInfo struct {
+	Properties struct {
+		OS           string
+		Label        string
+		Release      string
+		Version      string
+		Aliases      string
+		Architecture string
+		Remote       string
+	} `yaml:"Properties"`
+	Source struct {
+		Server string `yaml:"Server"`
+	} `yaml:"Source"`
+}
+
+var errNoImage = fmt.Errorf("image not found")
+
+var lxdRemoteServer = map[string]string{
+	"ubuntu": "https://cloud-images.ubuntu.com/releases",
+	"images": "https://images.linuxcontainers.org",
+}
+
+func (p *lxdProvider) lxdRemoteNames() (map[string]string, error) {
+	var stderr bytes.Buffer
+	cmd := exec.Command("lxc", "remote", "list")
+	cmd.Stderr = &stderr
+
+	output, err := cmd.Output()
+	if err != nil {
+		err = outputErr(stderr.Bytes(), err)
+		return nil, fmt.Errorf("cannot list lxd remotes: %v", err)
+	}
+
+	var names = make(map[string]string)
+	var lines = strings.Split(string(output), "\n")
+	for i := 3; i < len(lines); i += 2 {
+		fields := strings.Split(lines[i], "|")
+		if len(fields) < 3 {
+			break
+		}
+		names[strings.TrimSpace(fields[2])] = strings.TrimSpace(fields[1])
+	}
+	return names, nil
+}
+
+func (p *lxdProvider) lxdLocalImage(system *System) (string, error) {
+	parts := strings.Split(system.Image, "/")
+	remote := ""
+	if pair := strings.Split(parts[0], ":"); len(pair) > 1 {
+		parts[0] = pair[1]
+		remote = pair[0]
+	} else if len(parts) == 1 && !strings.Contains(parts[0], "/") {
+		// Translate spread-like name to LXD-like URL.
+		parts = strings.Split(parts[0], "-")
+	}
+	if remote == "" {
+		if parts[0] == "ubuntu" {
+			parts = parts[1:]
+			remote = "ubuntu"
+		} else {
+			remote = "images"
+		}
+	}
+
+	if !isDebArch(parts[len(parts)-1]) {
+		parts = append(parts, "amd64")
+	}
+
+	remoteNames, err := p.lxdRemoteNames()
+	if err != nil {
+		return "", err
+	}
+
+	var stderr bytes.Buffer
+	cmd := exec.Command("lxc", "image", "list")
+	cmd.Stderr = &stderr
+
+	output, err := cmd.Output()
+	if err != nil {
+		err = outputErr(stderr.Bytes(), err)
+		return "", fmt.Errorf("cannot list lxd images: %v", err)
+	}
+
+	var fingerprints []string
+	var lines = strings.Split(string(output), "\n")
+	for i := 3; i < len(lines); i += 2 {
+		fields := strings.Split(lines[i], "|")
+		if len(fields) < 3 {
+			break
+		}
+		fingerprints = append(fingerprints, strings.TrimSpace(fields[2]))
+	}
+
+NextImage:
+	for _, fingerprint := range fingerprints {
+		stderr.Truncate(0)
+		cmd := exec.Command("lxc", "image", "info", fingerprint)
+		cmd.Stderr = &stderr
+
+		output, err := cmd.Output()
+		if err != nil {
+			err = outputErr(stderr.Bytes(), err)
+			return "", fmt.Errorf("cannot obtain info about lxd image %s: %v", fingerprint, err)
+		}
+
+		var info lxdImageInfo
+		err = yaml.Unmarshal(output, &info)
+		if err != nil {
+			return "", fmt.Errorf("cannot obtain info about lxd image %s: %v", fingerprint, err)
+		}
+
+		props := info.Properties
+		aliases := strings.Split(props.Aliases, ",")
+
+		if info.Source.Server != "" && remoteNames[info.Source.Server] != remote {
+			continue
+		}
+		// This is a hack. Unfortunatley exported+imported images lose their remote.
+		if info.Source.Server == "" && props.Remote != remote {
+			continue
+		}
+
+		for _, part := range parts {
+			switch part {
+			case props.OS, props.Label, props.Release, props.Version, props.Architecture:
+				continue
+			}
+			if contains(aliases, part) {
+				continue
+			}
+			continue NextImage
+		}
+
+		logf("Using cached LXD image for %s: %s", system, fingerprint)
+		return fingerprint, nil
+	}
+
+	return "", errNoImage
 }
 
 func lxdName(system *System) (string, error) {
@@ -291,4 +455,13 @@ func (p *lxdProvider) tuneSSH(name string) error {
 		}
 	}
 	return nil
+}
+
+func contains(strs []string, s string) bool {
+	for _, si := range strs {
+		if si == s {
+			return true
+		}
+	}
+	return false
 }

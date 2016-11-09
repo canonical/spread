@@ -317,7 +317,7 @@ type Task struct {
 	Execute string
 	Debug   string
 
-	Disable string
+	Residue []string
 
 	Name string `yaml:"-"`
 	Path string `yaml:"-"`
@@ -610,6 +610,12 @@ func Load(path string) (*Project, error) {
 			}
 			if err := checkSystems(task, task.Systems); err != nil {
 				return nil, err
+			}
+
+			for _, fname := range task.Residue {
+				if filepath.IsAbs(fname) || fname != filepath.Clean(fname) || strings.HasPrefix(fname, "../") {
+					return nil, fmt.Errorf("%s has improper residue path: %s", fname)
+				}
 			}
 
 			suite.Tasks[tname] = task

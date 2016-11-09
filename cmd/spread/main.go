@@ -30,6 +30,7 @@ var (
 	abend       = flag.Bool("abend", false, "Stop without restoring on first error")
 	restore     = flag.Bool("restore", false, "Run only the restore scripts")
 	discard     = flag.Bool("discard", false, "Discard reused servers without running")
+	residue     = flag.String("residue", "", "Where to store residual data from tasks")
 )
 
 func main() {
@@ -88,6 +89,7 @@ func run() error {
 		Abend:       *abend,
 		Restore:     *restore,
 		Discard:     *discard,
+		Residue:     *residue,
 	}
 
 	project, err := spread.Load(".")

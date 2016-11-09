@@ -30,6 +30,7 @@ type Options struct {
 	Restore     bool
 	Resend      bool
 	Discard     bool
+	Residue     string
 }
 
 type Runner struct {
@@ -586,6 +587,12 @@ func (r *Runner) worker(backend *Backend, system *System) {
 			r.add(&stats.TaskError, job)
 			debug = ""
 		}
+		if !abend && !r.options.Restore {
+			if err := r.fetchResidue(client, job); err != nil {
+				printf("Cannot fetch residue of %s: %v", job, err)
+				r.tomb.Killf("cannot fetch residue of %s: %v", job, err)
+			}
+		}
 		if !abend && !r.run(client, job, restoring, job, job.Restore(), debug, &abend) {
 			r.add(&stats.TaskRestoreError, job)
 			badProject = true
@@ -712,6 +719,38 @@ func (r *Runner) client(backend *Backend, system *System) *Client {
 	}
 
 	return nil
+}
+
+func (r *Runner) fetchResidue(client *Client, job *Job) error {
+	if r.options.Residue == "" || len(job.Task.Residue) == 0 {
+		return nil
+	}
+
+	localDir := filepath.Join(r.options.Residue, job.Name)
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		return fmt.Errorf("cannot create residue directory: %v", err)
+	}
+
+	tarr, tarw := io.Pipe()
+
+	var stderr bytes.Buffer
+	cmd := exec.Command("tar", "xz")
+	cmd.Dir = localDir
+	cmd.Stdin = tarr
+	cmd.Stderr = &stderr
+	err := cmd.Start()
+	if err != nil {
+		return fmt.Errorf("cannot start unpacking tar: %v", err)
+	}
+
+	printf("Fetching residue of %s...", job, err)
+
+	remoteDir := filepath.Join(r.project.RemotePath, job.Task.Name)
+	err = client.RecvTar(remoteDir, job.Task.Residue, tarw)
+	tarw.Close()
+	terr := cmd.Wait()
+
+	return firstErr(err, terr)
 }
 
 func (r *Runner) discardServer(server Server) {

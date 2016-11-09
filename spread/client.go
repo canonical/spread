@@ -58,7 +58,7 @@ func (c *Client) dialOnReboot() error {
 	timeout := time.After(c.killTimeout)
 	relog := time.NewTicker(c.warnTimeout)
 	defer relog.Stop()
-	retry := time.NewTicker(1 * time.Second)
+	retry := time.NewTicker(200 * time.Millisecond)
 	defer retry.Stop()
 
 	waitConfig := *c.config
@@ -599,6 +599,34 @@ func (c *Client) SendTar(tar io.Reader, unpackDir string) error {
 	err = c.runCommand(session, cmd, &stdout, nil)
 	if err != nil {
 		return outputErr(stdout.Bytes(), err)
+	}
+	return nil
+}
+
+func (c *Client) RecvTar(packDir string, include []string, tar io.Writer) error {
+	session, err := c.sshc.NewSession()
+	if err != nil {
+		return err
+	}
+	defer session.Close()
+
+	var args []string
+	if len(include) == 0 {
+		args = []string{"."}
+	} else {
+		args = make([]string, len(include))
+		for i, arg := range include {
+			args[i] = "'" + arg + "'"
+		}
+	}
+
+	var stderr safeBuffer
+	session.Stdout = tar
+	session.Stderr = &stderr
+	cmd := fmt.Sprintf(`%s/bin/tar cz --sort=name --ignore-failed-read -C '%s' %s`, c.sudo(), packDir, strings.Join(args, " "))
+	err = c.runCommand(session, cmd, nil, &stderr)
+	if err != nil {
+		return outputErr(stderr.Bytes(), err)
 	}
 	return nil
 }

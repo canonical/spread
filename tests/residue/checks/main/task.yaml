@@ -1,0 +1,22 @@
+summary: Ensure it works.
+
+residue:
+    - one.txt
+    - two.txt
+
+environment:
+    ONE/a: one-a
+    ONE/b: one-b
+    TWO/a,b: two-a,b
+    FAIL_CHECK: $(HOST:echo $FAIL_CHECK)
+
+restore: |
+    rm -f *.txt
+
+execute: |
+    echo $ONE > one.txt
+    if [ "$FAIL_CHECK" = 1 ]; then
+        echo "Failing as requested."
+        exit 1
+    fi
+    echo $TWO > two.txt

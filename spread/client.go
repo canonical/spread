@@ -344,8 +344,9 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		}
 		buf.WriteString(kv)
 	}
+
+	// Don't trace environment variables so secrets don't leak.
 	if mode == traceOutput {
-		// Don't trace environment variables so secrets don't leak.
 		fmt.Fprintf(&buf, "set -x\n")
 	}
 
@@ -390,7 +391,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		session.Stdout = &stdout
 		session.Stderr = &stderr
 	case shellOutput:
-		cmd = fmt.Sprintf("{\n%s/bin/bash -eu - <<'SCRIPT_END'\n%s\nSCRIPT_END\n}", buf.String(), c.sudo())
+		cmd = fmt.Sprintf("{\nf=$(mktemp)\ntrap 'rm '$f EXIT\ncat > $f <<'SCRIPT_END'\n%s\nSCRIPT_END\n%s/bin/bash -eu $f\n}", buf.String(), c.sudo())
 		session.Stdout = os.Stdout
 		session.Stderr = os.Stderr
 		w, h, err := terminal.GetSize(0)
@@ -460,7 +461,7 @@ func (c *Client) sudo() string {
 	if c.config.User == "root" {
 		return ""
 	}
-	return "sudo -i env -u SUDO_USER -u SUDO_UID -u SUDO_GID "
+	return "sudo -i "
 }
 
 func getenv(name, defaultValue string) string {
@@ -706,8 +707,8 @@ func (s *localScript) run() (stdout, stderr []byte, err error) {
 		}
 	}
 
+	// Don't trace environment variables so secrets don't leak.
 	if s.mode == traceOutput {
-		// Don't trace environment variables so secrets don't leak.
 		fmt.Fprintf(&buf, "set -x\n")
 	}
 

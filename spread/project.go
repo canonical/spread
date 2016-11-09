@@ -160,11 +160,11 @@ func (e *Environment) Copy() *Environment {
 func (e *Environment) Variant(variant string) *Environment {
 	env := e.Copy()
 NextKey:
-	for _, key := range env.keys {
+	for key, val := range env.vals {
 		ekey, evariants := SplitVariants(key)
 		for _, evariant := range evariants {
 			if evariant == variant {
-				env.Replace(key, ekey, env.Get(key))
+				env.Replace(key, ekey, val)
 				continue NextKey
 			}
 		}

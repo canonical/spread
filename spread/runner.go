@@ -269,15 +269,26 @@ func (r *Runner) prepareContent() (err error) {
 	cmd.Dir = r.project.Path
 	cmd.Stderr = &stderr
 
-	errch := make(chan error, 1)
-
-	var pack func()
 	if r.project.Repack == "" {
 		// tar cz => temporary file.
 		cmd.Stdout = file
-		pack = func() {
-			err := cmd.Wait()
-			errch <- outputErr(stderr.Bytes(), err)
+		err = cmd.Start()
+		if err != nil {
+			return fmt.Errorf("cannot start local tar command: %v", err)
+		}
+
+		go func() {
+			// TODO Kill that when the function quits.
+			select {
+			case <-r.contentTomb.Dying():
+				cmd.Process.Kill()
+			}
+		}()
+
+		err = cmd.Wait()
+		err = outputErr(stderr.Bytes(), err)
+		if err != nil {
+			return fmt.Errorf("cannot pack project tree: %v", err)
 		}
 	} else {
 		// tar c => repack => gzip => temporary file
@@ -286,15 +297,27 @@ func (r *Runner) prepareContent() (err error) {
 		if err != nil {
 			return fmt.Errorf("cannot create pipe for repack: %v", err)
 		}
+		defer tarr.Close()
+		defer tarw.Close()
+
 		gzr, gzw, err := os.Pipe()
 		if err != nil {
 			return fmt.Errorf("cannot create pipe for repack: %v", err)
 		}
+		defer gzr.Close()
+		defer gzw.Close()
+
 		cmd.Stdout = tarw
+
+		err = cmd.Start()
+		if err != nil {
+			return fmt.Errorf("cannot start local tar command: %v", err)
+		}
+
 		lscript := localScript{
 			script:      r.project.Repack,
 			dir:         r.project.Path,
-			env:         r.project.Environment,
+			env:         r.project.Environment.Variant(""),
 			warnTimeout: r.project.WarnTimeout.Duration,
 			killTimeout: r.project.KillTimeout.Duration,
 			mode:        traceOutput,
@@ -302,63 +325,61 @@ func (r *Runner) prepareContent() (err error) {
 			stop:        r.contentTomb.Dying(),
 		}
 		gz := gzip.NewWriter(file)
-		pack = func() {
-			tarerr := make(chan error, 1)
-			runerr := make(chan error, 1)
-			gzerr := make(chan error, 1)
 
-			go func() {
-				err := cmd.Wait()
-				tarerr <- outputErr(stderr.Bytes(), err)
-			}()
-			go func() {
-				_, _, err := lscript.run()
-				runerr <- err
-			}()
-			go func() {
-				_, err := io.Copy(gz, gzr)
-				gzerr <- firstErr(err, gz.Close())
-			}()
+		var errch = make(chan error, 3)
+		var wg sync.WaitGroup
 
-			var err1, err2, err3 error
+		wg.Add(1)
+		go func() {
+			err := cmd.Wait()
+			println("tar terminated")
+			errch <- outputErr(stderr.Bytes(), err)
 
-			select {
-			case err1 = <-tarerr:
-				tarerr <- nil
-			case err1 = <-runerr:
-				runerr <- nil
-			case err1 = <-gzerr:
-				gzerr <- nil
-			}
-
-			cmd.Process.Kill()
+			// Unblock script.
 			tarw.Close()
+
+			wg.Done()
+		}()
+
+		wg.Add(1)
+		go func() {
+			_, _, err := lscript.run()
+			println("script terminated:", err)
+			errch <- err
+
+			// Stop tar and unblock gz.
+			cmd.Process.Kill()
 			gzw.Close()
 
-			_ = <-tarerr
-			err2 = <-runerr
-			err3 = <-gzerr
+			wg.Done()
+		}()
 
-			errch <- firstErr(err1, err2, err3)
-		}
-	}
+		wg.Add(1)
+		go func() {
+			_, err := io.Copy(gz, gzr)
+			println("copy terminated")
+			errch <- firstErr(err, gz.Close())
 
-	err = cmd.Start()
-	if err != nil {
-		return fmt.Errorf("cannot start local tar command: %v", err)
-	}
+			// Stop tar.
+			cmd.Process.Kill()
 
-	go pack()
+			wg.Done()
+		}()
 
-	select {
-	case err := <-errch:
+		go func() {
+			// TODO Kill that when the function quits.
+			select {
+			case <-r.contentTomb.Dying():
+				cmd.Process.Kill()
+			}
+		}()
+
+		wg.Wait()
+
+		err = firstErr(<-errch, <-errch, <-errch)
 		if err != nil {
 			return fmt.Errorf("cannot pack project tree: %v", err)
 		}
-	case <-r.contentTomb.Dying():
-		cmd.Process.Kill()
-		<-errch
-		return fmt.Errorf("project packing interrupted")
 	}
 
 	st, err := file.Stat()

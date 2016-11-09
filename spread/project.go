@@ -830,7 +830,7 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 							"SPREAD_VARIANT", job.Variant,
 						)}
 
-						env, err := evalenv(cmdcache, true, penv, benv, yenv, senv, tenv, sprenv)
+						env, err := evalenv(cmdcache, true, sprenv, penv, benv, yenv, senv, tenv)
 						if err != nil {
 							return nil, err
 						}

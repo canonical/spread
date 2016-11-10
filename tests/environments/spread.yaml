@@ -14,7 +14,12 @@ backends:
             BACKEND_VAR/a,b: backend/a,b
             BACKEND_VAR/c: backend/c
         systems:
-            - ubuntu-16.04
+            - ubuntu-16.04:
+                environment:
+                    SYSTEM_ONE: system
+                    SYSTEM_ALL: $PROJECT_ONE $BACKEND_ONE $SYSTEM_ONE
+                    SYSTEM_VAR/a,b: system/a,b
+                    SYSTEM_VAR/c: system/c
 
 path: /home/test
 
@@ -23,7 +28,7 @@ suites:
         summary: Verification tasks.
         environment:
             SUITE_ONE: suite
-            SUITE_ALL: $PROJECT_ONE $BACKEND_ONE $SUITE_ONE
+            SUITE_ALL: $PROJECT_ONE $BACKEND_ONE $SYSTEM_ONE $SUITE_ONE
             SUITE_VAR/a,b: suite/a,b
             SUITE_VAR/c: suite/c
 

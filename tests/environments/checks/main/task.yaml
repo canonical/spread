@@ -2,7 +2,7 @@ summary: Ensure it works.
 
 environment:
     TASK_ONE: task
-    TASK_ALL: $PROJECT_ONE $BACKEND_ONE $SUITE_ONE $TASK_ONE
+    TASK_ALL: $PROJECT_ONE $BACKEND_ONE $SYSTEM_ONE $SUITE_ONE $TASK_ONE
     TASK_VAR/a,b: task/a,b
     TASK_VAR/c: task/c
 
@@ -14,6 +14,9 @@ execute: |
     echo "BACKEND_ONE=$BACKEND_ONE"
     echo "BACKEND_ALL=$BACKEND_ALL"
     echo "BACKEND_VAR=$BACKEND_VAR"
+    echo "SYSTEM_ONE=$SYSTEM_ONE"
+    echo "SYSTEM_ALL=$SYSTEM_ALL"
+    echo "SYSTEM_VAR=$SYSTEM_VAR"
     echo "SUITE_ONE=$SUITE_ONE"
     echo "SUITE_ALL=$SUITE_ALL"
     echo "SUITE_VAR=$SUITE_VAR"
@@ -35,11 +38,14 @@ execute: |
     cat task.out | grep "BACKEND_ONE=backend"
     cat task.out | grep "BACKEND_ALL=project backend"
     cat task.out | grep "BACKEND_VAR=backend/$variant"
+    cat task.out | grep "SYSTEM_ONE=system"
+    cat task.out | grep "SYSTEM_ALL=project backend system"
+    cat task.out | grep "SYSTEM_VAR=system/$variant"
     cat task.out | grep "SUITE_ONE=suite"
-    cat task.out | grep "SUITE_ALL=project backend suite"
+    cat task.out | grep "SUITE_ALL=project backend system suite"
     cat task.out | grep "SUITE_VAR=suite/$variant"
     cat task.out | grep "TASK_ONE=task"
-    cat task.out | grep "TASK_ALL=project backend suite task"
+    cat task.out | grep "TASK_ALL=project backend system suite task"
     cat task.out | grep "TASK_VAR=task/$variant"
 
     echo WORKS/$SPREAD_VARIANT

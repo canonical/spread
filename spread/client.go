@@ -305,6 +305,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	defer session.Close()
 
 	var buf bytes.Buffer
+	buf.WriteString("set -eu\n")
 	var rc = func(use bool, s string) string { return s }
 	if mode == shellOutput {
 		buf.WriteString("true > /root/.bashrc\n")
@@ -326,7 +327,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	}
 	buf.WriteString(rc(false, "REBOOT() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<REBOOT>' || echo \"<REBOOT $1>\"; exit 213; }\n"))
 	buf.WriteString(rc(false, "ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n"))
-	buf.WriteString(rc(true, "MATCH() { { set +xu; } 2> /dev/null; [ ${#@} -gt 0 ] || { echo \"error: missing regexp argument\"; return 1; }; local stdin=\"$(cat)\"; echo $stdin | grep -q -e \"$@\" || { echo \"error: pattern not found, got:\n$stdin\">&2; return 1; }; }\n"))
+	buf.WriteString(rc(true, "MATCH() { { set +xu; } 2> /dev/null; [ ${#@} -gt 0 ] || { echo \"error: missing regexp argument\"; return 1; }; local stdin=\"$(cat)\"; echo $stdin | grep -q -E \"$@\" || { echo \"error: pattern not found, got:\n$stdin\">&2; return 1; }; }\n"))
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
 	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n")
@@ -347,11 +348,11 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 
 	// Don't trace environment variables so secrets don't leak.
 	if mode == traceOutput {
-		fmt.Fprintf(&buf, "set -x\n")
+		buf.WriteString("set -x\n")
 	}
 
 	if mode == shellOutput {
-		fmt.Fprintf(&buf, "\n/bin/bash\n")
+		buf.WriteString("\n/bin/bash\n")
 	} else {
 		// Prevent any commands attempting to read from stdin to consume
 		// the shell script itself being sent to bash via its stdin.
@@ -384,14 +385,14 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	var cmd string
 	switch mode {
 	case traceOutput, combinedOutput:
-		cmd = c.sudo() + "/bin/bash -eu - 2>&1"
+		cmd = c.sudo() + "/bin/bash - 2>&1"
 		session.Stdout = &stdout
 	case splitOutput:
-		cmd = c.sudo() + "/bin/bash -eu -"
+		cmd = c.sudo() + "/bin/bash -"
 		session.Stdout = &stdout
 		session.Stderr = &stderr
 	case shellOutput:
-		cmd = fmt.Sprintf("{\nf=$(mktemp)\ntrap 'rm '$f EXIT\ncat > $f <<'SCRIPT_END'\n%s\nSCRIPT_END\n%s/bin/bash -eu $f\n}", buf.String(), c.sudo())
+		cmd = fmt.Sprintf("{\nf=$(mktemp)\ntrap 'rm '$f EXIT\ncat > $f <<'SCRIPT_END'\n%s\nSCRIPT_END\n%s/bin/bash $f\n}", buf.String(), c.sudo())
 		session.Stdout = os.Stdout
 		session.Stderr = os.Stderr
 		w, h, err := terminal.GetSize(0)
@@ -718,10 +719,11 @@ func (s *localScript) run() (stdout, stderr []byte, err error) {
 	script += "\n"
 
 	var buf bytes.Buffer
+	buf.WriteString("set -eu\n")
 	buf.WriteString("ADDRESS() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ADDRESS>' || echo \"<ADDRESS $1>\"; }\n")
 	buf.WriteString("FATAL() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<FATAL>' || echo \"<FATAL $@>\"; exit 213; }\n")
 	buf.WriteString("ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n")
-	buf.WriteString("MATCH() { { set +xu; } 2> /dev/null; local stdin=$(cat); echo $stdin | grep -q -e \"$@\" || { echo \"error: pattern not found on stdin:\\n$output\">&2; return 1; }; }\n")
+	buf.WriteString("MATCH() { { set +xu; } 2> /dev/null; local stdin=$(cat); echo $stdin | grep -q -E \"$@\" || { echo \"error: pattern not found on stdin:\\n$stdin\">&2; return 1; }; }\n")
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
 	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n")

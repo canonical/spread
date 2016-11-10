@@ -1,0 +1,25 @@
+summary: Test the MATCH function.
+
+execute: |
+    if echo -e "foo\nbar" | MATCH baz > task.out 2> task.err; then
+        echo "MATCH should have failed."
+        exit 1
+    fi
+
+    cat task.out
+    cat task.out | wc -l | grep 0
+
+    cat task.err
+    cat task.err | grep "^error: pattern not found, got:$"
+    cat task.err | grep "^foo$"
+    cat task.err | grep "^bar$"
+
+    echo -e "foo\nbar" | MATCH foo &> task.out
+
+    cat task.out
+    cat task.out | wc -l | grep 0
+
+    echo "Ensure it's using the extended regexp syntax."
+    echo -e "foo" | MATCH "(foo|bar)"
+
+    echo WORKS

@@ -1,0 +1,13 @@
+summary: Test the MATCH function.
+
+prepare: |
+    touch /run/spread-reuse.yaml
+    ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+
+execute: |
+    spread -vv -reuse -resend &> task.out
+
+    cat task.out | grep '^WORKS$'
+
+debug: |
+    cat task.out || true

@@ -2,6 +2,8 @@
 # spread interpreting this file is assumed to be working based on prior
 # testing, while the spread code being shipped to the remote server is being
 # verified for correctness. See the tests to have an idea of how that's done.
+# Keep in mind that the logic in task.yaml is supposed to test the *built*
+# spread, not the one running the task.yaml logic.
 
 project: spread
 

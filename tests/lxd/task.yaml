@@ -1,0 +1,14 @@
+summary: Test the qemu backend.
+
+prepare: |
+    touch /run/spread-reuse.yaml
+    ln -sf /run/spread-reuse.yaml .spread-reuse.yaml
+
+execute: |
+    spread -vv -reuse -resend &> task.out
+
+    grep 'lxd:ubuntu-16.04:checks/main' task.out
+    grep '^WORKS$' task.out
+
+debug: |
+    cat task.out || true

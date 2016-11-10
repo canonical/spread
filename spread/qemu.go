@@ -96,10 +96,15 @@ func (p *qemuProvider) Allocate(system *System) (Server, error) {
 		return nil, &FatalError{fmt.Errorf("cannot find qemu image at %s", path)}
 	}
 
+	mem := 1500
+	if p.backend.Memory > 0 {
+		mem = int(p.backend.Memory / mb)
+	}
+
 	serial := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+100)
 	monitor := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+200)
 	fwd := fmt.Sprintf("user,hostfwd=tcp:127.0.0.1:%d-:22", port)
-	cmd := exec.Command("kvm", "-snapshot", "-m", "1500", "-net", "nic", "-net", fwd, "-serial", serial, "-monitor", monitor, path)
+	cmd := exec.Command("kvm", "-snapshot", "-m", strconv.Itoa(mem), "-net", "nic", "-net", fwd, "-serial", serial, "-monitor", monitor, path)
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
 	}

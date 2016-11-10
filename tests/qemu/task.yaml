@@ -1,0 +1,22 @@
+summary: Test the qemu backend.
+
+prepare: |
+    if ! kvm-ok; then
+        echo "Nested KVM is not available on this system."
+        exit 1
+    fi
+
+    mkdir -p ~/.spread/qemu
+    ln -sf /dev/sda ~/.spread/qemu/ubuntu-16.04.img
+
+    touch /run/spread-reuse.yaml
+    ln -sf /run/spread-reuse.yaml .spread-reuse.yaml
+
+execute: |
+    spread -vv -reuse -resend &> task.out
+
+    grep 'qemu:ubuntu-16.04:checks/main' task.out
+    grep '^WORKS$' task.out
+
+debug: |
+    cat task.out || true

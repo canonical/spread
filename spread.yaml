@@ -30,7 +30,7 @@ suites:
         summary: Integration tests
 
 prepare: |
-    DEBS="git lxd"
+    DEBS="git lxd kvm"
     if ! dpkg -l $DEBS; then
         apt-get update
         apt-get install -y $DEBS

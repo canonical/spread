@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v2"
-	"time"
 )
 
 type Project struct {
@@ -54,6 +55,9 @@ type Backend struct {
 	// Only for adhoc.
 	Allocate string
 	Discard  string
+
+	// Only for qemu so far.
+	Memory Size
 
 	Systems SystemsMap
 
@@ -1134,6 +1138,52 @@ func (t *Timeout) UnmarshalYAML(u func(interface{}) error) error {
 		return fmt.Errorf("timeout must look like 10s or 15m or 1.5h, not %q", s)
 	}
 	t.Duration = d
+	return nil
+}
+
+type Size int64
+
+const (
+	kb = 1024
+	mb = kb * 1024
+	gb = mb * 1024
+)
+
+func (s Size) String() string {
+	switch {
+	case s > gb && s%gb == 0:
+		return strconv.Itoa(int(s/gb)) + "G"
+	case s > mb && s%mb == 0:
+		return strconv.Itoa(int(s/mb)) + "M"
+	case s > kb && s%kb == 0:
+		return strconv.Itoa(int(s/mb)) + "K"
+	}
+	return strconv.Itoa(int(s)) + "B"
+}
+
+func (s *Size) UnmarshalYAML(u func(interface{}) error) error {
+	var str string
+	_ = u(&str)
+	if len(str) == 0 {
+		*s = 0
+		return nil
+	}
+	n, err := strconv.Atoi(str[:len(str)-1])
+	if err != nil {
+		return fmt.Errorf("invalid size string: %q", str)
+	}
+	switch str[len(str)-1] {
+	case 'G':
+		*s = Size(gb * n)
+	case 'M':
+		*s = Size(mb * n)
+	case 'K':
+		*s = Size(kb * n)
+	case 'B':
+		*s = Size(n)
+	default:
+		return fmt.Errorf("unknown size suffix in %q, must be one of: B, K, M, G", str)
+	}
 	return nil
 }
 

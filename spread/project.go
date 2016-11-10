@@ -918,6 +918,24 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 			return nil, err
 		}
 		backend.Key = strings.TrimSpace(value)
+
+		for _, system := range backend.Systems {
+			if system.Username != "" {
+				value, err := evalone(system.String()+" username", system.Username, cmdcache, false, penv, benv)
+				if err != nil {
+					return nil, err
+				}
+				system.Username = value
+			}
+			// Passwords may easily include $, so only replace if it matches a varname entirely.
+			if system.Password != "" && varref.FindString(system.Password) == system.Password {
+				value, err := evalone(system.String()+" password", system.Password, cmdcache, false, penv, benv)
+				if err != nil {
+					return nil, err
+				}
+				system.Password = value
+			}
+		}
 	}
 
 	err1 := evalslice("rename expression", p.Rename, cmdcache, false, penv)

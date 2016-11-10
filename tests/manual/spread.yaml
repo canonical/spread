@@ -1,0 +1,31 @@
+project: spread
+
+backends:
+    lxd-a:
+        type: lxd
+        systems:
+            - ubuntu-16.04-a:
+                image: ubuntu-16.04
+            - ubuntu-16.04-m:
+                image: ubuntu-16.04
+                manual: true
+    lxd-m:
+        type: lxd
+        systems:
+            - ubuntu-16.04-a:
+                image: ubuntu-16.04
+            - ubuntu-16.04-m:
+                image: ubuntu-16.04
+                manual: true
+        manual: true
+
+path: /home/test
+
+suites:
+    checks-a/: 
+        summary: Verification tasks.
+    checks-m/: 
+        summary: Verification tasks.
+        manual: true
+
+# vim:ts=4:sw=4:et

@@ -70,6 +70,8 @@ type Backend struct {
 	WarnTimeout Timeout `yaml:"warn-timeout"`
 	KillTimeout Timeout `yaml:"kill-timeout"`
 	HaltTimeout Timeout `yaml:"halt-timeout"`
+
+	Manual bool
 }
 
 func (b *Backend) String() string { return fmt.Sprintf("backend %q", b.Name) }
@@ -109,6 +111,8 @@ type System struct {
 
 	Environment *Environment
 	Variants    []string
+
+	Manual bool
 }
 
 func (system *System) String() string { return system.Backend + ":" + system.Name }
@@ -297,6 +301,8 @@ type Suite struct {
 
 	WarnTimeout Timeout `yaml:"warn-timeout"`
 	KillTimeout Timeout `yaml:"kill-timeout"`
+
+	Manual bool
 }
 
 func (s *Suite) String() string { return "suite " + s.Name }
@@ -324,6 +330,8 @@ type Task struct {
 
 	WarnTimeout Timeout `yaml:"warn-timeout"`
 	KillTimeout Timeout `yaml:"kill-timeout"`
+
+	Manual bool
 }
 
 func (t *Task) String() string { return t.Name }
@@ -743,7 +751,11 @@ func (p *Project) backendNames() []string {
 func (p *Project) Jobs(options *Options) ([]*Job, error) {
 	var jobs []*Job
 
-	backendHasJob := make(map[string]bool)
+	hasFilter := options.Filter != nil
+	manualBackends := hasFilter
+	manualSystems := hasFilter
+	manualSuites := hasFilter
+	manualTasks := hasFilter
 
 	cmdcache := make(map[string]string)
 	penv := envmap{p, p.Environment}
@@ -845,9 +857,21 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 						if options.Filter != nil && !options.Filter.Pass(job) {
 							continue
 						}
+
 						jobs = append(jobs, job)
 
-						backendHasJob[job.Backend.Name] = true
+						if !job.Backend.Manual {
+							manualBackends = false
+						}
+						if !job.System.Manual {
+							manualSystems = false
+						}
+						if !job.Suite.Manual {
+							manualSuites = false
+						}
+						if !job.Task.Manual {
+							manualTasks = false
+						}
 					}
 				}
 
@@ -855,12 +879,32 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 		}
 	}
 
+	all := jobs
+	jobs = make([]*Job, 0, len(all))
+	backends := make(map[string]bool)
+	for _, job := range all {
+		if !manualBackends && job.Backend.Manual {
+			continue
+		}
+		if !manualSystems && job.System.Manual {
+			continue
+		}
+		if !manualSuites && job.Suite.Manual {
+			continue
+		}
+		if !manualTasks && job.Task.Manual {
+			continue
+		}
+		jobs = append(jobs, job)
+		backends[job.Backend.Name] = true
+	}
+
 	env, err := evalenv(cmdcache, true, penv)
 	if err != nil {
 		return nil, err
 	}
 	p.Environment = env
-	p.Environment.Set("SPREAD_BACKENDS", strings.Join(sortedKeys(backendHasJob), " "))
+	p.Environment.Set("SPREAD_BACKENDS", strings.Join(sortedKeys(backends), " "))
 
 	// TODO Should probably cascade environments, so that backend.Environment contains
 	// project.Environment, and suite.Environmnet contains both project.Environment and

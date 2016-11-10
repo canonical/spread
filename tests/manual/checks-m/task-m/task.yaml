@@ -1,0 +1,6 @@
+summary: The manual task.
+
+manual: true
+
+execute: |
+    echo WORKS:task-m

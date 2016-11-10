@@ -1,0 +1,58 @@
+summary: Test manual selections.
+
+execute: |
+    out=$(spread -list)
+    echo $out
+    echo $out | grep "lxd-a.*04-a.*checks-a.*task-a"
+    echo $out | ( ! grep "lxd.*-m" )
+    echo
+
+    out=$(spread -list lxd-m)
+    echo $out
+    echo $out | grep "lxd-m.*04-a.*checks-a.*task-a"
+    echo $out | ( ! grep "lxd-m.*-m" )
+    echo
+
+    out=$(spread -list lxd-...)
+    echo $out
+    echo $out | grep "lxd-a.*04-a.*checks-a.*task-a"
+    echo $out | ( ! grep "lxd.*-m" )
+    echo
+
+    out=$(spread -list ubuntu-16.04-m)
+    echo $out
+    echo $out | grep "lxd-a.*04-m.*checks-a.*task-a"
+    echo $out | ( ! grep "lxd-m" )
+    echo $out | ( ! grep "lxd.*04-m.*-m" )
+    echo
+
+    out=$(spread -list ubuntu-...)
+    echo $out
+    echo $out | grep "lxd-a.*04-a.*checks-a.*task-a"
+    echo $out | ( ! grep "lxd.*-m" )
+    echo
+
+    out=$(spread -list checks-m/)
+    echo $out
+    echo $out | grep "lxd-a.*04-a.*checks-m.*task-a"
+    echo $out | ( ! grep "lxd.*-m.*checks-m" )
+    echo $out | ( ! grep "lxd.*checks-m.*-m" )
+    echo
+
+    out=$(spread -list checks-.../)
+    echo $out
+    echo $out | grep "lxd-a.*04-a.*checks-a.*task-a"
+    echo $out | ( ! grep "lxd.*-m" )
+    echo
+
+    out=$(spread -list /task-m)
+    echo $out
+    echo $out | grep "lxd-a.*04-a.*checks-a.*task-m"
+    echo $out | ( ! grep "lxd.*-m.*task-m" )
+    echo
+
+    out=$(spread -list /task-...)
+    echo $out
+    echo $out | grep "lxd-a.*04-a.*checks-a.*task-a"
+    echo $out | ( ! grep "lxd.*-m" )
+    echo

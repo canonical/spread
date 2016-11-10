@@ -19,6 +19,7 @@ Convenient full-system test (task) distribution
 [Passwords and usernames](#passwords)  
 [Including, excluding, and renaming files](#including)  
 [Selecting which tasks to run](#selecting)  
+[Disabling unless manually selected](#manual)  
 [Fetching residual artifacts](#residue)
 [LXD backend](#lxd)  
 [QEMU backend](#qemu)  
@@ -627,6 +628,42 @@ at least one of them:
 
 The `-list` option is useful to see what jobs would be selected by a given
 filter without actually running them.
+
+
+<a name="manual"/>
+Disabling unless manually selected
+----------------------------------
+
+It may be useful to have a task written down as part of the suite without it
+being run all the time together with the usual tasks.  For that, just add a
+`manual: true` field, and it will only be run when explicitly selected. This is
+equivalent to disabing the task, except it may still be run when manually
+selected.
+
+For example:
+
+_$PROJECT/examples/manually-run/task.yaml_
+```
+summary: This task only runs manually.
+
+manual: true
+
+...
+```
+
+The logic for explicit selection is the following: if the provided
+arguments match any non-manual tasks at all, the manual tasks are not
+run, even if they match the arguments.
+
+Besides tasks, the same logic works for backends, systems, and suites.
+Just add the `manual` field to their definition and they will only run
+when explicitly selected, following the same logic described above: if
+the provided arguments match any non-manual suite, matching manual
+suites won't run, and so on.
+
+Note that it's fine to have manual and non-manual tasks inside a manual
+suite, and so forth. Play with `-list` to get a clear idea of what is
+selected to run.
 
 
 <a name="residue"/>

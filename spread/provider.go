@@ -1,6 +1,7 @@
 package spread
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"time"
@@ -10,14 +11,14 @@ var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 type Provider interface {
 	Backend() *Backend
-	Allocate(system *System) (Server, error)
-	Reuse(rsystem *ReuseSystem, system *System) (Server, error)
+	Allocate(ctx context.Context, system *System) (Server, error)
+	Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error)
 }
 
 type Server interface {
 	Provider() Provider
 	Address() string
-	Discard() error
+	Discard(ctx context.Context) error
 	System() *System
 	ReuseData() interface{}
 	String() string
@@ -45,10 +46,3 @@ func removedSystem(backend *Backend, sysname string) *System {
 		Image:   sysname,
 	}
 }
-
-func (s *UnknownServer) String() string         { return "server " + s.Addr }
-func (s *UnknownServer) Provider() Provider     { return nil }
-func (s *UnknownServer) Address() string        { return s.Addr }
-func (s *UnknownServer) Discard() error         { return nil }
-func (s *UnknownServer) ReuseData() interface{} { return nil }
-func (s *UnknownServer) System() *System        { return nil }

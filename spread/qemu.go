@@ -1,6 +1,7 @@
 package spread
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"os"
@@ -50,7 +51,7 @@ func (s *qemuServer) ReuseData() interface{} {
 	return &s.d
 }
 
-func (s *qemuServer) Discard() error {
+func (s *qemuServer) Discard(ctx context.Context) error {
 	p, err := os.FindProcess(s.d.PID)
 	if err != nil {
 		return nil // But never happens on Unix, per docs.
@@ -70,7 +71,7 @@ func (p *qemuProvider) Backend() *Backend {
 	return p.backend
 }
 
-func (p *qemuProvider) Reuse(rsystem *ReuseSystem, system *System) (Server, error) {
+func (p *qemuProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {
 	s := &qemuServer{
 		p:       p,
 		system:  system,
@@ -87,7 +88,7 @@ func systemPath(system *System) string {
 	return os.ExpandEnv("$HOME/.spread/qemu/" + system.Image + ".img")
 }
 
-func (p *qemuProvider) Allocate(system *System) (Server, error) {
+func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, error) {
 	// FIXME Find an available port more reliably.
 	port := 59301 + rand.Intn(99)
 
@@ -126,7 +127,7 @@ func (p *qemuProvider) Allocate(system *System) (Server, error) {
 
 	printf("Waiting for %s to make SSH available...", system)
 	if err := waitPortUp(system, s.address); err != nil {
-		s.Discard()
+		s.Discard(ctx)
 		return nil, fmt.Errorf("cannot connect to %s: %s", s, err)
 	}
 	printf("Allocated %s.", s)

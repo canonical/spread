@@ -2,6 +2,7 @@ package spread
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"gopkg.in/yaml.v2"
@@ -57,7 +58,7 @@ func (s *lxdServer) ReuseData() interface{} {
 	return &s.d
 }
 
-func (s *lxdServer) Discard() error {
+func (s *lxdServer) Discard(ctx context.Context) error {
 	output, err := exec.Command("lxc", "delete", "--force", s.d.Name).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("cannot discard lxd container: %v", outputErr(output, err))
@@ -69,7 +70,7 @@ func (p *lxdProvider) Backend() *Backend {
 	return p.backend
 }
 
-func (p *lxdProvider) Reuse(rsystem *ReuseSystem, system *System) (Server, error) {
+func (p *lxdProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {
 	s := &lxdServer{
 		p:       p,
 		system:  system,
@@ -82,7 +83,7 @@ func (p *lxdProvider) Reuse(rsystem *ReuseSystem, system *System) (Server, error
 	return s, nil
 }
 
-func (p *lxdProvider) Allocate(system *System) (Server, error) {
+func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, error) {
 	lxdimage, err := p.lxdImage(system)
 	if err != nil {
 		return nil, err
@@ -124,21 +125,21 @@ func (p *lxdProvider) Allocate(system *System) (Server, error) {
 			break
 		}
 		if _, ok := err.(*lxdNoAddrError); !ok {
-			s.Discard()
+			s.Discard(ctx)
 			return nil, err
 		}
 
 		select {
 		case <-retry.C:
 		case <-timeout:
-			s.Discard()
+			s.Discard(ctx)
 			return nil, err
 		}
 	}
 
 	err = p.tuneSSH(name)
 	if err != nil {
-		s.Discard()
+		s.Discard(ctx)
 		return nil, err
 	}
 

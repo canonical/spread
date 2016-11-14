@@ -9,10 +9,10 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/niemeyer/pretty"
 	"github.com/snapcore/spread/spread"
-	"time"
 )
 
 var (

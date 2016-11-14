@@ -1,6 +1,7 @@
 package spread
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -141,7 +142,7 @@ func (p *linodeProvider) Backend() *Backend {
 	return p.backend
 }
 
-func (p *linodeProvider) Reuse(rsystem *ReuseSystem, system *System) (Server, error) {
+func (p *linodeProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {
 	s := &linodeServer{
 		p:       p,
 		address: rsystem.Address,
@@ -172,7 +173,7 @@ func (p *linodeProvider) unreserve(s *linodeServer) {
 	p.mu.Unlock()
 }
 
-func (p *linodeProvider) Allocate(system *System) (Server, error) {
+func (p *linodeProvider) Allocate(ctx context.Context, system *System) (Server, error) {
 	if err := p.checkKey(); err != nil {
 		return nil, err
 	}
@@ -267,7 +268,7 @@ func (p *linodeProvider) Allocate(system *System) (Server, error) {
 	return nil, fmt.Errorf("no powered off servers in Linode account exceed halt-timeout")
 }
 
-func (s *linodeServer) Discard() error {
+func (s *linodeServer) Discard(ctx context.Context) error {
 	s.watchTomb.Kill(nil)
 	s.watchTomb.Wait()
 	_, err1 := s.p.shutdown(s)

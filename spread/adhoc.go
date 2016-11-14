@@ -2,6 +2,7 @@ package spread
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -44,7 +45,7 @@ func (s *adhocServer) ReuseData() interface{} {
 	return nil
 }
 
-func (s *adhocServer) Discard() error {
+func (s *adhocServer) Discard(ctx context.Context) error {
 	_, err := s.p.run(s.p.backend.Discard, s.system, s.address)
 	if err != nil {
 		return err
@@ -56,7 +57,7 @@ func (p *adhocProvider) Backend() *Backend {
 	return p.backend
 }
 
-func (p *adhocProvider) Reuse(rsystem *ReuseSystem, system *System) (Server, error) {
+func (p *adhocProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {
 	s := &adhocServer{
 		p:       p,
 		system:  system,
@@ -65,7 +66,7 @@ func (p *adhocProvider) Reuse(rsystem *ReuseSystem, system *System) (Server, err
 	return s, nil
 }
 
-func (p *adhocProvider) Allocate(system *System) (Server, error) {
+func (p *adhocProvider) Allocate(ctx context.Context, system *System) (Server, error) {
 	result, err := p.run(p.backend.Allocate, system, "")
 	if err != nil {
 		return nil, err
@@ -83,7 +84,7 @@ func (p *adhocProvider) Allocate(system *System) (Server, error) {
 
 	printf("Waiting for %s to make SSH available at %s...", system, addr)
 	if err := waitPortUp(system, s.address); err != nil {
-		s.Discard()
+		s.Discard(ctx)
 		return nil, fmt.Errorf("cannot connect to %s at %s: %s", s, s.Address(), err)
 	}
 	printf("Allocated %s.", s)

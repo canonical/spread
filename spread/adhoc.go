@@ -2,10 +2,11 @@ package spread
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"regexp"
 	"strings"
+
+	"golang.org/x/net/context"
 )
 
 func AdHoc(p *Project, b *Backend, o *Options) Provider {

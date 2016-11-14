@@ -48,12 +48,12 @@ type Runner struct {
 	done  chan bool
 	alive int
 
-	reuse     *Reuse
-	reserved  map[string]bool
-	servers   []Server
-	pending   []*Job
-	remaining int
-	stats     stats
+	reuse    *Reuse
+	reserved map[string]bool
+	servers  []Server
+	pending  []*Job
+	sequence map[*Job]int
+	stats    stats
 
 	allocated bool
 
@@ -66,6 +66,7 @@ func Start(project *Project, options *Options) (*Runner, error) {
 		options:   options,
 		providers: make(map[string]Provider),
 		reserved:  make(map[string]bool),
+		sequence:  make(map[*Job]int),
 
 		suiteWorkers: make(map[[3]string]int),
 	}
@@ -90,7 +91,6 @@ func Start(project *Project, options *Options) (*Runner, error) {
 		return nil, err
 	}
 	r.pending = pending
-	r.remaining = len(pending)
 
 	r.reuse, err = OpenReuse(r.reusePath())
 	if err != nil {
@@ -248,7 +248,7 @@ func (r *Runner) prepareContent() (err error) {
 		return fmt.Errorf("cannot remove temporary content file: %v", err)
 	}
 
-	args := []string{"c", "--sort=name", "--exclude=.spread-reuse.*"}
+	args := []string{"c", "--exclude=.spread-reuse.*"}
 	if r.project.Repack == "" {
 		args[0] = "cz"
 	}
@@ -416,7 +416,10 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	contextStr := job.StringFor(context)
 	if verb == executing {
 		r.mu.Lock()
-		logf("%s %s (%d/%d)...", strings.Title(verb), contextStr, len(r.pending)-r.remaining, len(r.pending))
+		if r.sequence[job] == 0 {
+			r.sequence[job] = len(r.sequence) + 1
+		}
+		logf("%s %s (%d/%d)...", strings.Title(verb), contextStr, r.sequence[job], len(r.pending))
 		r.mu.Unlock()
 	} else {
 		logf("%s %s...", strings.Title(verb), contextStr)
@@ -513,6 +516,9 @@ func (r *Runner) worker(backend *Backend, system *System) {
 	for {
 		r.mu.Lock()
 		if job != nil {
+			if r.sequence[job] == 0 {
+				r.sequence[job] = len(r.sequence) + 1
+			}
 			r.suiteWorkers[suiteWorkersKey(job)]--
 		}
 		if badProject || abend || !r.tomb.Alive() {
@@ -651,7 +657,6 @@ func (r *Runner) job(backend *Backend, system *System, suite *Suite) *Job {
 	if best >= 0 {
 		job := r.pending[best]
 		r.pending[best] = nil
-		r.remaining--
 		return job
 	}
 	return nil

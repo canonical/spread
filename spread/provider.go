@@ -1,10 +1,11 @@
 package spread
 
 import (
-	"context"
 	"fmt"
 	"math/rand"
 	"time"
+
+	"golang.org/x/net/context"
 )
 
 var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))

@@ -1,12 +1,13 @@
 package spread
 
 import (
-	"context"
 	"fmt"
 	"math/rand"
 	"os"
 	"os/exec"
 	"strconv"
+
+	"golang.org/x/net/context"
 )
 
 func QEMU(p *Project, b *Backend, o *Options) Provider {

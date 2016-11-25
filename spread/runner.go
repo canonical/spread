@@ -335,7 +335,6 @@ func (r *Runner) prepareContent() (err error) {
 		wg.Add(1)
 		go func() {
 			err := cmd.Wait()
-			println("tar terminated")
 			errch <- outputErr(stderr.Bytes(), err)
 
 			// Unblock script.
@@ -347,7 +346,6 @@ func (r *Runner) prepareContent() (err error) {
 		wg.Add(1)
 		go func() {
 			_, _, err := lscript.run()
-			println("script terminated:", err)
 			errch <- err
 
 			// Stop tar and unblock gz.
@@ -360,7 +358,6 @@ func (r *Runner) prepareContent() (err error) {
 		wg.Add(1)
 		go func() {
 			_, err := io.Copy(gz, gzr)
-			println("copy terminated")
 			errch <- firstErr(err, gz.Close())
 
 			// Stop tar.

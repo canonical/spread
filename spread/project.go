@@ -440,7 +440,7 @@ func SplitVariants(s string) (prefix string, variants []string) {
 
 var (
 	validName   = regexp.MustCompile("^[a-z0-9]+(?:[-._][a-z0-9]+)*$")
-	validSystem = regexp.MustCompile("^[a-z]+-[a-z0-9]+(?:[-.][a-z0-9]+)*$")
+	validSystem = regexp.MustCompile("^[a-z]+-[a-z0-9*]+(?:[-.][a-z0-9*]+)*$")
 	validSuite  = regexp.MustCompile("^(?:[a-z0-9]+(?:[-._][a-z0-9]+)*/)+$")
 	validTask   = regexp.MustCompile("^(?:[a-z0-9]+(?:[-._][a-z0-9]+)*/)+[a-z0-9]+(?:[-._][a-z0-9]+)*$")
 )
@@ -1080,6 +1080,22 @@ type strmap struct {
 	strings []string
 }
 
+func matches(pattern string, strmaps ...strmap) ([]string, error) {
+	var matches []string
+	for _, strmap := range strmaps {
+		for _, name := range strmap.strings {
+			m, err := filepath.Match(pattern, name)
+			if err != nil {
+				return nil, err
+			}
+			if m {
+				matches = append(matches, name)
+			}
+		}
+	}
+	return matches, nil
+}
+
 func evalstr(what string, strmaps ...strmap) ([]string, error) {
 	final := make(map[string]bool)
 	for i, strmap := range strmaps {
@@ -1101,11 +1117,23 @@ func evalstr(what string, strmaps ...strmap) ([]string, error) {
 				return nil, fmt.Errorf("%s specifies %s both in delta and plain format", strmap.context, what)
 			}
 			if add {
-				final[name] = true
+				matches, err := matches(name, strmaps...)
+				if err != nil {
+					return nil, err
+				}
+				for _, match := range matches {
+					final[match] = true
+				}
 				continue
 			}
 			if remove {
-				delete(final, name)
+				matches, err := matches(name, strmaps...)
+				if err != nil {
+					return nil, err
+				}
+				for _, match := range matches {
+					delete(final, match)
+				}
 				continue
 			}
 

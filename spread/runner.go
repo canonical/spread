@@ -974,6 +974,7 @@ func (s *stats) log() {
 	printf("Successful tasks: %d", len(s.TaskDone))
 	printf("Aborted tasks: %d", len(s.TaskAbort))
 
+	logNames(printf, "Aborted tasks", s.TaskAbort, taskName)
 	logNames(printf, "Failed tasks", s.TaskError, taskName)
 	logNames(printf, "Failed task prepare", s.TaskPrepareError, taskName)
 	logNames(printf, "Failed task restore", s.TaskRestoreError, taskName)

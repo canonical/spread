@@ -73,6 +73,8 @@ func Start(project *Project, options *Options) (*Runner, error) {
 
 	for bname, backend := range project.Backends {
 		switch backend.Type {
+		case "azure":
+			r.providers[bname] = Azure(project, backend, options)
 		case "linode":
 			r.providers[bname] = Linode(project, backend, options)
 		case "lxd":

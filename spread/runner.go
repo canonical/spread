@@ -215,8 +215,6 @@ func (r *Runner) loop() (err error) {
 			return nil
 		}
 	}
-
-	return nil
 }
 
 func (r *Runner) prepareContent() (err error) {
@@ -745,7 +743,7 @@ func (r *Runner) fetchResidue(client *Client, job *Job) error {
 		return fmt.Errorf("cannot start unpacking tar: %v", err)
 	}
 
-	printf("Fetching residue of %s...", job, err)
+	printf("Fetching residue of %s...", job)
 
 	remoteDir := filepath.Join(r.project.RemotePath, job.Task.Name)
 	err = client.RecvTar(remoteDir, job.Task.Residue, tarw)

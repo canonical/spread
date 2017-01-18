@@ -257,7 +257,7 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 			return output, err
 		}
 		if reboot > maxReboots {
-			return nil, fmt.Errorf("%s rebooted more than %d times", c.server)
+			return nil, fmt.Errorf("%s rebooted more than %d times", c.server, maxReboots)
 		}
 
 		printf("Rebooting %s as requested...", c.server)

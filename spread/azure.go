@@ -3,25 +3,43 @@ package spread
 import (
 	"errors"
 	"fmt"
-	"github.com/Azure/azure-sdk-for-go/arm/compute"
-	"github.com/Azure/azure-sdk-for-go/arm/network"
-	"github.com/Azure/azure-sdk-for-go/arm/resources/resources"
+	"github.com/Azure/azure-sdk-for-go/arm/devtestlabs"
 	"github.com/Azure/go-autorest/autorest/azure"
+	"github.com/google/uuid"
 	"golang.org/x/net/context"
 	"os"
 )
 
 const (
-	azureClientId                   = "f8986e48-7aa9-4aa8-9d03-6aad03138954"
-	azureDefaultUsername            = "ubuntu"
-	azureProvisioningStateSucceeded = "ProvisioningState/succeeded"
-	azurePowerStateDeallocated      = "PowerState/deallocated"
+	azureClientId = "f8986e48-7aa9-4aa8-9d03-6aad03138954"
 )
 
+var (
+	azureDefaultPassword = "Spread.42"
+	azureDefaultRegion   = "westeurope"
+	azureDefaultUsername = "ubuntu"
+	azureSystemsMap      = map[string]string{
+		"ubuntu-14.04-64": "ubuntu-14-04",
+		"ubuntu-16.04-64": "ubuntu-16-04",
+	} // We need to map system names here as azure is quite restrictive in terms of naming resources.
+)
+
+// Azure returns a Provider implementation connecting to an Azure devtestlabs instance.
+//
+// The provider requires the following environment variables to be set:
+//   * SPREAD_AZURE_SUBSCRIPTION_ID: The Azure subscription ID for accesing the lab.
+//   * SPREAD_AZURE_TENANT_ID: The Azure tenant ID for accessing the lab.
+//   * SPREAD_AZURE_CLIENT_SECRET: The secret client key.
+//   * SPREAD_AZURE_RESOURCE_GROUP: The Azure source group hosting the devtestlabs instance.
+//   * SPREAD_AZURE_LAB_NAME: The name of the Azure devtestlabs instance.
+//   * SPREAD_AZURE_LAB_VN: The name of the virtualnetwork instance attached to the lab instance.
 func Azure(p *Project, b *Backend, o *Options) Provider {
 	subscriptionId := os.Getenv("SPREAD_AZURE_SUBSCRIPTION_ID")
 	tenantId := os.Getenv("SPREAD_AZURE_TENANT_ID")
 	clientSecret := os.Getenv("SPREAD_AZURE_CLIENT_SECRET")
+	resourceGroup := os.Getenv("SPREAD_AZURE_RESOURCE_GROUP")
+	labName := os.Getenv("SPREAD_AZURE_LAB_NAME")
+	virtualNetworkName := os.Getenv("SPREAD_AZURE_LAB_VN")
 
 	if len(subscriptionId) == 0 || len(tenantId) == 0 || len(clientSecret) == 0 {
 		return nil
@@ -37,37 +55,53 @@ func Azure(p *Project, b *Backend, o *Options) Provider {
 		return nil
 	}
 
-	vmClient := compute.NewVirtualMachinesClient(subscriptionId)
-	vmClient.Authorizer = spt
+	fc := devtestlabs.NewFormulaOperationsClient(subscriptionId)
+	fc.Authorizer = spt
 
-	itfClient := network.NewInterfacesClient(subscriptionId)
-	itfClient.Authorizer = spt
+	lc := devtestlabs.NewLabOperationsClient(subscriptionId)
+	lc.Authorizer = spt
 
-	netClient := network.NewPublicIPAddressesClient(subscriptionId)
-	netClient.Authorizer = spt
+	vnc := devtestlabs.NewVirtualNetworkOperationsClient(subscriptionId)
+	vnc.Authorizer = spt
 
-	resClient := resources.NewClient(subscriptionId)
-	resClient.Authorizer = spt
+	vmc := devtestlabs.NewVirtualMachineClient(subscriptionId)
+	vmc.Authorizer = spt
 
-	return &azureProvider{p, b, o, vmClient, itfClient, netClient, resClient}
+	return &azureProvider{
+		project:              p,
+		backend:              b,
+		options:              o,
+		formulaClient:        fc,
+		labClient:            lc,
+		virtualNetworkClient: vnc,
+		virtualMachineClient: vmc,
+		resourceGroup:        resourceGroup,
+		labName:              labName,
+		virtualNetworkName:   virtualNetworkName,
+	}
 }
 
 type azureProvider struct {
-	project   *Project
-	backend   *Backend
-	options   *Options
-	vmClient  compute.VirtualMachinesClient
-	itfClient network.InterfacesClient
-	netClient network.PublicIPAddressesClient
-	resClient resources.Client
+	project              *Project
+	backend              *Backend
+	options              *Options
+	formulaClient        devtestlabs.FormulaOperationsClient
+	labClient            devtestlabs.LabOperationsClient
+	virtualNetworkClient devtestlabs.VirtualNetworkOperationsClient
+	virtualMachineClient devtestlabs.VirtualMachineClient
+	resourceGroup        string
+	labName              string
+	virtualNetworkName   string
 }
 
+type azureVm struct {
+	Name    string
+	Address string
+}
 type azureServer struct {
-	p *azureProvider
-
-	vm      *compute.VirtualMachine
-	system  *System
-	address string
+	p      *azureProvider
+	vm     *azureVm
+	system *System
 }
 
 func (s *azureServer) String() string {
@@ -79,7 +113,7 @@ func (s *azureServer) Provider() Provider {
 }
 
 func (s *azureServer) Address() string {
-	return s.address
+	return s.vm.Address
 }
 
 func (s *azureServer) System() *System {
@@ -87,11 +121,11 @@ func (s *azureServer) System() *System {
 }
 
 func (s *azureServer) ReuseData() interface{} {
-	return nil
+	return s.vm
 }
 
 func (s *azureServer) Discard(ctx context.Context) error {
-	_, err := s.p.vmClient.Deallocate(s.system.Name, *s.vm.Name, nil)
+	_, err := s.p.virtualMachineClient.DeleteResource(s.p.resourceGroup, s.p.labName, s.vm.Name, nil)
 	return err
 }
 
@@ -100,124 +134,61 @@ func (p *azureProvider) Backend() *Backend {
 }
 
 func (p *azureProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {
+	vm, ok := rsystem.Data.(*azureVm)
+	if !ok || vm == nil {
+		return nil, errors.New("Missing VM data")
+	}
 	s := &azureServer{
-		p:       p,
-		system:  system,
-		address: rsystem.Address,
+		p:      p,
+		vm:     vm,
+		system: system,
 	}
 	return s, nil
 }
 
 func (p *azureProvider) Allocate(ctx context.Context, system *System) (Server, error) {
-	fmt.Println(system.Name)
+	formulaName, ok := azureSystemsMap[system.Name]
+	if !ok {
+		return nil, fmt.Errorf("System %s is not supported", system.Name)
+	}
 
-	vm, err := p.selectVirtualMachine(system.Name)
+	formula, err := p.formulaClient.GetResource(p.resourceGroup, p.labName, formulaName)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = p.vmClient.Start(system.Name, *vm.Name, nil)
+	vn, err := p.virtualNetworkClient.GetResource(p.resourceGroup, p.labName, p.virtualNetworkName)
 	if err != nil {
 		return nil, err
 	}
 
-	nis := vm.VirtualMachineProperties.NetworkProfile.NetworkInterfaces
-
-	var primaryInterfaceId *string
-	if len(*nis) == 1 {
-		primaryInterfaceId = (*nis)[0].ID
-	} else {
-		for _, ni := range *nis {
-			if *ni.NetworkInterfaceReferenceProperties.Primary {
-				primaryInterfaceId = ni.ID
-			}
-		}
-	}
-
-	if primaryInterfaceId == nil {
-		return nil, errors.New("No primary network interface")
-	}
-
-	resource, err := p.resClient.GetByID(*primaryInterfaceId)
+	ru, err := uuid.NewRandom()
 	if err != nil {
 		return nil, err
 	}
 
-	itf, err := p.itfClient.Get(system.Name, *resource.Name, "")
+	name := ru.String()
+	formula.FormulaContent.Name = &name
+	formula.FormulaContent.Location = &azureDefaultRegion
+	formula.FormulaContent.UserName = &azureDefaultUsername
+	formula.FormulaContent.Password = &azureDefaultPassword
+	formula.FormulaContent.LabVirtualNetworkID = vn.ID
+
+	// TODO(tvoss): We should leverage expirationDate as soon as it is available via the SDK
+	// and correctly support halt-timeout.
+	// See https://azure.microsoft.com/en-us/blog/set-expiration-date-for-vms-in-azure-devtest-labs/
+	_, err = p.labClient.CreateEnvironment(p.resourceGroup, p.labName, *formula.FormulaContent, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	var publicIP *network.PublicIPAddress
-	for _, ipConfig := range *itf.IPConfigurations {
-		if ipConfig.PublicIPAddress != nil {
-			publicIP = ipConfig.PublicIPAddress
-		}
-	}
-
-	if publicIP == nil {
-		return nil, errors.New("No public IP for VM")
-	}
-
-	resource, err = p.resClient.GetByID(*publicIP.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	ip, err := p.netClient.Get(system.Name, *resource.Name, "")
+	labVm, err := p.virtualMachineClient.GetResource(p.resourceGroup, p.labName, name)
 	if err != nil {
 		return nil, err
 	}
 
 	system.Username = azureDefaultUsername
-	system.Password = system.Name
+	system.Password = azureDefaultPassword
 
-	return &azureServer{p, vm, system, *ip.IPAddress}, nil
-}
-
-func (p *azureProvider) selectVirtualMachine(resourceGroup string) (*compute.VirtualMachine, error) {
-	result, err := p.vmClient.List(resourceGroup)
-	if err != nil {
-		return nil, err
-	}
-	// Walk through all known vms in the given resource group and find
-	// one that is in PowerState/dellocated. We should randomize the selection
-	// process here and minimize clashes with other spread instances selecting
-	// vm instances.
-	var finalVm *compute.VirtualMachine
-	for {
-		for _, vm := range *result.Value {
-			iv, err := p.vmClient.Get(resourceGroup, *vm.Name, compute.InstanceView)
-			if err != nil {
-				continue
-			}
-
-			provisionedSuccessfully := false
-			deallocated := false
-			for _, status := range *iv.InstanceView.Statuses {
-				switch *status.Code {
-				case azureProvisioningStateSucceeded:
-					provisionedSuccessfully = true
-					break
-				case azurePowerStateDeallocated:
-					deallocated = true
-					break
-				}
-
-				if provisionedSuccessfully && deallocated {
-					finalVm = &iv
-					break
-				}
-			}
-		}
-
-		if finalVm != nil {
-			return finalVm, nil
-		}
-
-		if result.NextLink == nil {
-			break
-		}
-	}
-	return nil, errors.New("No VM available")
+	return &azureServer{p, &azureVm{*labVm.Name, *labVm.Fqdn}, system}, nil
 }

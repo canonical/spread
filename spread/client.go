@@ -330,7 +330,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	buf.WriteString(rc(true, "MATCH() { { set +xu; } 2> /dev/null; [ ${#@} -gt 0 ] || { echo \"error: missing regexp argument\"; return 1; }; local stdin=\"$(cat)\"; echo \"$stdin\" | grep -q -E \"$@\" || { echo \"error: pattern not found, got:\n$stdin\">&2; return 1; }; }\n"))
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
-	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n")
+	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\n")
 
 	for _, k := range env.Keys() {
 		v := env.Get(k)
@@ -726,7 +726,7 @@ func (s *localScript) run() (stdout, stderr []byte, err error) {
 	buf.WriteString("MATCH() { { set +xu; } 2> /dev/null; local stdin=$(cat); echo $stdin | grep -q -E \"$@\" || { echo \"error: pattern not found on stdin:\\n$stdin\">&2; return 1; }; }\n")
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
-	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n")
+	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\n")
 
 	for _, k := range s.env.Keys() {
 		v := s.env.Get(k)

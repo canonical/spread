@@ -7,7 +7,7 @@ execute: |
     fi
 
     cat task.out
-    cat task.out | wc -l | grep 0
+    test "$(wc -l < task.out)" -eq 0
 
     cat task.err
     cat task.err | grep "^error: pattern not found, got:$"
@@ -17,9 +17,12 @@ execute: |
     echo -e "foo\nbar" | MATCH foo &> task.out
 
     cat task.out
-    cat task.out | wc -l | grep 0
+    test "$(wc -l < task.out)" -eq 0
 
     echo "Ensure it's using the extended regexp syntax."
     echo -e "foo" | MATCH "(foo|bar)"
+
+    echo "Ensure input can be multiline."
+    echo -e "foo\nbar\nbaz" | MATCH '^bar$'
 
     echo WORKS

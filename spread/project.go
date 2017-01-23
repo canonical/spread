@@ -626,7 +626,7 @@ func Load(path string) (*Project, error) {
 
 			for _, fname := range task.Residue {
 				if filepath.IsAbs(fname) || fname != filepath.Clean(fname) || strings.HasPrefix(fname, "../") {
-					return nil, fmt.Errorf("%s has improper residue path", fname)
+					return nil, fmt.Errorf("%s has improper residue path: %s", task.Name, fname)
 				}
 			}
 

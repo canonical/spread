@@ -3,11 +3,12 @@ package spread
 import (
 	"errors"
 	"fmt"
+	"os"
+
 	"github.com/Azure/azure-sdk-for-go/arm/devtestlabs"
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/google/uuid"
 	"golang.org/x/net/context"
-	"os"
 )
 
 const (

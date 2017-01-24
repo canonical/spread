@@ -1084,6 +1084,9 @@ func matches(pattern string, strmaps ...strmap) ([]string, error) {
 	var matches []string
 	for _, strmap := range strmaps {
 		for _, name := range strmap.strings {
+			if strings.HasPrefix(name, "+") || strings.HasPrefix(name, "-") {
+				name = name[1:]
+			}
 			m, err := filepath.Match(pattern, name)
 			if err != nil {
 				return nil, err

@@ -569,11 +569,16 @@ func (p *linodeProvider) createConfig(s *linodeServer, system *System, rootID, s
 		return 0, err
 	}
 
+	job := os.Getenv("TRAVIS_JOB_ID")
+	if job != "" {
+		job = fmt.Sprintf(` JOB="https://travis-ci.org/%s/jobs/%s"`, os.Getenv("TRAVIS_REPO_SLUG"), job)
+	}
+
 	reuse := ""
 	if p.options.Reuse {
 		reuse = " -reuse"
 	}
-	comments := fmt.Sprintf("USER=%q spread\n-pass=%q %s", username(), p.options.Password, reuse)
+	comments := fmt.Sprintf("USER=%q%s%s spread\n-pass=%q %s", username(), job, p.options.Password, reuse)
 
 	params := linodeParams{
 		"api_action":             "linode.config.create",

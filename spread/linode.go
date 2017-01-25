@@ -273,8 +273,9 @@ func (s *linodeServer) Discard(ctx context.Context) error {
 	s.watchTomb.Kill(nil)
 	s.watchTomb.Wait()
 	_, err1 := s.p.shutdown(s)
-	err2 := s.p.removeConfig(s, s.d.Config)
-	err3 := s.p.removeDisks(s, s.d.Root, s.d.Swap)
+	err2 := s.p.removeConfig(s, "", s.d.Config)
+	err3 := s.p.removeDisks(s, "", s.d.Root, s.d.Swap)
+	s.p.removeAbandoned(s)
 	s.p.unreserve(s)
 	return firstErr(err1, err2, err3)
 }
@@ -336,22 +337,22 @@ func (p *linodeProvider) setup(s *linodeServer, system *System, lastjob time.Tim
 	s.d.Swap = swapJob.DiskID
 
 	if _, err := p.waitJob(s, "allocate disk", rootJob.JobID); err != nil {
-		p.removeDisks(s, s.d.Root, s.d.Swap)
+		p.removeDisks(s, "", s.d.Root, s.d.Swap)
 		return err
 	}
 
 	if status, err := p.status(s); err != nil {
-		p.removeDisks(s, s.d.Root, s.d.Swap)
+		p.removeDisks(s, "", s.d.Root, s.d.Swap)
 		return err
 	} else if status != linodeBrandNew && status != linodePoweredOff {
-		p.removeDisks(s, s.d.Root, s.d.Swap)
+		p.removeDisks(s, "", s.d.Root, s.d.Swap)
 		return fmt.Errorf("server %s concurrently allocated, giving up on it", s)
 	}
 	if conflict, err := p.hasRecentDisk(s, s.d.Root); err != nil {
-		p.removeDisks(s, s.d.Root, s.d.Swap)
+		p.removeDisks(s, "", s.d.Root, s.d.Swap)
 		return err
 	} else if conflict {
-		p.removeDisks(s, s.d.Root, s.d.Swap)
+		p.removeDisks(s, "", s.d.Root, s.d.Swap)
 		return fmt.Errorf("server %s concurrently allocated, giving up on it", s)
 	}
 
@@ -363,15 +364,15 @@ func (p *linodeProvider) setup(s *linodeServer, system *System, lastjob time.Tim
 
 	configID, err := p.createConfig(s, system, s.d.Root, s.d.Swap)
 	if err != nil {
-		p.removeDisks(s, s.d.Root, s.d.Swap)
+		p.removeDisks(s, "", s.d.Root, s.d.Swap)
 		return err
 	}
 	s.d.Config = configID
 
 	found, err := p.hasRecentBoot(s, lastjob)
 	if found || err != nil {
-		p.removeConfig(s, s.d.Config)
-		p.removeDisks(s, s.d.Root, s.d.Swap)
+		p.removeConfig(s, "", s.d.Config)
+		p.removeDisks(s, "", s.d.Root, s.d.Swap)
 		if err != nil {
 			return err
 		}
@@ -383,8 +384,8 @@ func (p *linodeProvider) setup(s *linodeServer, system *System, lastjob time.Tim
 		_, err = p.waitJob(s, "boot", bootJob.JobID)
 	}
 	if err != nil {
-		p.removeConfig(s, s.d.Config)
-		p.removeDisks(s, s.d.Root, s.d.Swap)
+		p.removeConfig(s, "", s.d.Config)
+		p.removeDisks(s, "", s.d.Root, s.d.Swap)
 		return err
 	}
 
@@ -500,16 +501,19 @@ func (p *linodeProvider) createDisk(s *linodeServer, system *System) (root, swap
 		return root, swap, nil
 	}
 	if root != nil {
-		p.removeDisks(s, root.DiskID)
+		p.removeDisks(s, "", root.DiskID)
 	}
 	if swap != nil {
-		p.removeDisks(s, swap.DiskID)
+		p.removeDisks(s, "", swap.DiskID)
 	}
 	return nil, nil, fmt.Errorf("cannot create Linode disk with %s: %v", system.Name, err)
 }
 
-func (p *linodeProvider) removeDisks(s *linodeServer, diskIDs ...int) error {
-	logf("Removing disks from %s...", s)
+func (p *linodeProvider) removeDisks(s *linodeServer, what string, diskIDs ...int) error {
+	if what != "" {
+		what += " "
+	}
+	logf("Removing %sdisks from %s...", what, s)
 	var batch []linodeParams
 	for _, diskID := range diskIDs {
 		batch = append(batch, linodeParams{
@@ -525,11 +529,11 @@ func (p *linodeProvider) removeDisks(s *linodeServer, diskIDs ...int) error {
 	var results []linodeResult
 	err := p.do(params, &results)
 	if err != nil {
-		return fmt.Errorf("cannot remove disk on %s: %v", s, err)
+		return fmt.Errorf("cannot remove %sdisk on %s: %v", what, s, err)
 	}
 	for _, result := range results {
 		if err := result.err(); err != nil {
-			return fmt.Errorf("cannot remove disk on %s: %v", s, err)
+			return fmt.Errorf("cannot remove %sdisk on %s: %v", what, s, err)
 		}
 	}
 	return nil
@@ -547,11 +551,14 @@ func username() string {
 	return ""
 }
 
+type linodeConfig struct {
+	ConfigID int    `json:"CONFIGID"`
+	Label    string `json:"LABEL"`
+}
+
 type linodeConfigResult struct {
 	linodeResult
-	Data struct {
-		ConfigID int `json:"CONFIGID"`
-	} `json:"DATA"`
+	Data []*linodeConfig `json:"DATA"`
 }
 
 func (p *linodeProvider) createConfig(s *linodeServer, system *System, rootID, swapID int) (configID int, err error) {
@@ -584,7 +591,11 @@ func (p *linodeProvider) createConfig(s *linodeServer, system *System, rootID, s
 		"devtmpfs_automount":     true,
 	}
 
-	var result linodeConfigResult
+	var result struct {
+		linodeResult
+		Data linodeConfig `json:"DATA"`
+	}
+
 	err = p.do(params, &result)
 	if err == nil {
 		err = result.err()
@@ -595,8 +606,11 @@ func (p *linodeProvider) createConfig(s *linodeServer, system *System, rootID, s
 	return result.Data.ConfigID, nil
 }
 
-func (p *linodeProvider) removeConfig(s *linodeServer, configID int) error {
-	logf("Removing configuration from %s...", s)
+func (p *linodeProvider) removeConfig(s *linodeServer, what string, configID int) error {
+	if what != "" {
+		what += " "
+	}
+	logf("Removing %sconfiguration from %s...", what, s)
 
 	params := linodeParams{
 		"api_action": "linode.config.delete",
@@ -609,9 +623,65 @@ func (p *linodeProvider) removeConfig(s *linodeServer, configID int) error {
 		err = result.err()
 	}
 	if err != nil {
-		return fmt.Errorf("cannot remove config from %s: %v", s, err)
+		return fmt.Errorf("cannot remove %sconfig from %s: %v", what, s, err)
 	}
 	return nil
+}
+
+func (p *linodeProvider) configs(s *linodeServer) ([]*linodeConfig, error) {
+	params := linodeParams{
+		"api_action": "linode.config.list",
+		"LinodeID":   s.d.ID,
+	}
+	var result linodeConfigResult
+	err := p.do(params, &result)
+	if err == nil {
+		err = result.err()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("cannot get list configs for %s: %v", s, err)
+	}
+	return result.Data, nil
+}
+
+// removeAbandoned removes abandoned configurations and disks.
+// It warns on errors as this is an optional cleanup step.
+func (p *linodeProvider) removeAbandoned(s *linodeServer) {
+	const warn = "WARNING: Cannot clean up %s: %v"
+
+	now := time.Now()
+
+	configs, err := p.configs(s)
+	if err != nil {
+		printf(warn, s, err)
+	}
+	for _, config := range configs {
+		t, err := ParseLabelTime(config.Label)
+		if err == nil && now.Sub(t) > p.backend.HaltTimeout.Duration {
+			err := p.removeConfig(s, "abandoned", config.ConfigID)
+			if err != nil {
+				printf(warn, s, err)
+			}
+		}
+	}
+
+	disks, err := p.disks(s)
+	if err != nil {
+		printf(warn, s, err)
+	}
+	var diskIds []int
+	for _, disk := range disks {
+		t, err := ParseLabelTime(disk.Label)
+		if err == nil && now.Sub(t) > p.backend.HaltTimeout.Duration && disk.DiskID != s.d.Root && disk.DiskID != s.d.Swap {
+			diskIds = append(diskIds, disk.DiskID)
+		}
+	}
+	if len(diskIds) > 0 {
+		err := p.removeDisks(s, "abandoned", diskIds...)
+		if err != nil {
+			printf(warn, s, err)
+		}
+	}
 }
 
 type linodeJob struct {
@@ -699,8 +769,8 @@ func (p *linodeProvider) waitJob(s *linodeServer, verb string, jobID int) (*lino
 			if infoErr != nil {
 				return nil, infoErr
 			}
-			p.removeConfig(s, s.d.Config)
-			p.removeDisks(s, s.d.Root, s.d.Swap)
+			p.removeConfig(s, "", s.d.Config)
+			p.removeDisks(s, "", s.d.Root, s.d.Swap)
 			return nil, fmt.Errorf("timeout waiting for %s to %s", s, verb)
 
 		case <-retry.C:

@@ -31,6 +31,7 @@ var (
 	restore     = flag.Bool("restore", false, "Run only the restore scripts")
 	discard     = flag.Bool("discard", false, "Discard reused servers without running")
 	residue     = flag.String("residue", "", "Where to store residual data from tasks")
+	seed        = flag.Int64("seed", 0, "Seed for job order permutation")
 )
 
 func main() {
@@ -90,6 +91,7 @@ func run() error {
 		Restore:     *restore,
 		Discard:     *discard,
 		Residue:     *residue,
+		Seed:        *seed,
 	}
 
 	project, err := spread.Load(".")

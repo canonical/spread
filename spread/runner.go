@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"gopkg.in/tomb.v2"
+	"math/rand"
 )
 
 type Options struct {
@@ -31,6 +32,7 @@ type Options struct {
 	Resend      bool
 	Discard     bool
 	Residue     string
+	Seed        int64
 }
 
 type Runner struct {
@@ -194,11 +196,21 @@ func (r *Runner) loop() (err error) {
 	msg := fmt.Sprintf("Starting %d worker%s for the following jobs", r.alive, nth(r.alive, "", "", "s"))
 	logNames(debugf, msg, r.pending, taskName)
 
+	seed := r.options.Seed
+	if seed == 0 && len(r.pending) > r.alive {
+		seed = time.Now().Unix()
+		printf("Sequence of jobs produced with -seed=%d", seed)
+	}
+
 	for _, backend := range r.project.Backends {
 		for _, system := range backend.Systems {
 			n := workers[system]
 			for i := 0; i < n; i++ {
-				go r.worker(backend, system)
+				// Use a different seed per worker, so that the work-stealing
+				// logic will have a better chance of producing the same
+				// ordering on each of the workers.
+				order := rand.New(rand.NewSource(seed + int64(i))).Perm(len(r.pending))
+				go r.worker(backend, system, order)
 			}
 		}
 	}
@@ -488,7 +500,7 @@ func suiteWorkersKey(job *Job) [3]string {
 	return [3]string{job.Backend.Name, job.System.Name, job.Suite.Name}
 }
 
-func (r *Runner) worker(backend *Backend, system *System) {
+func (r *Runner) worker(backend *Backend, system *System, order []int) {
 	defer func() { r.done <- true }()
 
 	client := r.client(backend, system)
@@ -520,7 +532,7 @@ func (r *Runner) worker(backend *Backend, system *System) {
 			r.mu.Unlock()
 			break
 		}
-		job = r.job(backend, system, insideSuite)
+		job = r.job(backend, system, insideSuite, order)
 		if job == nil {
 			r.mu.Unlock()
 			break
@@ -628,10 +640,11 @@ func (r *Runner) worker(backend *Backend, system *System) {
 	}
 }
 
-func (r *Runner) job(backend *Backend, system *System, suite *Suite) *Job {
+func (r *Runner) job(backend *Backend, system *System, suite *Suite, order []int) *Job {
 	var best = -1
 	var bestWorkers = 1000000
-	for i, job := range r.pending {
+	for _, i := range order {
+		job := r.pending[i]
 		if job == nil {
 			continue
 		}

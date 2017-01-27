@@ -431,6 +431,12 @@ func join(scripts ...string) string {
 	return buf.String()
 }
 
+type jobsByName []*Job
+
+func (jobs jobsByName) Len() int           { return len(jobs) }
+func (jobs jobsByName) Less(i, j int) bool { return jobs[i].Name < jobs[j].Name }
+func (jobs jobsByName) Swap(i, j int)      { jobs[i], jobs[j] = jobs[j], jobs[i] }
+
 func SplitVariants(s string) (prefix string, variants []string) {
 	if i := strings.LastIndex(s, "/"); i >= 0 {
 		return s[:i], strings.Split(s[i+1:], ",")
@@ -956,6 +962,8 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 			return nil, fmt.Errorf("cannot find any tasks")
 		}
 	}
+
+	sort.Sort(jobsByName(jobs))
 
 	return jobs, nil
 }

@@ -578,7 +578,7 @@ func (p *linodeProvider) createConfig(s *linodeServer, system *System, rootID, s
 	if p.options.Reuse {
 		reuse = " -reuse"
 	}
-	comments := fmt.Sprintf("USER=%q%s%s spread\n-pass=%q %s", username(), job, p.options.Password, reuse)
+	comments := fmt.Sprintf("USER=%q%s spread\n-pass=%q %s", username(), job, p.options.Password, reuse)
 
 	params := linodeParams{
 		"api_action":             "linode.config.create",

@@ -197,7 +197,7 @@ func (r *Runner) loop() (err error) {
 	logNames(debugf, msg, r.pending, taskName)
 
 	seed := r.options.Seed
-	if seed == 0 && len(r.pending) > r.alive {
+	if !r.options.Discard && seed == 0 && len(r.pending) > r.alive {
 		seed = time.Now().Unix()
 		printf("Sequence of jobs produced with -seed=%d", seed)
 	}

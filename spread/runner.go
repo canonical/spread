@@ -1,4 +1,4 @@
-package spread
+ package spread
 
 import (
 	"bytes"
@@ -33,6 +33,7 @@ type Options struct {
 	Discard     bool
 	Residue     string
 	Seed        int64
+	XUnit       bool
 }
 
 type Runner struct {
@@ -41,6 +42,7 @@ type Runner struct {
 
 	project   *Project
 	options   *Options
+
 	providers map[string]Provider
 
 	contentTomb tomb.Tomb
@@ -143,6 +145,9 @@ func (r *Runner) loop() (err error) {
 				}
 			}
 			r.stats.log()
+			if r.options.XUnit { 
+				r.stats.createXUnitReport()			
+			}
 		}
 		if !r.options.Reuse || r.options.Discard {
 			for len(r.servers) > 0 {
@@ -197,7 +202,7 @@ func (r *Runner) loop() (err error) {
 	logNames(debugf, msg, r.pending, taskName)
 
 	seed := r.options.Seed
-	if !r.options.Discard && seed == 0 && len(r.pending) > r.alive {
+	if seed == 0 && len(r.pending) > r.alive {
 		seed = time.Now().Unix()
 		printf("Sequence of jobs produced with -seed=%d", seed)
 	}
@@ -994,6 +999,25 @@ func (s *stats) log() {
 	logNames(printf, "Failed backend restore", s.BackendRestoreError, backendName)
 	logNames(printf, "Failed project prepare", s.ProjectPrepareError, projectName)
 	logNames(printf, "Failed project restore", s.ProjectRestoreError, projectName)
+}
+
+func (s *stats) createXUnitReport() {
+	printf("Creating XUnit report")
+	report := NewXUnitReport("report.xml")
+	for _, job := range s.TaskError {
+		splitted := strings.Split(taskName(job), "/")
+		report.addFailedTest(splitted[0], splitted[1]) 
+	}
+	for _, job := range s.TaskAbort {
+		splitted := strings.Split(taskName(job), "/")
+		report.addFailedTest(splitted[0], splitted[1]) 
+	}
+	for _, job := range s.TaskDone {
+		splitted := strings.Split(taskName(job), "/")
+		report.addPassedTest(splitted[0], splitted[1]) 
+	}
+
+	report.finish()	
 }
 
 func projectName(job *Job) string { return "project" }

@@ -19,6 +19,7 @@ var (
 	verbose     = flag.Bool("v", false, "Show detailed progress information")
 	vverbose    = flag.Bool("vv", false, "Show debugging messages as well")
 	list        = flag.Bool("list", false, "Just show list of jobs that would run")
+	describe    = flag.Bool("describe", false, "List jobs that would run including additional info")
 	pass        = flag.String("pass", "", "Server password to use, defaults to random")
 	reuse       = flag.Bool("reuse", false, "Keep servers running for reuse")
 	reusePid    = flag.Int("reuse-pid", 0, "Reuse servers from crashed process")
@@ -99,13 +100,19 @@ func run() error {
 		return err
 	}
 
-	if *list {
+	if *list || *describe {
 		jobs, err := project.Jobs(options)
 		if err != nil {
 			return err
 		}
 		for _, job := range jobs {
 			fmt.Println(job.Name)
+			if *describe {
+				fmt.Printf("    Summary: %s\n", job.Task.Summary)
+				if job.Task.Details != "" {
+					fmt.Printf("    Details: %s\n", job.Task.Details)
+				}
+			}
 		}
 		return nil
 	}

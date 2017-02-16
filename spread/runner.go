@@ -1,4 +1,4 @@
- package spread
+package spread
 
 import (
 	"bytes"
@@ -42,7 +42,6 @@ type Runner struct {
 
 	project   *Project
 	options   *Options
-
 	providers map[string]Provider
 
 	contentTomb tomb.Tomb
@@ -202,7 +201,7 @@ func (r *Runner) loop() (err error) {
 	logNames(debugf, msg, r.pending, taskName)
 
 	seed := r.options.Seed
-	if seed == 0 && len(r.pending) > r.alive {
+	if !r.options.Discard && seed == 0 && len(r.pending) > r.alive {
 		seed = time.Now().Unix()
 		printf("Sequence of jobs produced with -seed=%d", seed)
 	}

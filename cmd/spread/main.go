@@ -93,7 +93,7 @@ func run() error {
 		Discard:     *discard,
 		Residue:     *residue,
 		Seed:        *seed,
-		XUnit: 		 *xunit,
+		XUnit:       *xunit,
 	}
 
 	project, err := spread.Load(".")

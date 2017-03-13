@@ -1127,21 +1127,18 @@ func evalstr(what string, strmaps ...strmap) ([]string, error) {
 			if delta > 0 && plain > 0 {
 				return nil, fmt.Errorf("%s specifies %s both in delta and plain format", strmap.context, what)
 			}
+			matches, err := matches(name, strmaps[:i+1]...)
+			if err != nil {
+				return nil, err
+			}
+
 			if add {
-				matches, err := matches(name, strmaps...)
-				if err != nil {
-					return nil, err
-				}
 				for _, match := range matches {
 					final[match] = true
 				}
 				continue
 			}
 			if remove {
-				matches, err := matches(name, strmaps...)
-				if err != nil {
-					return nil, err
-				}
 				for _, match := range matches {
 					delete(final, match)
 				}
@@ -1154,7 +1151,9 @@ func evalstr(what string, strmaps ...strmap) ([]string, error) {
 				}
 			}
 
-			final[name] = true
+			for _, match := range matches {
+				final[match] = true
+			}
 		}
 	}
 

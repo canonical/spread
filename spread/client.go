@@ -688,11 +688,37 @@ func (c *Client) runCommand(session *ssh.Session, cmd string, stdout, stderr io.
 			} else if len(output) == 0 {
 				printf("WARNING: %s running late. Output still empty.", c.server)
 			} else {
-				printf("WARNING: %s running late. Current output:\n-----\n%s\n-----", c.server, output)
+				printf("WARNING: %s running late. Current output:\n-----\n%s\n-----", c.server, tail(output))
 			}
 		}
 	}
 	panic("unreachable")
+}
+
+func tail(output []byte) []byte {
+	display := 10
+	min := display
+	max := display + 3
+	mark := 0
+	for i := len(output) - 1; i >= 0; i-- {
+		if output[i] != '\n' {
+			continue
+		}
+
+		min--
+		max--
+
+		if min == 0 {
+			mark = i + 1
+			continue
+		}
+		if max == 0 {
+			var buf bytes.Buffer
+			fmt.Fprintf(&buf, "(... %d lines above ...)\n%s", bytes.Count(output, []byte{'\n'})-display, output[mark:])
+			return buf.Bytes()
+		}
+	}
+	return output
 }
 
 var commandExp = regexp.MustCompile("^<([A-Z_]+)(?: (.*))?>$")
@@ -832,7 +858,7 @@ Loop:
 			} else if len(output) == 0 {
 				printf("WARNING: local script running late. Output still empty.")
 			} else {
-				printf("WARNING: local script running late. Current output:\n-----\n%s\n-----", output)
+				printf("WARNING: local script running late. Current output:\n-----\n%s\n-----", tail(output))
 			}
 		}
 	}

@@ -452,19 +452,19 @@ func (p *linodeProvider) createDisk(s *linodeServer, system *System) (root, swap
 		return nil, nil, err
 	}
 
-	// Smallest disk is 24576MB. (6000+128)*4 < 24576,
-	// so may halt three times without breaking.
+	// Smallest disk is 30720MB. (10000+240)*3 == 30720,
+	// so may halt two times without breaking.
 	createRoot := linodeParams{
 		"LinodeID": s.d.ID,
 		"Label":    SystemLabel(system, "root"),
-		"Size":     6000,
+		"Size":     10000,
 		"rootPass": p.options.Password,
 	}
 	createSwap := linodeParams{
 		"api_action": "linode.disk.create",
 		"LinodeID":   s.d.ID,
 		"Label":      SystemLabel(system, "swap"),
-		"Size":       128,
+		"Size":       240,
 		"Type":       "swap",
 	}
 

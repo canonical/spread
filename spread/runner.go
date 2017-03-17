@@ -420,16 +420,17 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	if len(script) == 0 {
 		return true
 	}
+	start := time.Now()
 	contextStr := job.StringFor(context)
 	if verb == executing {
 		r.mu.Lock()
 		if r.sequence[job] == 0 {
 			r.sequence[job] = len(r.sequence) + 1
 		}
-		logf("%s %s (%d/%d)...", strings.Title(verb), contextStr, r.sequence[job], len(r.pending))
+		logft(start, startTime, "%s %s (%d/%d)...", strings.Title(verb), contextStr, r.sequence[job], len(r.pending))
 		r.mu.Unlock()
 	} else {
-		logf("%s %s...", strings.Title(verb), contextStr)
+		logft(start, startTime, "%s %s...", strings.Title(verb), contextStr)
 	}
 	var dir string
 	if context == job.Backend || context == job.Project {
@@ -451,14 +452,19 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	client.SetWarnTimeout(job.WarnTimeoutFor(context))
 	client.SetKillTimeout(job.KillTimeoutFor(context))
 	_, err := client.Trace(script, dir, job.Environment)
+	printft(start, endTime, "")
 	if err != nil {
-		printf("Error %s %s : %v", verb, contextStr, err)
+		// Use a different time so it has a different id on Travis, but keep
+		// the original start time so the error message shows the task time.
+		start = start.Add(1)
+		printft(start, startTime|endTime|startFold|endFold, "Error %s %s : %v", verb, contextStr, err)
 		if debug != "" {
+			start = time.Now()
 			output, err := client.Trace(debug, dir, job.Environment)
 			if err != nil {
-				printf("Error debugging %s : %v", contextStr, err)
+				printft(start, startTime|endTime|startFold|endFold, "Error debugging %s : %v", contextStr, err)
 			} else if len(output) > 0 {
-				printf("Debug output for %s : %v", contextStr, outputErr(output, nil))
+				printft(start, startTime|endTime|startFold|endFold, "Debug output for %s : %v", contextStr, outputErr(output, nil))
 			}
 		}
 		if r.options.Debug || r.options.ShellAfter {

@@ -639,6 +639,8 @@ const (
 )
 
 func (c *Client) runCommand(session *ssh.Session, cmd string, stdout, stderr io.Writer) error {
+	start := time.Now()
+
 	err := session.Start(cmd)
 	if err != nil {
 		return fmt.Errorf("cannot start remote command: %v", err)
@@ -683,13 +685,18 @@ func (c *Client) runCommand(session *ssh.Session, cmd string, stdout, stderr io.
 					output = append(output, errput...)
 				}
 			}
+			// Use a different time so it has a different id on Travis, but keep
+			// the original start time so the message shows the task time so far.
+			start = start.Add(1)
 			if bytes.Equal(output, unchangedMarker) {
-				printf("WARNING: %s running late. Output unchanged.", c.server)
+				printft(start, startTime, "WARNING: %s running late. Output unchanged.", c.server)
 			} else if len(output) == 0 {
-				printf("WARNING: %s running late. Output still empty.", c.server)
+				printft(start, startTime, "WARNING: %s running late. Output still empty.", c.server)
 			} else {
-				printf("WARNING: %s running late. Current output:\n-----\n%s\n-----", c.server, tail(output))
+				printft(start, startTime|startFold|endFold, "WARNING: %s running late. Current output:\n-----\n%s\n-----", c.server, tail(output))
 			}
+			print(travisTimeEnd(start))
+
 		}
 	}
 	panic("unreachable")

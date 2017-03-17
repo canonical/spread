@@ -45,7 +45,7 @@ func run() error {
 	mrand.Seed(time.Now().UnixNano())
 	flag.Parse()
 
-	spread.Logger = log.New(os.Stdout, "", log.LstdFlags)
+	spread.Logger = log.New(os.Stdout, "", 0)
 	spread.Verbose = *verbose
 	spread.Debug = *vverbose
 

@@ -5,30 +5,29 @@ Convenient full-system test (task) distribution
 -----------------------------------------------
 
 [Why?](#why)  
-[The cascading matrix](#matrix)  
+[The cascading matrix](#the-cascading-matrix)  
 [Hello world](#hello-world)  
 [Environments](#environments)  
 [Variants](#variants)  
-[Blacklisting and whitelisting](#blacklisting)  
-[Preparing and restoring](#preparing)  
+[Blacklisting and whitelisting](#blacklisting-and-whitelisting)  
+[Preparing and restoring](#preparing-and-restoring)  
 [Functions](#functions)
 [Rebooting](#rebooting)  
 [Timeouts](#timeouts)  
-[Fast iterations with reuse](#reuse)  
+[Fast iterations with reuse](#fast-iterations-with-reuse)  
 [Debugging](#debugging)  
-[Passwords and usernames](#passwords)  
-[Including, excluding, and renaming files](#including)  
-[Selecting which tasks to run](#selecting)  
-[Disabling unless manually selected](#manual)  
-[Fetching residual artifacts](#residue)  
-[LXD backend](#lxd)  
-[QEMU backend](#qemu)  
-[Linode backend](#linode)  
-[AdHoc backend](#adhoc)  
-[More on parallelism](#parallelism)  
-[Repacking and delta uploads](#repacking)  
+[Passwords and usernames](#passwords-and-usernames)  
+[Including, excluding, and renaming files](#including-excluding-and-renaming-files)  
+[Selecting which tasks to run](#selecting-which-tasks-to-run)  
+[Disabling unless manually selected](#disabling-unless-manually-selected)  
+[Fetching residual artifacts](#fetching-residual-artifacts)  
+[LXD backend](#lxd-backend)  
+[QEMU backend](#qemu-backend)  
+[Linode backend](#linode-backend)  
+[AdHoc backend](#adhoc-backend)  
+[More on parallelism](#more-on-parallelism)  
+[Repacking and delta uploads](#repacking-and-delta-uploads)  
 
-<a name="why"/>
 Why?
 ----
 
@@ -45,7 +44,6 @@ and where, what to do before and after it runs, and how to duplicate jobs with
 minor variations without copy & paste.
 
 
-<a name="matrix"/>
 The cascading matrix
 --------------------
 
@@ -87,7 +85,6 @@ run, use the `-list` option. It will show one entry per line in the format:
 backend:system:suite/task:variant
 ```
 
-<a name="hello-world"/>
 Hello world
 -----------
 
@@ -154,7 +151,6 @@ Hello world!
     - lxd:ubuntu-16.04:examples/hello
 ```
 
-<a name="environments"/>
 Environments
 ------------
 
@@ -200,7 +196,6 @@ All of these can have an equivalent environment field and their variables will
 be ordered accordingly on executed scripts.
 
 
-<a name="variants"/>
 Variants
 --------
 
@@ -256,7 +251,6 @@ Some key takeaways here:
 <sup>1</sup> Actually, times two. It's an N-dimensional matrix.
 
 
-<a name="blacklisting"/>
 Blacklisting and whitelisting
 -----------------------------
 
@@ -308,7 +302,6 @@ add/remove/replace what the previous level defined, again with the ordering:
 
  * _Project => Backend => System => Suite => Task_
 
-<a name="preparing"/>
 Preparing and restoring
 -----------------------
 
@@ -391,7 +384,6 @@ scripts fail, and their purpose is to display further information which might
 be helpful when trying to understand what went wrong.
 
 
-<a name="functions"/>
 Functions
 ---------
 
@@ -404,7 +396,6 @@ A few helper functions are available for scripts to use:
  * _ADDRESS_ - Set allocated system address. Specific to [adhoc backend](#adhoc).
 
 
-<a name="rebooting"/>
 Rebooting
 ---------
 
@@ -428,7 +419,6 @@ Alternatively the REBOOT function may also be called with a single
 parameter which will be used as the value of `$SPREAD_REBOOT` after
 the system reboots, instead of the count.
 
-<a name="timeouts"/>
 Timeouts
 --------
 
@@ -444,7 +434,6 @@ by defining the `warn-timeout` and `kill-timeout` fields with a value such as
 altogether.
 
 
-<a name="reuse"/>
 Fast iterations with reuse
 --------------------------
 
@@ -473,7 +462,6 @@ next run improperly. In such cases the restore scripts should be fixed to be
 correct and more resilient.
 
 
-<a name="debugging"/>
 Debugging
 ---------
 
@@ -517,7 +505,6 @@ as a `debug-each` script at the project, backend, and suite levels, so they
 are aggregated and repeated for every task under them.
 
 
-<a name="passwords">
 Passwords and usernames
 -----------------------
 
@@ -551,7 +538,6 @@ must be available for the provided user.
 In all cases the end result is the same: a system that executes scripts as root.
 
 
-<a name="including"/>
 Including, excluding, and renaming files
 ----------------------------------------
 
@@ -587,7 +573,6 @@ Note that Spread will still expect tasks to live in the same directories as
 they do locally, so these directories cannot be moved.
 
 
-<a name="selecting"/>
 Selecting which tasks to run
 ----------------------------
 
@@ -630,7 +615,6 @@ The `-list` option is useful to see what jobs would be selected by a given
 filter without actually running them.
 
 
-<a name="manual"/>
 Disabling unless manually selected
 ----------------------------------
 
@@ -666,7 +650,6 @@ suite, and so forth. Play with `-list` to get a clear idea of what is
 selected to run.
 
 
-<a name="residue"/>
 Fetching residual artifacts
 ---------------------------
 
@@ -701,7 +684,6 @@ Residual content is fetched whether the job finishes successfully or not,
 and even if some of the provided paths are missing.
 
 
-<a name="lxd"/>
 LXD backend
 -----------
 
@@ -750,7 +732,6 @@ backends:
 That's it. Have fun with your self-contained multi-system task runner.
 
 
-<a name="qemu"/>
 QEMU backend
 -----------
 
@@ -797,7 +778,6 @@ adt-buildvm-ubuntu-cloud
 When done move the downloaded image into the location described above.
 
 
-<a name="linode"/>
 Linode backend
 --------------
 
@@ -889,7 +869,6 @@ Some links to make your life easier:
   * [API keys](https://manager.linode.com/profile/api)
 
 
-<a name="adhoc"/>
 AdHoc backend
 -------------
 
@@ -941,7 +920,6 @@ running the specified tasks only. It's atypical and dangerous for Spread to
 be run against important systems, as it will fiddle with their configuration.
 
 
-<a name="parallelism"/>
 More on parallelism
 -------------------
 
@@ -992,7 +970,6 @@ This is generally not necessary, but may be useful when fine-tuning control
 over the use of sets of remote machines.
 
 
-<a name="repacking"/>
 Repacking and delta uploads
 ---------------------------
 

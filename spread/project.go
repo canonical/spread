@@ -350,6 +350,7 @@ type Job struct {
 
 	Variant     string
 	Environment *Environment
+	Duration    time.Duration
 }
 
 func (job *Job) String() string {

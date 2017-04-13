@@ -212,24 +212,27 @@ const (
 )
 
 func (c *Client) Run(script string, dir string, env *Environment) error {
-	_, err := c.run(script, dir, env, combinedOutput)
+	_, err, _ := c.run(script, dir, env, combinedOutput)
 	return err
 }
 
 func (c *Client) Output(script string, dir string, env *Environment) (output []byte, err error) {
-	return c.run(script, dir, env, splitOutput)
+	output, err, _ = c.run(script, dir, env, splitOutput)
+	return output, err
 }
 
 func (c *Client) CombinedOutput(script string, dir string, env *Environment) (output []byte, err error) {
-	return c.run(script, dir, env, combinedOutput)
+	output, err, _ = c.run(script, dir, env, combinedOutput)
+	return output, err
 }
 
-func (c *Client) Trace(script string, dir string, env *Environment) (output []byte, err error) {
-	return c.run(script, dir, env, traceOutput)
+func (c *Client) Trace(script string, dir string, env *Environment) (output []byte, err error, duration time.Duration) {
+	output, err, duration = c.run(script, dir, env, traceOutput)
+	return output, err, duration
 }
 
 func (c *Client) Shell(script string, dir string, env *Environment) error {
-	_, err := c.run(script, dir, env, shellOutput)
+	_, err, _ := c.run(script, dir, env, shellOutput)
 	return err
 }
 
@@ -241,7 +244,7 @@ func (e *rebootError) Error() string { return "reboot requested" }
 
 const maxReboots = 10
 
-func (c *Client) run(script string, dir string, env *Environment, mode outputMode) (output []byte, err error) {
+func (c *Client) run(script string, dir string, env *Environment, mode outputMode) (output []byte, err error, duration time.Duration) {
 	if env == nil {
 		env = NewEnvironment()
 	}
@@ -251,13 +254,13 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 			rebootKey = strconv.Itoa(reboot)
 		}
 		env.Set("SPREAD_REBOOT", rebootKey)
-		output, err = c.runPart(script, dir, env, mode, output)
+		output, err, duration = c.runPart(script, dir, env, mode, output)
 		rerr, ok := err.(*rebootError)
 		if !ok {
-			return output, err
+			return output, err, duration
 		}
 		if reboot > maxReboots {
-			return nil, fmt.Errorf("%s rebooted more than %d times", c.server, maxReboots)
+			return nil, fmt.Errorf("%s rebooted more than %d times", c.server, maxReboots), duration
 		}
 
 		printf("Rebooting %s as requested...", c.server)
@@ -273,13 +276,13 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 		if err == nil {
 			select {
 			case <-timedout:
-				return nil, fmt.Errorf("kill-timeout reached while waiting for %s to reboot", c.server)
+				return nil, fmt.Errorf("kill-timeout reached while waiting for %s to reboot", c.server), duration
 			default:
 			}
-			return nil, fmt.Errorf("reboot request on %s failed", c.server)
+			return nil, fmt.Errorf("reboot request on %s failed", c.server), duration
 		}
 		if err := c.dialOnReboot(); err != nil {
-			return nil, err
+			return nil, err, duration
 		}
 	}
 	panic("unreachable")
@@ -292,15 +295,15 @@ var toBashRC = map[string]bool{
 	"SPREAD_SYSTEM":  true,
 }
 
-func (c *Client) runPart(script string, dir string, env *Environment, mode outputMode, previous []byte) (output []byte, err error) {
+func (c *Client) runPart(script string, dir string, env *Environment, mode outputMode, previous []byte) (output []byte, err error, duration time.Duration) {
 	script = strings.TrimSpace(script)
 	if len(script) == 0 && mode != shellOutput {
-		return nil, nil
+		return nil, nil, 0
 	}
 	script += "\n"
 	session, err := c.sshc.NewSession()
 	if err != nil {
-		return nil, err
+		return nil, err, 0
 	}
 	defer session.Close()
 
@@ -366,7 +369,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	} else {
 		stdin, err := session.StdinPipe()
 		if err != nil {
-			return nil, err
+			return nil, err, 0
 		}
 		defer stdin.Close()
 
@@ -397,20 +400,21 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		session.Stderr = os.Stderr
 		w, h, err := terminal.GetSize(0)
 		if err != nil {
-			return nil, fmt.Errorf("cannot get local terminal size: %v", err)
+			return nil, fmt.Errorf("cannot get local terminal size: %v", err), 0
 		}
 		if err := session.RequestPty(getenv("TERM", "vt100"), h, w, nil); err != nil {
-			return nil, fmt.Errorf("cannot get remote pseudo terminal: %v", err)
+			return nil, fmt.Errorf("cannot get remote pseudo terminal: %v", err), 0
 		}
 	default:
 		panic("internal error: invalid output mode")
 	}
 
+	startTime := time.Now()
 	if mode == shellOutput {
 		termLock()
 		tstate, terr := terminal.MakeRaw(0)
 		if terr != nil {
-			return nil, fmt.Errorf("cannot put local terminal in raw mode: %v", terr)
+			return nil, fmt.Errorf("cannot put local terminal in raw mode: %v", terr), 0
 		}
 		err = session.Run(cmd)
 		terminal.Restore(0, tstate)
@@ -418,6 +422,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	} else {
 		err = c.runCommand(session, cmd, &stdout, &stderr)
 	}
+	elapsedTime := time.Since(startTime)
 
 	if stdout.Len() > 0 {
 		debugf("Output from running script on %s:\n-----\n%s\n-----", c.server, stdout.Bytes())
@@ -430,10 +435,10 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		lines := bytes.Split(bytes.TrimSpace(stdout.Bytes()), []byte{'\n'})
 		m := commandExp.FindSubmatch(lines[len(lines)-1])
 		if len(m) > 0 && string(m[1]) == "REBOOT" {
-			return append(previous, stdout.Bytes()...), &rebootError{string(m[2])}
+			return append(previous, stdout.Bytes()...), &rebootError{string(m[2])}, elapsedTime
 		}
 		if len(m) > 0 && string(m[1]) == "ERROR" {
-			return nil, fmt.Errorf("%s", m[2])
+			return nil, fmt.Errorf("%s", m[2]), elapsedTime
 		}
 	}
 
@@ -450,12 +455,12 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 
 	output = append(previous, output...)
 	if err != nil {
-		return nil, outputErr(output, err)
+		return nil, outputErr(output, err), elapsedTime
 	}
 	if err := <-errch; err != nil {
 		printf("Error writing script to %s: %v", c.server, err)
 	}
-	return output, nil
+	return output, nil, elapsedTime
 }
 
 func (c *Client) sudo() string {

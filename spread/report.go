@@ -1,6 +1,9 @@
 package spread
 
 import (
+	"strconv"
+	"time"
+
 	"encoding/xml"
 	"io/ioutil"
 )
@@ -64,11 +67,11 @@ type XUnitTestCase struct {
 	Failure     *XUnitFailure     `xml:"failure,omitempty"`
 }
 
-func NewTestCase(testName string) *XUnitTestCase {
+func NewTestCase(testName string, duration time.Duration) *XUnitTestCase {
 	return &XUnitTestCase{
 				Classname: "",
 				Name:      testName,
-				Time:      "",
+				Time:      strconv.FormatInt(int64(duration/time.Millisecond), 10),
 				Failure:   nil,
 			}	
 }
@@ -115,8 +118,8 @@ func (r XUnitReport) addTest(suiteName string, test *XUnitTestCase) {
 	suite.addTest(test)
 }
 
-func (r XUnitReport) addFailedTest(suiteName string, testName string) {
-	testcase := NewTestCase(testName)
+func (r XUnitReport) addFailedTest(suiteName string, testName string, duration time.Duration) {
+	testcase := NewTestCase(testName, duration)
 	testcase.Failure = &XUnitFailure{
 					Message:  "Failed",
 					Type:     "",
@@ -125,8 +128,8 @@ func (r XUnitReport) addFailedTest(suiteName string, testName string) {
 	r.addTest(suiteName, testcase)
 }
 
-func (r XUnitReport) addPassedTest(suiteName string, testName string) {
-	testcase := NewTestCase(suiteName)
+func (r XUnitReport) addPassedTest(suiteName string, testName string, duration time.Duration) {
+	testcase := NewTestCase(testName, duration)
 	r.addTest(suiteName, testcase)
 }
 

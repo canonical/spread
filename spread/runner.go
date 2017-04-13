@@ -454,11 +454,12 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	}
 	client.SetWarnTimeout(job.WarnTimeoutFor(context))
 	client.SetKillTimeout(job.KillTimeoutFor(context))
-	_, err := client.Trace(script, dir, job.Environment)
+	_, err, dur := client.Trace(script, dir, job.Environment)
+	job.Duration = dur
 	if err != nil {
 		printf("Error %s %s : %v", verb, contextStr, err)
 		if debug != "" {
-			output, err := client.Trace(debug, dir, job.Environment)
+			output, err, _ := client.Trace(debug, dir, job.Environment)
 			if err != nil {
 				printf("Error debugging %s : %v", contextStr, err)
 			} else if len(output) > 0 {
@@ -1005,15 +1006,15 @@ func (s *stats) createXUnitReport() {
 	report := NewXUnitReport("report.xml")
 	for _, job := range s.TaskError {
 		splitted := strings.Split(taskName(job), "/")
-		report.addFailedTest(splitted[0], splitted[1]) 
+		report.addFailedTest(splitted[0], splitted[1], job.Duration)
 	}
 	for _, job := range s.TaskAbort {
 		splitted := strings.Split(taskName(job), "/")
-		report.addFailedTest(splitted[0], splitted[1]) 
+		report.addFailedTest(splitted[0], splitted[1], job.Duration)
 	}
 	for _, job := range s.TaskDone {
 		splitted := strings.Split(taskName(job), "/")
-		report.addPassedTest(splitted[0], splitted[1]) 
+		report.addPassedTest(splitted[0], splitted[1], job.Duration)
 	}
 
 	report.finish()	

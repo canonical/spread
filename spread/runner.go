@@ -1001,22 +1001,26 @@ func (s *stats) log() {
 	logNames(printf, "Failed project restore", s.ProjectRestoreError, projectName)
 }
 
+func (s *stats) addTestsToXUnitReport(report XUnitReport, testsList []*Job, failed bool) {
+	for _, job := range s.TaskError {
+		suiteName := strings.Replace(job.Suite.Name, "/", "", -1)
+		testName := strings.Split(taskName(job), "/")[1]
+		className := strings.Join([]string{job.Project.Name, job.Backend.Name, job.System.Name, suiteName}, ".")
+		if failed {
+			report.addFailedTest(suiteName, className, testName, job.Duration)	
+		} else {
+			report.addPassedTest(suiteName, className, testName, job.Duration)	
+		}
+		
+	}
+}
+
 func (s *stats) createXUnitReport() {
 	printf("Creating XUnit report")
 	report := NewXUnitReport("report.xml")
-	for _, job := range s.TaskError {
-		splitted := strings.Split(taskName(job), "/")
-		report.addFailedTest(splitted[0], splitted[1], job.Duration)
-	}
-	for _, job := range s.TaskAbort {
-		splitted := strings.Split(taskName(job), "/")
-		report.addFailedTest(splitted[0], splitted[1], job.Duration)
-	}
-	for _, job := range s.TaskDone {
-		splitted := strings.Split(taskName(job), "/")
-		report.addPassedTest(splitted[0], splitted[1], job.Duration)
-	}
-
+	s.addTestsToXUnitReport(report, s.TaskError, true)
+	s.addTestsToXUnitReport(report, s.TaskAbort, true)
+	s.addTestsToXUnitReport(report, s.TaskDone, false)
 	report.finish()	
 }
 

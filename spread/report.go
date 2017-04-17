@@ -67,9 +67,9 @@ type XUnitTestCase struct {
 	Failure     *XUnitFailure     `xml:"failure,omitempty"`
 }
 
-func NewTestCase(testName string, duration time.Duration) *XUnitTestCase {
+func NewTestCase(testName string, className string, duration time.Duration) *XUnitTestCase {
 	return &XUnitTestCase{
-				Classname: "",
+				Classname: className,
 				Name:      testName,
 				Time:      strconv.FormatInt(int64(duration/time.Millisecond), 10),
 				Failure:   nil,
@@ -118,8 +118,8 @@ func (r XUnitReport) addTest(suiteName string, test *XUnitTestCase) {
 	suite.addTest(test)
 }
 
-func (r XUnitReport) addFailedTest(suiteName string, testName string, duration time.Duration) {
-	testcase := NewTestCase(testName, duration)
+func (r XUnitReport) addFailedTest(suiteName string, className string, testName string, duration time.Duration) {
+	testcase := NewTestCase(testName, className, duration)
 	testcase.Failure = &XUnitFailure{
 					Message:  "Failed",
 					Type:     "",
@@ -128,8 +128,8 @@ func (r XUnitReport) addFailedTest(suiteName string, testName string, duration t
 	r.addTest(suiteName, testcase)
 }
 
-func (r XUnitReport) addPassedTest(suiteName string, testName string, duration time.Duration) {
-	testcase := NewTestCase(testName, duration)
+func (r XUnitReport) addPassedTest(suiteName string, className string, testName string, duration time.Duration) {
+	testcase := NewTestCase(testName, className, duration)
 	r.addTest(suiteName, testcase)
 }
 

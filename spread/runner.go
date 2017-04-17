@@ -1002,10 +1002,12 @@ func (s *stats) log() {
 }
 
 func (s *stats) addTestsToXUnitReport(report XUnitReport, testsList []*Job, failed bool) {
-	for _, job := range s.TaskError {
-		suiteName := strings.Replace(job.Suite.Name, "/", "", -1)
-		testName := strings.Split(taskName(job), "/")[1]
+	for _, job := range testsList {
+		splittedName := strings.Split(taskName(job), "/")
+		suiteName := strings.Join(splittedName[:len(splittedName)-1], ".")
+		testName := splittedName[len(splittedName)-1]
 		className := strings.Join([]string{job.Project.Name, job.Backend.Name, job.System.Name, suiteName}, ".")
+
 		if failed {
 			report.addFailedTest(suiteName, className, testName, job.Duration)	
 		} else {

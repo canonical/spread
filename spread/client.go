@@ -689,14 +689,12 @@ func (c *Client) runCommand(session *ssh.Session, cmd string, stdout, stderr io.
 			// the original start time so the message shows the task time so far.
 			start = start.Add(1)
 			if bytes.Equal(output, unchangedMarker) {
-				printft(start, startTime, "WARNING: %s running late. Output unchanged.", c.server)
+				printft(start, startTime|endTime, "WARNING: %s running late. Output unchanged.", c.server)
 			} else if len(output) == 0 {
-				printft(start, startTime, "WARNING: %s running late. Output still empty.", c.server)
+				printft(start, startTime|endTime, "WARNING: %s running late. Output still empty.", c.server)
 			} else {
-				printft(start, startTime|startFold|endFold, "WARNING: %s running late. Current output:\n-----\n%s\n-----", c.server, tail(output))
+				printft(start, startTime|endTime|startFold|endFold, "WARNING: %s running late. Current output:\n-----\n%s\n-----", c.server, tail(output))
 			}
-			print(travisTimeEnd(start))
-
 		}
 	}
 	panic("unreachable")

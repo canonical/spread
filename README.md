@@ -1,8 +1,7 @@
 Spread
 ======
 
-Convenient full-system test (task) distribution 
------------------------------------------------
+## Convenient full-system test (task) distribution 
 
 [Why?](#why)  
 [The cascading matrix](#matrix)  
@@ -29,8 +28,7 @@ Convenient full-system test (task) distribution
 [Repacking and delta uploads](#repacking)  
 
 <a name="why"/>
-Why?
-----
+## Why?
 
 Because our integration test machinery was unreasonably frustrating. It was
 slow, very unstable, hard to make sense of the output, impossible to debug,
@@ -46,8 +44,7 @@ minor variations without copy & paste.
 
 
 <a name="matrix"/>
-The cascading matrix
---------------------
+## The cascading matrix
 
 Each individual job in Spread has a:
 
@@ -88,8 +85,7 @@ backend:system:suite/task:variant
 ```
 
 <a name="hello-world"/>
-Hello world
------------
+## Hello world
 
 Two tiny files and you are in business:
 
@@ -155,8 +151,7 @@ Hello world!
 ```
 
 <a name="environments"/>
-Environments
-------------
+## Environments
 
 Pretty much everything in Spread can be customized with environment variables.
 
@@ -201,8 +196,7 @@ be ordered accordingly on executed scripts.
 
 
 <a name="variants"/>
-Variants
---------
+## Variants
 
 The cascading logic explained is nice, but a great deal of the convenience
 offered by Spread comes from _variants._
@@ -257,8 +251,7 @@ Some key takeaways here:
 
 
 <a name="blacklisting"/>
-Blacklisting and whitelisting
------------------------------
+## Blacklisting and whitelisting
 
 The described cascading and multiplication semantics of that matrix offers
 plenty of comfort for reproducing the same tasks with minor or major
@@ -309,8 +302,7 @@ add/remove/replace what the previous level defined, again with the ordering:
  * _Project => Backend => System => Suite => Task_
 
 <a name="preparing"/>
-Preparing and restoring
------------------------
+## Preparing and restoring
 
 A similar group of tasks will often depend on a similar setup of the system.
 Instead of copying & pasting logic, suites can define scripts for tasks under
@@ -392,8 +384,7 @@ be helpful when trying to understand what went wrong.
 
 
 <a name="functions"/>
-Functions
----------
+## Functions
 
 A few helper functions are available for scripts to use:
 
@@ -405,8 +396,7 @@ A few helper functions are available for scripts to use:
 
 
 <a name="rebooting"/>
-Rebooting
----------
+## Rebooting
 
 Scripts can reboot the system at any point by simply running the REBOOT
 function at the exact point the reboot should happen. The system will
@@ -429,8 +419,7 @@ parameter which will be used as the value of `$SPREAD_REBOOT` after
 the system reboots, instead of the count.
 
 <a name="timeouts"/>
-Timeouts
---------
+## Timeouts
 
 Every 5 minutes a warning will be issued including the operation output since
 the last warning. If the operation does not finish within 15 minutes, it is
@@ -445,8 +434,7 @@ altogether.
 
 
 <a name="reuse"/>
-Fast iterations with reuse
---------------------------
+## Fast iterations with reuse
 
 For fast iterations during development or debugging, it's best to keep the
 servers around so they're not allocated and discarded on every run. To do
@@ -474,8 +462,7 @@ correct and more resilient.
 
 
 <a name="debugging"/>
-Debugging
----------
+## Debugging
 
 Debugging such remote tasking systems is generally quite boring, and Spread
 offers a good hand to make the problem less painful. Just add `-debug` to
@@ -518,8 +505,7 @@ are aggregated and repeated for every task under them.
 
 
 <a name="passwords">
-Passwords and usernames
------------------------
+## Passwords and usernames
 
 To keep things simple and convenient, Spread prepares systems to connect over SSH
 as the root user using a single password for all systems. Unless explicitly defined
@@ -552,8 +538,7 @@ In all cases the end result is the same: a system that executes scripts as root.
 
 
 <a name="including"/>
-Including, excluding, and renaming files
-----------------------------------------
+## Including, excluding, and renaming files
 
 The following fields define what is pushed to the remote servers after
 each server is allocated and where that content is placed:
@@ -588,8 +573,7 @@ they do locally, so these directories cannot be moved.
 
 
 <a name="selecting"/>
-Selecting which tasks to run
-----------------------------
+## Selecting which tasks to run
 
 Often times you'll want to iterate over a single task or a few of these, or
 a given suite, or perhaps select a specific backend to run on instead of
@@ -631,8 +615,7 @@ filter without actually running them.
 
 
 <a name="manual"/>
-Disabling unless manually selected
-----------------------------------
+## Disabling unless manually selected
 
 It may be useful to have a task written down as part of the suite without it
 being run all the time together with the usual tasks.  For that, just add a
@@ -667,8 +650,7 @@ selected to run.
 
 
 <a name="residue"/>
-Fetching residual artifacts
----------------------------
+## Fetching residual artifacts
 
 Content generated by tasks may easily be retrieved after the task completes
 by registering the desired content under the `residue` field:
@@ -702,8 +684,7 @@ and even if some of the provided paths are missing.
 
 
 <a name="lxd"/>
-LXD backend
------------
+## LXD backend
 
 The LXD backend depends on the [LXD](http://www.ubuntu.com/cloud/lxd) container
 hypervisor available on Ubuntu 16.04 or later, and allows you to run tasks
@@ -751,8 +732,7 @@ That's it. Have fun with your self-contained multi-system task runner.
 
 
 <a name="qemu"/>
-QEMU backend
------------
+## QEMU backend
 
 The QEMU backend depends on the [QEMU](http://www.qemu.org) emulator
 available from various sources and allows you to run tasks using the
@@ -798,8 +778,7 @@ When done move the downloaded image into the location described above.
 
 
 <a name="linode"/>
-Linode backend
---------------
+## Linode backend
 
 The Linode backend is very simple to setup and use as well, and allows
 distributing your tasks over into remote infrastructure.
@@ -890,8 +869,7 @@ Some links to make your life easier:
 
 
 <a name="adhoc"/>
-AdHoc backend
--------------
+## AdHoc backend
 
 The AdHoc backend allows scripting the procedure for allocating and deallocating
 systems directly in the body of the backend:
@@ -942,8 +920,7 @@ be run against important systems, as it will fiddle with their configuration.
 
 
 <a name="parallelism"/>
-More on parallelism
--------------------
+## More on parallelism
 
 The `systems` entry under each backend contains a list of systems that will be
 allocated on that backend for running tasks concurrently. 
@@ -993,8 +970,7 @@ over the use of sets of remote machines.
 
 
 <a name="repacking"/>
-Repacking and delta uploads
----------------------------
+## Repacking and delta uploads
 
 When working over slow networks even small uploads tend to take a bit too
 long. Spread offers a general "repacking" mechanism that may be used to

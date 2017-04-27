@@ -30,9 +30,10 @@ type Client struct {
 
 func Dial(server Server, username, password string) (*Client, error) {
 	config := &ssh.ClientConfig{
-		User:    username,
-		Auth:    []ssh.AuthMethod{ssh.Password(password)},
-		Timeout: 10 * time.Second,
+		User:            username,
+		Auth:            []ssh.AuthMethod{ssh.Password(password)},
+		Timeout:         10 * time.Second,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 	addr := server.Address()
 	if !strings.Contains(addr, ":") {

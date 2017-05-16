@@ -71,7 +71,7 @@ func NewTestCase(testName string, className string, duration time.Duration) *XUn
 	return &XUnitTestCase{
 				Classname: className,
 				Name:      testName,
-				Time:      strconv.FormatFloat(float64(duration/time.Second), 'f' , 6, 64),
+				Time:      strconv.FormatFloat(float64(duration/time.Millisecond)/1000, 'f' , 3, 64),
 				Failure:   nil,
 			}	
 }

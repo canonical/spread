@@ -33,6 +33,8 @@ type Options struct {
 	Discard     bool
 	Residue     string
 	Seed        int64
+	Retries     int
+	StopOnFail  bool
 }
 
 type Runner struct {
@@ -594,27 +596,35 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 		}
 
 		debug := job.Debug()
-		if r.options.Restore {
-			// Do not prepare or execute.
-		} else if !r.options.Restore && !r.run(client, job, preparing, job, job.Prepare(), debug, &abend) {
-			r.add(&stats.TaskPrepareError, job)
-			r.add(&stats.TaskAbort, job)
-			debug = ""
-		} else if !r.options.Restore && r.run(client, job, executing, job, job.Task.Execute, debug, &abend) {
-			r.add(&stats.TaskDone, job)
-		} else if !r.options.Restore {
-			r.add(&stats.TaskError, job)
-			debug = ""
-		}
-		if !abend && !r.options.Restore {
-			if err := r.fetchResidue(client, job); err != nil {
-				printf("Cannot fetch residue of %s: %v", job, err)
-				r.tomb.Killf("cannot fetch residue of %s: %v", job, err)
+		var retry = 0
+		var stopJob = false
+		for retry <= r.options.Retries && !stopJob {
+			if r.options.Restore {
+				// Do not prepare or execute.
+			} else if !r.options.Restore && !r.run(client, job, preparing, job, job.Prepare(), debug, &abend) {
+				r.add(&stats.TaskPrepareError, job)
+				r.add(&stats.TaskAbort, job)
+				debug = ""
+				stopJob = r.options.StopOnFail
+			} else if !r.options.Restore && r.run(client, job, executing, job, job.Task.Execute, debug, &abend) {
+				r.add(&stats.TaskDone, job)
+			} else if !r.options.Restore {
+				r.add(&stats.TaskError, job)
+				debug = ""
+				stopJob = r.options.StopOnFail
 			}
-		}
-		if !abend && !r.run(client, job, restoring, job, job.Restore(), debug, &abend) {
-			r.add(&stats.TaskRestoreError, job)
-			badProject = true
+			if !abend && !r.options.Restore {
+				if err := r.fetchResidue(client, job); err != nil {
+					printf("Cannot fetch residue of %s: %v", job, err)
+					r.tomb.Killf("cannot fetch residue of %s: %v", job, err)
+				}
+			}
+			if !abend && !r.run(client, job, restoring, job, job.Restore(), debug, &abend) {
+				r.add(&stats.TaskRestoreError, job)
+				badProject = true
+				stopJob = r.options.StopOnFail
+			}
+			retry += 1
 		}
 	}
 

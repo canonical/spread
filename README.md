@@ -522,17 +522,17 @@ are aggregated and repeated for every task under them.
 ## Reexecuting
 
 Reproduce an error could be a very boring experience, and Spread has a way to
-simplify that process by reexecuting the jobs as many times is desired until
-the jobs fails.
+simplify that process by reexecuting the tasks as many times is desired until
+the task fails.
 
 To do that there are two options `-retries`, and `-stop-on-fail` which are
-used to determine the number of time to reexecute a job and if those executions
-have to be stoped when the job has failed.
+used to determine the number of time to reexecute a task and if those executions
+have to be stoped when the task has failed.
 
 The `-retries` option receives an integer which indicates the number of retries 
 to do, being 0 the default value, and -1 can be used to reexecute indefinitely.
 
-All the jobs listed to be executed will be reexercuted following the same
+All the tasks listed to be executed will be reexercuted following the same
 conditions.
 
 

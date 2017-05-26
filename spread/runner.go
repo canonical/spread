@@ -597,7 +597,8 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 		debug := job.Debug()
 		for repeat := r.options.Repeat; repeat >= 0; repeat-- {
 			if r.options.Restore {
-				// Do not prepare or execute.
+				// Do not prepare or execute, and don't repeat.
+				repeat = -1
 			} else if !r.options.Restore && !r.run(client, job, preparing, job, job.Prepare(), debug, &abend) {
 				r.add(&stats.TaskPrepareError, job)
 				r.add(&stats.TaskAbort, job)
@@ -610,7 +611,7 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 				debug = ""
 				repeat = -1
 			}
-			if !abend && !r.options.Restore {
+			if !abend && !r.options.Restore && repeat == 0 {
 				if err := r.fetchResidue(client, job); err != nil {
 					printf("Cannot fetch residue of %s: %v", job, err)
 					r.tomb.Killf("cannot fetch residue of %s: %v", job, err)

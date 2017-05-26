@@ -15,7 +15,7 @@ Spread
 [Timeouts](#timeouts)  
 [Fast iterations with reuse](#reuse)  
 [Debugging](#debugging)  
-[Reexecuting](#reexecuting)
+[Repeating tasks](#repeating)
 [Passwords and usernames](#passwords)  
 [Including, excluding, and renaming files](#including)  
 [Selecting which tasks to run](#selecting)  
@@ -517,9 +517,9 @@ as a `debug-each` script at the project, backend, and suite levels, so they
 are aggregated and repeated for every task under them.
 
 
-<a name="reexecuting"/>
+<a name="repeating"/>
 
-## Repeating runs
+## Repeating tasks
 
 Reproducing an error may be a very boring experience, and Spread has a way to
 simplify that process by reexecuting the tasks as many times as desired until

@@ -519,21 +519,14 @@ are aggregated and repeated for every task under them.
 
 <a name="reexecuting"/>
 
-## Reexecuting
+## Repeating runs
 
-Reproduce an error could be a very boring experience, and Spread has a way to
-simplify that process by reexecuting the tasks as many times is desired until
+Reproducing an error may be a very boring experience, and Spread has a way to
+simplify that process by reexecuting the tasks as many times as desired until
 the task fails.
 
-To do that there are two options `-retries`, and `-stop-on-fail` which are
-used to determine the number of time to reexecute a task and if those executions
-have to be stoped when the task has failed.
-
-The `-retries` option receives an integer which indicates the number of retries 
-to do, being 0 the default value, and -1 can be used to reexecute indefinitely.
-
-All the tasks listed to be executed will be reexercuted following the same
-conditions.
+To do that there is an option `-repeat` which receives an integer indicating 
+the number of reexecutions to do, being 0 the default value.
 
 
 <a name="passwords">

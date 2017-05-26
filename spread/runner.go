@@ -33,8 +33,7 @@ type Options struct {
 	Discard     bool
 	Residue     string
 	Seed        int64
-	Retries     int
-	StopOnFail  bool
+	Repeat      int
 }
 
 type Runner struct {
@@ -596,22 +595,20 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 		}
 
 		debug := job.Debug()
-		var retry = 0
-		var stopJob = false
-		for retry <= r.options.Retries && !stopJob {
+		for repeat := r.options.Repeat; repeat >= 0; repeat-- {
 			if r.options.Restore {
 				// Do not prepare or execute.
 			} else if !r.options.Restore && !r.run(client, job, preparing, job, job.Prepare(), debug, &abend) {
 				r.add(&stats.TaskPrepareError, job)
 				r.add(&stats.TaskAbort, job)
 				debug = ""
-				stopJob = r.options.StopOnFail
+				repeat = -1
 			} else if !r.options.Restore && r.run(client, job, executing, job, job.Task.Execute, debug, &abend) {
 				r.add(&stats.TaskDone, job)
 			} else if !r.options.Restore {
 				r.add(&stats.TaskError, job)
 				debug = ""
-				stopJob = r.options.StopOnFail
+				repeat = -1
 			}
 			if !abend && !r.options.Restore {
 				if err := r.fetchResidue(client, job); err != nil {
@@ -622,9 +619,8 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 			if !abend && !r.run(client, job, restoring, job, job.Restore(), debug, &abend) {
 				r.add(&stats.TaskRestoreError, job)
 				badProject = true
-				stopJob = r.options.StopOnFail
+				repeat = -1
 			}
-			retry += 1
 		}
 	}
 

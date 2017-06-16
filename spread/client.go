@@ -281,7 +281,7 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 			return nil, fmt.Errorf("reboot request on %s failed", c.server)
 		}
 		if err := c.dialOnReboot(); err != nil {
-			printft(start, startTime|endTime|startFold|endFold, "Output previous to reboot for %s : %v", c.server, outputErr(output, nil))
+			printft(start, startTime|endTime|startFold|endFold, "Output previous to reboot for %s: %v", c.server, outputErr(output, nil))
 			return nil, err
 		}
 	}

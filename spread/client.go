@@ -210,6 +210,7 @@ const (
 	combinedOutput
 	splitOutput
 	shellOutput
+	perfOutput
 )
 
 func (c *Client) Run(script string, dir string, env *Environment) error {
@@ -232,6 +233,10 @@ func (c *Client) Trace(script string, dir string, env *Environment) (output []by
 func (c *Client) Shell(script string, dir string, env *Environment) error {
 	_, err := c.run(script, dir, env, shellOutput)
 	return err
+}
+
+func (c *Client) Perf(script string, dir string, env *Environment) (output []byte, err error) {
+	return c.run(script, dir, env, perfOutput)
 }
 
 type rebootError struct {
@@ -348,7 +353,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	}
 
 	// Don't trace environment variables so secrets don't leak.
-	if mode == traceOutput {
+	if mode == traceOutput || mode == perfOutput {
 		buf.WriteString("set -x\n")
 	}
 
@@ -392,6 +397,10 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		cmd = c.sudo() + "/bin/bash -"
 		session.Stdout = &stdout
 		session.Stderr = &stderr
+	case perfOutput:
+		adddate := "awk '{cmd=\"(date +'%T.%3N')\"; cmd | getline d; print d,$0; close(cmd)}'"
+		cmd = c.sudo() + "/bin/bash - 2>&1 | " + adddate
+		session.Stdout = &stdout
 	case shellOutput:
 		cmd = fmt.Sprintf("{\nf=$(mktemp)\ntrap 'rm '$f EXIT\ncat > $f <<'SCRIPT_END'\n%s\nSCRIPT_END\n%s/bin/bash $f\n}", buf.String(), c.sudo())
 		session.Stdout = os.Stdout
@@ -421,10 +430,18 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	}
 
 	if stdout.Len() > 0 {
-		debugf("Output from running script on %s:\n-----\n%s\n-----", c.server, stdout.Bytes())
+		if mode == perfOutput {
+			logf("Output from running script on %s:\n-----\n%s\n-----", c.server, stdout.Bytes())
+		} else {
+			debugf("Output from running script on %s:\n-----\n%s\n-----", c.server, stdout.Bytes())
+		}
 	}
 	if stderr.Len() > 0 {
-		debugf("Error output from running script on %s:\n-----\n%s\n-----", c.server, stderr.Bytes())
+		if mode == perfOutput {
+			logf("Error output from running script on %s:\n-----\n%s\n-----", c.server, stderr.Bytes())
+		} else {
+			debugf("Error output from running script on %s:\n-----\n%s\n-----", c.server, stderr.Bytes())	
+		}
 	}
 
 	if e, ok := err.(*ssh.ExitError); ok && e.ExitStatus() == 213 {

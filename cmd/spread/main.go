@@ -33,6 +33,7 @@ var (
 	residue     = flag.String("residue", "", "Where to store residual data from tasks")
 	seed        = flag.Int64("seed", 0, "Seed for job order permutation")
 	repeat      = flag.Int("repeat", 0, "Number of times to repeat each task")
+	perf        = flag.Bool("perf", false, "Show tasks output with datetime")
 )
 
 func main() {
@@ -94,6 +95,7 @@ func run() error {
 		Residue:     *residue,
 		Seed:        *seed,
 		Repeat:      *repeat,
+		Perf:        *perf,
 	}
 
 	project, err := spread.Load(".")

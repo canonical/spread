@@ -529,6 +529,15 @@ To do that there is an option `-repeat` which receives an integer indicating
 the number of reexecutions to do, being 0 the default value.
 
 
+<a name="performance"/>
+
+## Show performance output
+
+To perform a performance analysis of the tasks executions, Spread is able to
+show detailed information about tasks output including timestamps. To do that
+there is an option `-perf` which by default is false.
+
+
 <a name="passwords">
 
 ## Passwords and usernames

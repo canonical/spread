@@ -34,6 +34,7 @@ type Options struct {
 	Residue     string
 	Seed        int64
 	Repeat      int
+	Perf        bool
 }
 
 type Runner struct {
@@ -452,7 +453,13 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	}
 	client.SetWarnTimeout(job.WarnTimeoutFor(context))
 	client.SetKillTimeout(job.KillTimeoutFor(context))
-	_, err := client.Trace(script, dir, job.Environment)
+
+	var err error
+	if r.options.Perf {
+		_, err = client.Perf(script, dir, job.Environment)
+	} else {
+		_, err = client.Trace(script, dir, job.Environment)
+	}
 	printft(start, endTime, "")
 	if err != nil {
 		// Use a different time so it has a different id on Travis, but keep
@@ -460,8 +467,13 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		start = start.Add(1)
 		printft(start, startTime|endTime|startFold|endFold, "Error %s %s : %v", verb, contextStr, err)
 		if debug != "" {
+			var output []byte
 			start = time.Now()
-			output, err := client.Trace(debug, dir, job.Environment)
+			if r.options.Perf {
+				output, err = client.Perf(debug, dir, job.Environment)
+			} else {
+				output, err = client.Trace(debug, dir, job.Environment)		
+			}
 			if err != nil {
 				printft(start, startTime|endTime|startFold|endFold, "Error debugging %s : %v", contextStr, err)
 			} else if len(output) > 0 {

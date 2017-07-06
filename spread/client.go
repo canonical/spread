@@ -252,6 +252,7 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 			rebootKey = strconv.Itoa(reboot)
 		}
 		env.Set("SPREAD_REBOOT", rebootKey)
+		start := time.Now()
 		output, err = c.runPart(script, dir, env, mode, output)
 		rerr, ok := err.(*rebootError)
 		if !ok {
@@ -280,6 +281,7 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 			return nil, fmt.Errorf("reboot request on %s failed", c.server)
 		}
 		if err := c.dialOnReboot(); err != nil {
+			printft(start, startTime|endTime|startFold|endFold, "Output previous to reboot for %s: %v", c.server, outputErr(output, nil))
 			return nil, err
 		}
 	}
@@ -383,13 +385,15 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	debugf("Sending script to %s:\n-----\n%s\n------", c.server, buf.Bytes())
 
 	var stdout, stderr safeBuffer
-	var cmd string
+	var cmd, printdate string
+	printdate = "awk '{cmd=\"(date +'%H:%M:%S.%3N')\"; cmd | getline d; print d,$0; close(cmd)}'"
+
 	switch mode {
 	case traceOutput, combinedOutput:
-		cmd = c.sudo() + "/bin/bash - 2>&1"
+		cmd = c.sudo() + "/bin/bash - 2>&1 | " + printdate
 		session.Stdout = &stdout
 	case splitOutput:
-		cmd = c.sudo() + "/bin/bash -"
+		cmd = c.sudo() + "/bin/bash - | " + printdate
 		session.Stdout = &stdout
 		session.Stderr = &stderr
 	case shellOutput:
@@ -421,7 +425,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	}
 
 	if stdout.Len() > 0 {
-		debugf("Output from running script on %s:\n-----\n%s\n-----", c.server, stdout.Bytes())
+		logf("Output from running script on %s:\n-----\n%s\n-----", c.server, stdout.Bytes())
 	}
 	if stderr.Len() > 0 {
 		debugf("Error output from running script on %s:\n-----\n%s\n-----", c.server, stderr.Bytes())

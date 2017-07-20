@@ -1128,10 +1128,15 @@ func (p *linodeProvider) checkKey() error {
 		return p.keyErr
 	}
 
-	var result linodeResult
-	err := p.do(linodeParams{"api_action": "test.echo"}, &result)
-	if err == nil {
-		err = result.err()
+	var err error
+	if p.backend.Key == "" {
+		err = fmt.Errorf("%s missing Linode API key", p.backend)
+	} else {
+		var result linodeResult
+		err = p.do(linodeParams{"api_action": "test.echo"}, &result)
+		if err == nil {
+			err = result.err()
+		}
 	}
 	if err != nil {
 		err = &FatalError{err}

@@ -453,6 +453,9 @@ var (
 
 func Load(path string) (*Project, error) {
 	filename, data, err := readProject(path)
+	if err != nil {
+		return nil, fmt.Errorf("cannot load project file from %s: %v", path, err)
+	}
 
 	project := &Project{}
 	err = yaml.Unmarshal(data, project)

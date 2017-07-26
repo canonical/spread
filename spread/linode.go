@@ -44,6 +44,12 @@ type linodeProvider struct {
 	templatesDone  bool
 	templatesCache []*linodeTemplate
 	kernelsCache   []*linodeKernel
+
+	listCache struct {
+		mu   sync.Mutex
+		next time.Time
+		data []*linodeServer
+	}
 }
 
 var client = &http.Client{}
@@ -286,6 +292,13 @@ type linodeListResult struct {
 }
 
 func (p *linodeProvider) list() ([]*linodeServer, error) {
+	p.listCache.mu.Lock()
+	defer p.listCache.mu.Unlock()
+
+	if p.listCache.next.After(time.Now()) {
+		return p.listCache.data, nil
+	}
+
 	debug("Listing available Linode servers...")
 	params := linodeParams{
 		"api_action": "linode.list",
@@ -302,27 +315,24 @@ func (p *linodeProvider) list() ([]*linodeServer, error) {
 	for i, d := range result.Data {
 		servers[i] = &linodeServer{p: p, d: d}
 	}
+
+	p.listCache.data = servers
+	p.listCache.next = time.Now().Add(3 * time.Second)
+
 	return servers, nil
 }
 
 func (p *linodeProvider) status(s *linodeServer) (int, error) {
-	debugf("Checking power status of %s...", s)
-	params := linodeParams{
-		"api_action": "linode.list",
-		"LinodeID":   s.d.ID,
-	}
-	var result linodeListResult
-	err := p.do(params, &result)
-	if err == nil {
-		err = result.err()
-	}
+	servers, err := p.list()
 	if err != nil {
 		return 0, err
 	}
-	if len(result.Data) == 0 {
-		return 0, fmt.Errorf("cannot find %s data", s)
+	for _, server := range servers {
+		if server.d.ID == s.d.ID {
+			return server.d.Status, nil
+		}
 	}
-	return result.Data[0].Status, nil
+	return 0, fmt.Errorf("cannot find %s for status check", s)
 }
 
 func (p *linodeProvider) setup(s *linodeServer, system *System, lastjob time.Time) error {

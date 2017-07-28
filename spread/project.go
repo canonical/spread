@@ -285,9 +285,10 @@ func (e *Environment) Replace(oldkey, newkey, value string) {
 }
 
 type Suite struct {
-	Summary  string
-	Systems  []string
-	Backends []string
+	Summary     string
+	Systems     []string
+	Backends    []string
+	Condition   string
 
 	Variants    []string
 	Environment *Environment
@@ -314,10 +315,11 @@ func (s *Suite) String() string { return "suite " + s.Name }
 type Task struct {
 	Suite string `yaml:"-"`
 
-	Summary  string
-	Details  string
-	Systems  []string
-	Backends []string
+	Summary    string
+	Details    string
+	Systems    []string
+	Backends   []string
+	Condition  string
 
 	Variants    []string
 	Environment *Environment
@@ -372,6 +374,10 @@ func (job *Job) StringFor(context interface{}) string {
 		return job.Name
 	}
 	panic(fmt.Errorf("job %s asked to stringify unrelated value: %v", job, context))
+}
+
+func (job *Job) Condition() string {
+	return join(job.Suite.Condition, job.Task.Condition)
 }
 
 func (job *Job) Prepare() string {
@@ -566,6 +572,7 @@ func Load(path string) (*Project, error) {
 		suite.Name = sname + "/"
 		suite.Path = filepath.Join(project.Path, sname)
 		suite.Summary = strings.TrimSpace(suite.Summary)
+		suite.Condition = strings.TrimSpace(suite.Condition)
 		suite.Prepare = strings.TrimSpace(suite.Prepare)
 		suite.Restore = strings.TrimSpace(suite.Restore)
 		suite.Debug = strings.TrimSpace(suite.Debug)
@@ -621,6 +628,7 @@ func Load(path string) (*Project, error) {
 			task.Name = suite.Name + tname
 			task.Path = filepath.Dir(tfilename)
 			task.Summary = strings.TrimSpace(task.Summary)
+			task.Condition = strings.TrimSpace(task.Condition)
 			task.Prepare = strings.TrimSpace(task.Prepare)
 			task.Restore = strings.TrimSpace(task.Restore)
 			task.Debug = strings.TrimSpace(task.Debug)

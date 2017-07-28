@@ -10,7 +10,8 @@ Spread
 [Variants](#variants)  
 [Blacklisting and whitelisting](#blacklisting)  
 [Preparing and restoring](#preparing)  
-[Functions](#functions)
+[Conditions](#conditions)  
+[Functions](#functions)  
 [Rebooting](#rebooting)  
 [Timeouts](#timeouts)  
 [Fast iterations with reuse](#reuse)  
@@ -389,6 +390,26 @@ In addition to preparing and restoring scripts, `debug` and `debug-each`
 scripts may also be defined in the same places. These are only run when other
 scripts fail, and their purpose is to display further information which might
 be helpful when trying to understand what went wrong.
+
+<a name="conditions"/>
+
+## Conditions
+
+Tasks often are executed when some conditions are checked. In order to achieve 
+this, it is possible to define a script which will determine if task has to be 
+executed. The condition script is called before the task preparation and in case
+the result is not possitive the task is skipped.
+
+The condition can be defined at suite or task level, and it is evaluated for 
+indenpendently fo each task.
+
+This is an example to show how to define a condition for a test suite:
+
+suites:
+    examples/:
+        summary: Simple examples
+        condition: |
+            [ -d /path/to/dir ]
 
 
 <a name="functions"/>

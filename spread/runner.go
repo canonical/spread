@@ -414,6 +414,8 @@ const (
 	preparing = "preparing"
 	executing = "executing"
 	restoring = "restoring"
+	checking = "checking"
+	skipping = "skipping"
 )
 
 func (r *Runner) run(client *Client, job *Job, verb string, context interface{}, script, debug string, abend *bool) bool {
@@ -430,6 +432,8 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		}
 		logft(start, startTime, "%s %s (%d/%d)...", strings.Title(verb), contextStr, r.sequence[job], len(r.pending))
 		r.mu.Unlock()
+	} else if verb == checking {
+		debugft(start, startTime, "%s %s...", strings.Title(verb), contextStr)
 	} else {
 		logft(start, startTime, "%s %s...", strings.Title(verb), contextStr)
 	}
@@ -440,7 +444,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		dir = filepath.Join(r.project.RemotePath, job.Task.Name)
 	}
 	if (r.options.Shell || r.options.ShellBefore) && verb == executing {
-		printf("Starting shell instead of %s %s...", verb, job)
+	    printf("Starting shell instead of %s %s...", verb, job)
 		err := client.Shell("", dir, r.shellEnv(job, job.Environment))
 		if err != nil {
 			printf("Error running debug shell: %v", err)
@@ -454,30 +458,38 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	client.SetKillTimeout(job.KillTimeoutFor(context))
 	_, err := client.Trace(script, dir, job.Environment)
 	printft(start, endTime, "")
+
+	if verb == checking {
+	    if err != nil {
+	        logft(start, startTime, "%s %s...", strings.Title(skipping), contextStr)    
+	        return false
+	    }
+	    return true
+	}
 	if err != nil {
-		// Use a different time so it has a different id on Travis, but keep
-		// the original start time so the error message shows the task time.
-		start = start.Add(1)
-		printft(start, startTime|endTime|startFold|endFold, "Error %s %s : %v", verb, contextStr, err)
-		if debug != "" {
-			start = time.Now()
-			output, err := client.Trace(debug, dir, job.Environment)
-			if err != nil {
-				printft(start, startTime|endTime|startFold|endFold, "Error debugging %s : %v", contextStr, err)
-			} else if len(output) > 0 {
-				printft(start, startTime|endTime|startFold|endFold, "Debug output for %s : %v", contextStr, outputErr(output, nil))
-			}
-		}
-		if r.options.Debug || r.options.ShellAfter {
-			printf("Starting shell to debug...")
-			err = client.Shell("", dir, r.shellEnv(job, job.Environment))
-			if err != nil {
-				printf("Error running debug shell: %v", err)
-			}
-			printf("Continuing...")
-		}
-		*abend = r.options.Abend
-		return false
+	    // Use a different time so it has a different id on Travis, but keep
+	    // the original start time so the error message shows the task time.
+	    start = start.Add(1)
+	    printft(start, startTime|endTime|startFold|endFold, "Error %s %s : %v", verb, contextStr, err)
+	    if debug != "" {
+	        start = time.Now()
+	        output, err := client.Trace(debug, dir, job.Environment)
+	        if err != nil {
+	            printft(start, startTime|endTime|startFold|endFold, "Error debugging %s : %v", contextStr, err)
+	        } else if len(output) > 0 {
+	            printft(start, startTime|endTime|startFold|endFold, "Debug output for %s : %v", contextStr, outputErr(output, nil))
+	        }
+	    }
+	    if r.options.Debug || r.options.ShellAfter {
+	        printf("Starting shell to debug...")
+	        err = client.Shell("", dir, r.shellEnv(job, job.Environment))
+	        if err != nil {
+	            printf("Error running debug shell: %v", err)
+	        }
+	        printf("Continuing...")
+	    }
+	    *abend = r.options.Abend
+	    return false
 	}
 	if r.options.ShellAfter && verb == executing {
 		printf("Starting shell after %s %s...", verb, job)
@@ -595,33 +607,37 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 		}
 
 		debug := job.Debug()
-		for repeat := r.options.Repeat; repeat >= 0; repeat-- {
-			if r.options.Restore {
-				// Do not prepare or execute, and don't repeat.
-				repeat = -1
-			} else if !r.options.Restore && !r.run(client, job, preparing, job, job.Prepare(), debug, &abend) {
-				r.add(&stats.TaskPrepareError, job)
-				r.add(&stats.TaskAbort, job)
-				debug = ""
-				repeat = -1
-			} else if !r.options.Restore && r.run(client, job, executing, job, job.Task.Execute, debug, &abend) {
-				r.add(&stats.TaskDone, job)
-			} else if !r.options.Restore {
-				r.add(&stats.TaskError, job)
-				debug = ""
-				repeat = -1
-			}
-			if !abend && !r.options.Restore && repeat == 0 {
-				if err := r.fetchResidue(client, job); err != nil {
-					printf("Cannot fetch residue of %s: %v", job, err)
-					r.tomb.Killf("cannot fetch residue of %s: %v", job, err)
+		if r.run(client, job, checking, job, job.Condition(), debug, &abend) {
+		    for repeat := r.options.Repeat; repeat >= 0; repeat-- {
+			    if r.options.Restore {
+					// Do not prepare or execute, and don't repeat.
+					repeat = -1
+				} else if !r.options.Restore && !r.run(client, job, preparing, job, job.Prepare(), debug, &abend) {
+					r.add(&stats.TaskPrepareError, job)
+					r.add(&stats.TaskAbort, job)
+					debug = ""
+					repeat = -1
+				} else if !r.options.Restore && r.run(client, job, executing, job, job.Task.Execute, debug, &abend) {
+					r.add(&stats.TaskDone, job)
+				} else if !r.options.Restore {
+					r.add(&stats.TaskError, job)
+					debug = ""
+					repeat = -1
+				}
+				if !abend && !r.options.Restore && repeat == 0 {
+					if err := r.fetchResidue(client, job); err != nil {
+						printf("Cannot fetch residue of %s: %v", job, err)
+						r.tomb.Killf("cannot fetch residue of %s: %v", job, err)
+					}
+				}
+				if !abend && !r.run(client, job, restoring, job, job.Restore(), debug, &abend) {
+					r.add(&stats.TaskRestoreError, job)
+					badProject = true
+					repeat = -1
 				}
 			}
-			if !abend && !r.run(client, job, restoring, job, job.Restore(), debug, &abend) {
-				r.add(&stats.TaskRestoreError, job)
-				badProject = true
-				repeat = -1
-			}
+		} else {
+			r.add(&stats.TaskSkipped, job)
 		}
 	}
 
@@ -1000,6 +1016,7 @@ type stats struct {
 	TaskDone            []*Job
 	TaskError           []*Job
 	TaskAbort           []*Job
+	TaskSkipped         []*Job
 	TaskPrepareError    []*Job
 	TaskRestoreError    []*Job
 	SuitePrepareError   []*Job
@@ -1032,6 +1049,7 @@ func (s *stats) errorCount() int {
 func (s *stats) log() {
 	printf("Successful tasks: %d", len(s.TaskDone))
 	printf("Aborted tasks: %d", len(s.TaskAbort))
+	printf("Skipped tasks: %d", len(s.TaskSkipped))
 
 	logNames(printf, "Failed tasks", s.TaskError, taskName)
 	logNames(printf, "Failed task prepare", s.TaskPrepareError, taskName)

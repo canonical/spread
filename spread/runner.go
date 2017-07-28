@@ -444,7 +444,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		dir = filepath.Join(r.project.RemotePath, job.Task.Name)
 	}
 	if (r.options.Shell || r.options.ShellBefore) && verb == executing {
-	    printf("Starting shell instead of %s %s...", verb, job)
+		printf("Starting shell instead of %s %s...", verb, job)
 		err := client.Shell("", dir, r.shellEnv(job, job.Environment))
 		if err != nil {
 			printf("Error running debug shell: %v", err)
@@ -460,36 +460,36 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	printft(start, endTime, "")
 
 	if verb == checking {
-	    if err != nil {
-	        logft(start, startTime, "%s %s...", strings.Title(skipping), contextStr)    
-	        return false
-	    }
-	    return true
+		if err != nil {
+			logft(start, startTime, "%s %s...", strings.Title(skipping), contextStr)    
+			return false
+		}
+		return true
 	}
 	if err != nil {
-	    // Use a different time so it has a different id on Travis, but keep
-	    // the original start time so the error message shows the task time.
-	    start = start.Add(1)
-	    printft(start, startTime|endTime|startFold|endFold, "Error %s %s : %v", verb, contextStr, err)
-	    if debug != "" {
-	        start = time.Now()
-	        output, err := client.Trace(debug, dir, job.Environment)
-	        if err != nil {
-	            printft(start, startTime|endTime|startFold|endFold, "Error debugging %s : %v", contextStr, err)
-	        } else if len(output) > 0 {
-	            printft(start, startTime|endTime|startFold|endFold, "Debug output for %s : %v", contextStr, outputErr(output, nil))
-	        }
-	    }
-	    if r.options.Debug || r.options.ShellAfter {
-	        printf("Starting shell to debug...")
-	        err = client.Shell("", dir, r.shellEnv(job, job.Environment))
-	        if err != nil {
-	            printf("Error running debug shell: %v", err)
-	        }
-	        printf("Continuing...")
-	    }
-	    *abend = r.options.Abend
-	    return false
+		// Use a different time so it has a different id on Travis, but keep
+		// the original start time so the error message shows the task time.
+		start = start.Add(1)
+		printft(start, startTime|endTime|startFold|endFold, "Error %s %s : %v", verb, contextStr, err)
+		if debug != "" {
+			start = time.Now()
+			output, err := client.Trace(debug, dir, job.Environment)
+			if err != nil {
+				printft(start, startTime|endTime|startFold|endFold, "Error debugging %s : %v", contextStr, err)
+			} else if len(output) > 0 {
+				printft(start, startTime|endTime|startFold|endFold, "Debug output for %s : %v", contextStr, outputErr(output, nil))
+			}
+		}
+		if r.options.Debug || r.options.ShellAfter {
+			printf("Starting shell to debug...")
+			err = client.Shell("", dir, r.shellEnv(job, job.Environment))
+			if err != nil {
+				printf("Error running debug shell: %v", err)
+			}
+			printf("Continuing...")
+		}
+		*abend = r.options.Abend
+		return false
 	}
 	if r.options.ShellAfter && verb == executing {
 		printf("Starting shell after %s %s...", verb, job)

@@ -795,7 +795,7 @@ func (r *Runner) fetchResidue(client *Client, job *Job) error {
 	tarr, tarw := io.Pipe()
 
 	var stderr bytes.Buffer
-	cmd := exec.Command("tar", "xz")
+	cmd := exec.Command("tar", "xJ")
 	cmd.Dir = localDir
 	cmd.Stdin = tarr
 	cmd.Stderr = &stderr

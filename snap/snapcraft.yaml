@@ -24,3 +24,4 @@ parts:
         go-packages:
             - github.com/snapcore/spread/cmd/spread
         go-importpath: github.com/snapcore/spread
+

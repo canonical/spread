@@ -618,6 +618,8 @@ func (c *Client) RecvTar(packDir string, include []string, tar io.Writer) error 
 	} else {
 		args = make([]string, len(include))
 		for i, arg := range include {
+			arg = strings.Replace(arg, "'", `'"'"'`, -1)
+			arg = strings.Replace(arg, "*", `'*'`, -1)
 			args[i] = "'" + arg + "'"
 		}
 	}
@@ -625,7 +627,7 @@ func (c *Client) RecvTar(packDir string, include []string, tar io.Writer) error 
 	var stderr safeBuffer
 	session.Stdout = tar
 	session.Stderr = &stderr
-	cmd := fmt.Sprintf(`%s/bin/tar cz --sort=name --ignore-failed-read -C '%s' %s`, c.sudo(), packDir, strings.Join(args, " "))
+	cmd := fmt.Sprintf(`cd '%s' && %s/bin/tar cJ --sort=name --ignore-failed-read -- %s`, packDir, c.sudo(), strings.Join(args, " "))
 	err = c.runCommand(session, cmd, nil, &stderr)
 	if err != nil {
 		return outputErr(stderr.Bytes(), err)

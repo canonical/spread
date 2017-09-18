@@ -539,7 +539,7 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 			r.mu.Unlock()
 			break
 		}
-		job = r.job(backend, system, insideSuite, order)
+		job = r.job(backend, system, insideSuite, last, order)
 		if job == nil {
 			r.mu.Unlock()
 			break
@@ -653,7 +653,12 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 	}
 }
 
-func (r *Runner) job(backend *Backend, system *System, suite *Suite, order []int) *Job {
+func (r *Runner) job(backend *Backend, system *System, suite *Suite, last *Job, order []int) *Job {
+	if last != nil && last.Task.Samples > 1 {
+		if job := r.minSampleForTask(last); job != nil {
+			return job
+		}
+	}
 	var best = -1
 	var bestWorkers = 1000000
 	for _, i := range order {
@@ -676,6 +681,36 @@ func (r *Runner) job(backend *Backend, system *System, suite *Suite, order []int
 		}
 	}
 	if best >= 0 {
+		job := r.pending[best]
+		if job.Task.Samples > 1 {
+			// Worst case it will find the same job.
+			return r.minSampleForTask(job)
+		}
+		r.pending[best] = nil
+		return job
+	}
+	return nil
+}
+
+// minSampleForTask finds the job with the lowest sample value sharing
+// the same backend, system, and task as the provided job, then removes
+// it from the pending list and returns it.
+func (r *Runner) minSampleForTask(other *Job) *Job {
+	var best = -1
+	var bestSample = 1000000
+	for i, job := range r.pending {
+		if job == nil {
+			continue
+		}
+		if job.Task != other.Task || job.Backend != other.Backend || job.System != other.System {
+			continue
+		}
+		if job.Sample < bestSample {
+			best = i
+			bestSample = job.Sample
+		}
+	}
+	if best > -1 {
 		job := r.pending[best]
 		r.pending[best] = nil
 		return job
@@ -760,7 +795,7 @@ func (r *Runner) fetchResidue(client *Client, job *Job) error {
 	tarr, tarw := io.Pipe()
 
 	var stderr bytes.Buffer
-	cmd := exec.Command("tar", "xz")
+	cmd := exec.Command("tar", "xJ")
 	cmd.Dir = localDir
 	cmd.Stdin = tarr
 	cmd.Stderr = &stderr

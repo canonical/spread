@@ -44,6 +44,12 @@ type linodeProvider struct {
 	templatesDone  bool
 	templatesCache []*linodeTemplate
 	kernelsCache   []*linodeKernel
+
+	listCache struct {
+		mu   sync.Mutex
+		next time.Time
+		data []*linodeServer
+	}
 }
 
 var client = &http.Client{}
@@ -274,7 +280,7 @@ func (s *linodeServer) Discard(ctx context.Context) error {
 	s.watchTomb.Wait()
 	_, err1 := s.p.shutdown(s)
 	err2 := s.p.removeConfig(s, "", s.d.Config)
-	err3 := s.p.removeDisks(s, "", s.d.Root, s.d.Swap)
+	err3 := s.p.removeDisks(s, "", 0, s.d.Root, s.d.Swap)
 	s.p.removeAbandoned(s)
 	s.p.unreserve(s)
 	return firstErr(err1, err2, err3)
@@ -286,6 +292,13 @@ type linodeListResult struct {
 }
 
 func (p *linodeProvider) list() ([]*linodeServer, error) {
+	p.listCache.mu.Lock()
+	defer p.listCache.mu.Unlock()
+
+	if p.listCache.next.After(time.Now()) {
+		return p.listCache.data, nil
+	}
+
 	debug("Listing available Linode servers...")
 	params := linodeParams{
 		"api_action": "linode.list",
@@ -302,27 +315,24 @@ func (p *linodeProvider) list() ([]*linodeServer, error) {
 	for i, d := range result.Data {
 		servers[i] = &linodeServer{p: p, d: d}
 	}
+
+	p.listCache.data = servers
+	p.listCache.next = time.Now().Add(3 * time.Second)
+
 	return servers, nil
 }
 
 func (p *linodeProvider) status(s *linodeServer) (int, error) {
-	debugf("Checking power status of %s...", s)
-	params := linodeParams{
-		"api_action": "linode.list",
-		"LinodeID":   s.d.ID,
-	}
-	var result linodeListResult
-	err := p.do(params, &result)
-	if err == nil {
-		err = result.err()
-	}
+	servers, err := p.list()
 	if err != nil {
 		return 0, err
 	}
-	if len(result.Data) == 0 {
-		return 0, fmt.Errorf("cannot find %s data", s)
+	for _, server := range servers {
+		if server.d.ID == s.d.ID {
+			return server.d.Status, nil
+		}
 	}
-	return result.Data[0].Status, nil
+	return 0, fmt.Errorf("cannot find %s for status check", s)
 }
 
 func (p *linodeProvider) setup(s *linodeServer, system *System, lastjob time.Time) error {
@@ -331,28 +341,32 @@ func (p *linodeProvider) setup(s *linodeServer, system *System, lastjob time.Tim
 
 	rootJob, swapJob, err := p.createDisk(s, system)
 	if err != nil {
+		p.removeDisks(s, "", noLog, s.d.Root, s.d.Swap)
+		p.removeAbandoned(s)
 		return err
 	}
 	s.d.Root = rootJob.DiskID
 	s.d.Swap = swapJob.DiskID
 
-	if _, err := p.waitJob(s, "allocate disk", rootJob.JobID); err != nil {
-		p.removeDisks(s, "", s.d.Root, s.d.Swap)
+	_, err = p.waitJob(s, "allocate disk", rootJob.JobID)
+	if err != nil {
+		p.removeDisks(s, "", noLog, s.d.Root, s.d.Swap)
+		p.removeAbandoned(s)
 		return err
 	}
 
 	if status, err := p.status(s); err != nil {
-		p.removeDisks(s, "", s.d.Root, s.d.Swap)
+		p.removeDisks(s, "", 0, s.d.Root, s.d.Swap)
 		return err
 	} else if status != linodeBrandNew && status != linodePoweredOff {
-		p.removeDisks(s, "", s.d.Root, s.d.Swap)
+		p.removeDisks(s, "", 0, s.d.Root, s.d.Swap)
 		return fmt.Errorf("server %s concurrently allocated, giving up on it", s)
 	}
 	if conflict, err := p.hasRecentDisk(s, s.d.Root); err != nil {
-		p.removeDisks(s, "", s.d.Root, s.d.Swap)
+		p.removeDisks(s, "", 0, s.d.Root, s.d.Swap)
 		return err
 	} else if conflict {
-		p.removeDisks(s, "", s.d.Root, s.d.Swap)
+		p.removeDisks(s, "", 0, s.d.Root, s.d.Swap)
 		return fmt.Errorf("server %s concurrently allocated, giving up on it", s)
 	}
 
@@ -364,7 +378,7 @@ func (p *linodeProvider) setup(s *linodeServer, system *System, lastjob time.Tim
 
 	configID, err := p.createConfig(s, system, s.d.Root, s.d.Swap)
 	if err != nil {
-		p.removeDisks(s, "", s.d.Root, s.d.Swap)
+		p.removeDisks(s, "", 0, s.d.Root, s.d.Swap)
 		return err
 	}
 	s.d.Config = configID
@@ -372,7 +386,7 @@ func (p *linodeProvider) setup(s *linodeServer, system *System, lastjob time.Tim
 	found, err := p.hasRecentBoot(s, lastjob)
 	if found || err != nil {
 		p.removeConfig(s, "", s.d.Config)
-		p.removeDisks(s, "", s.d.Root, s.d.Swap)
+		p.removeDisks(s, "", 0, s.d.Root, s.d.Swap)
 		if err != nil {
 			return err
 		}
@@ -385,7 +399,7 @@ func (p *linodeProvider) setup(s *linodeServer, system *System, lastjob time.Tim
 	}
 	if err != nil {
 		p.removeConfig(s, "", s.d.Config)
-		p.removeDisks(s, "", s.d.Root, s.d.Swap)
+		p.removeDisks(s, "", 0, s.d.Root, s.d.Swap)
 		return err
 	}
 
@@ -501,19 +515,22 @@ func (p *linodeProvider) createDisk(s *linodeServer, system *System) (root, swap
 		return root, swap, nil
 	}
 	if root != nil {
-		p.removeDisks(s, "", root.DiskID)
+		p.removeDisks(s, "", noLog, root.DiskID)
 	}
 	if swap != nil {
-		p.removeDisks(s, "", swap.DiskID)
+		p.removeDisks(s, "", noLog, swap.DiskID)
 	}
-	return nil, nil, fmt.Errorf("cannot create Linode disk with %s: %v", system.Name, err)
+	return nil, nil, fmt.Errorf("cannot create Linode disk on %s: %v", s.d.Label, err)
 }
 
-func (p *linodeProvider) removeDisks(s *linodeServer, what string, diskIDs ...int) error {
+func (p *linodeProvider) removeDisks(s *linodeServer, what string, flags doFlags, diskIDs ...int) error {
 	if what != "" {
 		what += " "
 	}
-	logf("Removing %sdisks from %s...", what, s)
+	log := flags&noLog == 0
+	if log {
+		logf("Removing %sdisks from %s...", what, s)
+	}
 	var batch []linodeParams
 	for _, diskID := range diskIDs {
 		batch = append(batch, linodeParams{
@@ -527,7 +544,7 @@ func (p *linodeProvider) removeDisks(s *linodeServer, what string, diskIDs ...in
 		"api_requestArray": batch,
 	}
 	var results []linodeResult
-	err := p.do(params, &results)
+	err := p.dofl(params, &results, flags)
 	if err != nil {
 		return fmt.Errorf("cannot remove %sdisk on %s: %v", what, s, err)
 	}
@@ -682,7 +699,7 @@ func (p *linodeProvider) removeAbandoned(s *linodeServer) {
 		}
 	}
 	if len(diskIds) > 0 {
-		err := p.removeDisks(s, "abandoned", diskIds...)
+		err := p.removeDisks(s, "abandoned", 0, diskIds...)
 		if err != nil {
 			printf(warn, s, err)
 		}
@@ -775,7 +792,7 @@ func (p *linodeProvider) waitJob(s *linodeServer, verb string, jobID int) (*lino
 				return nil, infoErr
 			}
 			p.removeConfig(s, "", s.d.Config)
-			p.removeDisks(s, "", s.d.Root, s.d.Swap)
+			p.removeDisks(s, "", 0, s.d.Root, s.d.Swap)
 			return nil, fmt.Errorf("timeout waiting for %s to %s", s, verb)
 
 		case <-retry.C:
@@ -1128,10 +1145,15 @@ func (p *linodeProvider) checkKey() error {
 		return p.keyErr
 	}
 
-	var result linodeResult
-	err := p.do(linodeParams{"api_action": "test.echo"}, &result)
-	if err == nil {
-		err = result.err()
+	var err error
+	if p.backend.Key == "" {
+		err = fmt.Errorf("%s missing Linode API key", p.backend)
+	} else {
+		var result linodeResult
+		err = p.do(linodeParams{"api_action": "test.echo"}, &result)
+		if err == nil {
+			err = result.err()
+		}
 	}
 	if err != nil {
 		err = &FatalError{err}

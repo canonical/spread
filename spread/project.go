@@ -321,6 +321,7 @@ type Task struct {
 
 	Variants    []string
 	Environment *Environment
+	Samples     int
 
 	Prepare string
 	Restore string
@@ -350,6 +351,7 @@ type Job struct {
 
 	Variant     string
 	Environment *Environment
+	Sample      int
 }
 
 func (job *Job) String() string {
@@ -433,9 +435,15 @@ func join(scripts ...string) string {
 
 type jobsByName []*Job
 
-func (jobs jobsByName) Len() int           { return len(jobs) }
-func (jobs jobsByName) Less(i, j int) bool { return jobs[i].Name < jobs[j].Name }
-func (jobs jobsByName) Swap(i, j int)      { jobs[i], jobs[j] = jobs[j], jobs[i] }
+func (jobs jobsByName) Len() int      { return len(jobs) }
+func (jobs jobsByName) Swap(i, j int) { jobs[i], jobs[j] = jobs[j], jobs[i] }
+func (jobs jobsByName) Less(i, j int) bool {
+	ji, jj := jobs[i], jobs[j]
+	if ji.Backend == jj.Backend && ji.System == jj.System && ji.Task == jj.Task {
+		return ji.Sample < jj.Sample
+	}
+	return ji.Name < jj.Name
+}
 
 func SplitVariants(s string) (prefix string, variants []string) {
 	if i := strings.LastIndex(s, "/"); i >= 0 {
@@ -622,6 +630,9 @@ func Load(path string) (*Project, error) {
 			if task.Summary == "" {
 				return nil, fmt.Errorf("%s is missing a summary", task)
 			}
+			if task.Samples == 0 {
+				task.Samples = 1
+			}
 
 			if err := checkEnv(task, &task.Environment); err != nil {
 				return nil, err
@@ -697,8 +708,14 @@ type Filter interface {
 	Pass(job *Job) bool
 }
 
+type filterExp struct {
+	regexp      *regexp.Regexp
+	firstSample int
+	lastSample  int
+}
+
 type filter struct {
-	exps []*regexp.Regexp
+	exps []*filterExp
 }
 
 func (f *filter) Pass(job *Job) bool {
@@ -706,20 +723,46 @@ func (f *filter) Pass(job *Job) bool {
 		return true
 	}
 	for _, exp := range f.exps {
-		if exp.MatchString(job.Name) {
+		if exp.firstSample > 0 {
+			if job.Sample < exp.firstSample {
+				continue
+			}
+			if job.Sample > exp.lastSample {
+				continue
+			}
+		}
+		if exp.regexp.MatchString(job.Name) {
 			return true
 		}
 	}
 	return false
 }
 
-var dots = regexp.MustCompile(`\.+|:+`)
-
 func NewFilter(args []string) (Filter, error) {
+	var dots = regexp.MustCompile(`\.+|:+|#`)
+	var sample = regexp.MustCompile(`^(.*)#(\d+)(?:\.\.(\d+))?$`)
 	var err error
-	var exps []*regexp.Regexp
+	var exps []*filterExp
 	for _, arg := range args {
-		arg = dots.ReplaceAllStringFunc(arg, func(s string) string {
+		var argre = arg
+		var firstSample, lastSample int
+		if m := sample.FindStringSubmatch(argre); len(m) > 0 {
+			argre = m[1]
+			firstSample, err = strconv.Atoi(m[2])
+			if err == nil && m[3] != "" {
+				lastSample, err = strconv.Atoi(m[3])
+			}
+			if err != nil {
+				panic(fmt.Sprintf("internal error: regexp matched non-int on %q", arg))
+			}
+			if firstSample > 0 && lastSample == 0 {
+				lastSample = firstSample
+			}
+			if firstSample < 1 || lastSample < firstSample {
+				return nil, fmt.Errorf("invalid sample range in filter string: %q", arg)
+			}
+		}
+		argre = dots.ReplaceAllStringFunc(argre, func(s string) string {
 			switch s {
 			case ".":
 				return `\.`
@@ -727,6 +770,8 @@ func NewFilter(args []string) (Filter, error) {
 				return `[^:]*`
 			case ":":
 				return "(:.+)*:(.+:)*"
+			case "#":
+				// Error below. Should have been parsed above.
 			}
 			err = fmt.Errorf("invalid filter string: %q", s)
 			return s
@@ -734,17 +779,21 @@ func NewFilter(args []string) (Filter, error) {
 		if err != nil {
 			return nil, err
 		}
-		if strings.HasPrefix(arg, "(:.+)*:") || strings.HasPrefix(arg, "/") {
-			arg = ".+" + arg
+		if strings.HasPrefix(argre, "(:.+)*:") || strings.HasPrefix(argre, "/") {
+			argre = ".+" + argre
 		}
-		if strings.HasSuffix(arg, ":(.+:)*") || strings.HasSuffix(arg, "/") {
-			arg = arg + ".+"
+		if strings.HasSuffix(argre, ":(.+:)*") || strings.HasSuffix(argre, "/") {
+			argre = argre + ".+"
 		}
-		exp, err := regexp.Compile("(?:^|:)" + arg + "(?:$|:)")
+		exp, err := regexp.Compile("(?:^|:)" + argre + "(?:$|[:#])")
 		if err != nil {
 			return nil, fmt.Errorf("invalid filter string: %q", arg)
 		}
-		exps = append(exps, exp)
+		exps = append(exps, &filterExp{
+			regexp:      exp,
+			firstSample: firstSample,
+			lastSample:  lastSample,
+		})
 
 	}
 	return &filter{exps}, nil
@@ -833,54 +882,61 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 							continue
 						}
 
-						job := &Job{
-							Project: p,
-							Backend: backend,
-							System:  system,
-							Suite:   p.Suites[task.Suite],
-							Task:    task,
-							Variant: variant,
-						}
-						if job.Variant == "" {
-							job.Name = fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System.Name, job.Task.Name)
-						} else {
-							job.Name = fmt.Sprintf("%s:%s:%s:%s", job.Backend.Name, job.System.Name, job.Task.Name, job.Variant)
-						}
+						for sample := 1; sample <= task.Samples; sample++ {
+							job := &Job{
+								Project: p,
+								Backend: backend,
+								System:  system,
+								Suite:   p.Suites[task.Suite],
+								Task:    task,
+								Variant: variant,
+								Sample:  sample,
+							}
+							if job.Variant == "" {
+								job.Name = fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System.Name, job.Task.Name)
+							} else {
+								job.Name = fmt.Sprintf("%s:%s:%s:%s", job.Backend.Name, job.System.Name, job.Task.Name, job.Variant)
+							}
+							if task.Samples > 1 {
+								job.Name += "#" + strconv.Itoa(sample)
+							}
 
-						sprenv := envmap{stringer("$SPREAD_*"), NewEnvironment(
-							"SPREAD_JOB", job.Name,
-							"SPREAD_PROJECT", job.Project.Name,
-							"SPREAD_PATH", job.Project.RemotePath,
-							"SPREAD_BACKEND", job.Backend.Name,
-							"SPREAD_SYSTEM", job.System.Name,
-							"SPREAD_SUITE", job.Suite.Name,
-							"SPREAD_TASK", job.Task.Name,
-							"SPREAD_VARIANT", job.Variant,
-						)}
+							sprenv := envmap{stringer("$SPREAD_*"), NewEnvironment(
+								"SPREAD_JOB", job.Name,
+								"SPREAD_PROJECT", job.Project.Name,
+								"SPREAD_PATH", job.Project.RemotePath,
+								"SPREAD_BACKEND", job.Backend.Name,
+								"SPREAD_SYSTEM", job.System.Name,
+								"SPREAD_SUITE", job.Suite.Name,
+								"SPREAD_TASK", job.Task.Name,
+								"SPREAD_VARIANT", job.Variant,
+								"SPREAD_SAMPLE", strconv.Itoa(job.Sample),
+							)}
 
-						env, err := evalenv(cmdcache, true, sprenv, penv, benv, yenv, senv, tenv)
-						if err != nil {
-							return nil, err
-						}
-						job.Environment = env.Variant(variant)
+							env, err := evalenv(cmdcache, true, sprenv, penv, benv, yenv, senv, tenv)
+							if err != nil {
+								return nil, err
+							}
+							job.Environment = env.Variant(variant)
 
-						if options.Filter != nil && !options.Filter.Pass(job) {
-							continue
-						}
+							if options.Filter != nil && !options.Filter.Pass(job) {
+								continue
+							}
 
-						jobs = append(jobs, job)
+							jobs = append(jobs, job)
 
-						if !job.Backend.Manual {
-							manualBackends = false
-						}
-						if !job.System.Manual {
-							manualSystems = false
-						}
-						if !job.Suite.Manual {
-							manualSuites = false
-						}
-						if !job.Task.Manual {
-							manualTasks = false
+							if !job.Backend.Manual {
+								manualBackends = false
+							}
+							if !job.System.Manual {
+								manualSystems = false
+							}
+							if !job.Suite.Manual {
+								manualSuites = false
+							}
+							if !job.Task.Manual {
+								manualTasks = false
+							}
 						}
 					}
 				}

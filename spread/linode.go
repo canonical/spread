@@ -74,6 +74,9 @@ type linodeServerData struct {
 }
 
 func (s *linodeServer) String() string {
+	if s.system == nil {
+		return s.d.Label
+	}
 	return fmt.Sprintf("%s (%s)", s.system, s.d.Label)
 }
 
@@ -222,20 +225,13 @@ func (p *linodeProvider) Allocate(ctx context.Context, system *System) (Server, 
 		return nil, fmt.Errorf("no powered off servers in Linode account")
 	}
 
-	// See it's time to shutdown servers based on halt-timeout.
-	var newest time.Time
-	for i, s := range servers {
-		lastjob := lastjobs[i]
-		if lastjob.IsZero() {
-			_, lastjob, _ = p.hasActiveJob(s, "", 0)
-			lastjobs[i] = lastjob
-		}
-		if lastjob.After(newest) {
-			newest = lastjob
-		}
-	}
+	// See if it's time to shutdown servers based on halt-timeout.
+	now := time.Now()
 	for _, i := range perm {
 		s := servers[i]
+
+		// Do not unreserve system unless it may really be used elsewhere.
+		// If we cannot halt it right now, nobody else can either.
 		if !p.reserve(s) {
 			continue
 		}
@@ -243,7 +239,11 @@ func (p *linodeProvider) Allocate(ctx context.Context, system *System) (Server, 
 		// Take first in the permutation that timed out rather than
 		// oldest, to reduce chances of conflict.
 		lastjob := lastjobs[i]
-		if lastjob.IsZero() || lastjob.After(newest.Add(-p.backend.HaltTimeout.Duration)) {
+		if lastjob.IsZero() {
+			_, lastjob, _ = p.hasActiveJob(s, "", 0)
+			lastjobs[i] = lastjob
+		}
+		if lastjob.IsZero() || lastjob.After(now.Add(-p.backend.HaltTimeout.Duration)) {
 			continue
 		}
 
@@ -260,6 +260,7 @@ func (p *linodeProvider) Allocate(ctx context.Context, system *System) (Server, 
 		_, err = p.shutdown(s)
 		if err != nil {
 			printf("Cannot shutdown %s after halt-timeout: %v", s, err)
+			p.unreserve(s)
 			continue
 		}
 
@@ -1155,6 +1156,9 @@ func (p *linodeProvider) checkKey() error {
 			err = result.err()
 		}
 	}
+	if err == nil && linodeLocation == nil {
+		err = fmt.Errorf("cannot use Linode backends without a timezone database available")
+	}
 	if err != nil {
 		err = &FatalError{err}
 	}
@@ -1227,9 +1231,15 @@ func (p *linodeProvider) dofl(params linodeParams, result interface{}, flags doF
 	return nil
 }
 
+var linodeLocation *time.Location
+
+func init() {
+	linodeLocation, _ = time.LoadLocation("America/New_York")
+}
+
 func parseLinodeDT(dt string) time.Time {
 	if dt != "" {
-		t, err := time.Parse("2006-01-02 15:04:05.0", dt)
+		t, err := time.ParseInLocation("2006-01-02 15:04:05.0", dt, linodeLocation)
 		if err == nil {
 			return t
 		}

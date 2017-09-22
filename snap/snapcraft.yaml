@@ -1,0 +1,27 @@
+name: spread
+version: 2017.05.24
+summary: Convenient full-system test (task) distribution
+description: |
+    Spread is a plesant way distribute full-system integration tests and
+    similar tasks. A few simple and concrete concepts that are fun to play
+    with and fix the exact piece missing in the puzzle. It's not Jenkins,
+    it's not Travis, it's not a library, not a language, and it's not even
+    specific to testing. It's a simple way to express what to run and
+    where, what to do before and after it runs, and how to duplicate jobs
+    with minor variations without copy & paste.
+
+confinement: classic
+grade: stable
+
+apps:
+    spread:
+        command: bin/spread
+        plugs: [home, network, network-bind]
+
+parts:
+    spread:
+        plugin: go
+        go-packages:
+            - github.com/snapcore/spread/cmd/spread
+        go-importpath: github.com/snapcore/spread
+

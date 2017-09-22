@@ -1,4 +1,6 @@
 .spread-reuse.yaml
+*.snap
+*.tar.bz2
 cmd/spread/spread
 tests/cache/*
 parts

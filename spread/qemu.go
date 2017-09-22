@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strconv"
 
+	"path/filepath"
+
 	"golang.org/x/net/context"
 )
 
@@ -86,7 +88,15 @@ func (p *qemuProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *
 }
 
 func systemPath(system *System) string {
-	return os.ExpandEnv("$HOME/.spread/qemu/" + system.Image + ".img")
+	basePath := os.Getenv("SPREAD_QEMU_PATH")
+	if basePath == "" {
+		if snapPath := os.Getenv("SNAP_USER_DATA"); len(snapPath) > 0 {
+			basePath = os.ExpandEnv(filepath.Join(snapPath, ".spread/qemu"))
+		} else {
+			basePath = "$HOME/.spread/qemu/"
+		}
+	}
+	return os.ExpandEnv(filepath.Join(basePath, system.Image+".img"))
 }
 
 func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, error) {

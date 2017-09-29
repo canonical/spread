@@ -10,16 +10,19 @@ description: |
     where, what to do before and after it runs, and how to duplicate jobs
     with minor variations without copy & paste.
 
-confinement: strict
-grade: stable
+confinement: classic
+grade: devel
 
 apps:
     spread:
         command: bin/spread
-        plugs: [home, network, network-bind]
+        plugs: [network, network-bind, kvm]
 
 parts:
     spread:
         plugin: go
         go-packages:
             - github.com/snapcore/spread/cmd/spread
+        go-importpath: github.com/snapcore/spread
+        stage-packages:
+            - qemu-kvm

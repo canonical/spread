@@ -4,3 +4,6 @@ tests/cache/*
 parts
 prime
 stage
+*.snap
+*.tar.bz2
+snap/.snapcraft

@@ -10,13 +10,13 @@ description: |
     where, what to do before and after it runs, and how to duplicate jobs
     with minor variations without copy & paste.
 
-confinement: classic
-grade: devel
+confinement: strict
+grade: stable
 
 apps:
     spread:
         command: bin/spread
-        plugs: [network, network-bind, kvm]
+        plugs: [network, network-bind, kvm, x11]
 
 parts:
     spread:
@@ -24,5 +24,17 @@ parts:
         go-packages:
             - github.com/snapcore/spread/cmd/spread
         go-importpath: github.com/snapcore/spread
+    qemu:
+        plugin: dump
+        source: backends/qemu/bin
         stage-packages:
             - qemu-kvm
+        organize:
+            kvm-launcher: bin/
+    # needed by qemu-kvm, to find the paths to the roms
+    snappypreload:
+        plugin: cmake
+        source: backends/qemu/snappypreload
+        build-packages:
+            - build-essential
+

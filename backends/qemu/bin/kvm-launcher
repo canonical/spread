@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# use preload trick
+export SNAPPY_PRELOAD=$SNAP
+export LD_PRELOAD="$SNAP/usr/lib/libsnappypreload.so"
+
+exec "$SNAP/usr/bin/kvm" "-L" "$SNAP/usr/share/seabios/" "$@"

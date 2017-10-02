@@ -16,7 +16,7 @@ grade: stable
 apps:
     spread:
         command: bin/spread
-        plugs: [network, network-bind, kvm, x11]
+        plugs: [home, network, network-bind, kvm, x11]
 
 parts:
     spread:

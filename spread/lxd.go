@@ -65,6 +65,15 @@ func (s *lxdServer) Discard(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("cannot discard lxd container: %v", outputErr(output, err))
 	}
+
+	// Post-Stop script
+	if s.p.backend.PostStop != "" {
+		_, err := s.p.run(s.p.backend.PostStop, s.system)
+		if err != nil {
+			return fmt.Errorf("cannot execute lxd Post-Stop script: %v", err)
+		}
+	}
+
 	return nil
 }
 
@@ -85,8 +94,7 @@ func (p *lxdProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *S
 	return s, nil
 }
 
-func (p *lxdProvider) run(script string, system *System, containerName string) (result map[string]string, err error) {
-	system.Environment.Set("LXD_CONTAINER_NAME", containerName)
+func (p *lxdProvider) run(script string, system *System) (result map[string]string, err error) {
 	lscript := localScript{
 		script:      script,
 		dir:         p.project.Path,
@@ -131,18 +139,32 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		return nil, err
 	}
 
+	// lxc init
+	args := []string{"init", lxdimage, name}
+	if !p.options.Reuse {
+		args = append(args, "--ephemeral")
+	}
+	output, err := exec.Command("lxc", args...).CombinedOutput()
+	if err != nil {
+		err = outputErr(output, err)
+		if bytes.Contains(output, []byte("error: not found")) {
+			err = fmt.Errorf("%s not found", lxdimage)
+		}
+		return nil, &FatalError{fmt.Errorf("cannot launch lxd container: %v", err)}
+	}
+
+	// Pre-Start script
 	if p.backend.PreStart != "" {
-		_, err := p.run(p.backend.PreStart, system, "")
+		system.Environment.Set("LXD_CONTAINER_NAME", name)
+		_, err := p.run(p.backend.PreStart, system)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	args := []string{"launch", lxdimage, name}
-	if !p.options.Reuse {
-		args = append(args, "--ephemeral")
-	}
-	output, err := exec.Command("lxc", args...).CombinedOutput()
+	// lxc start
+	args = []string{"start", name}
+	output, err = exec.Command("lxc", args...).CombinedOutput()
 	if err != nil {
 		err = outputErr(output, err)
 		if bytes.Contains(output, []byte("error: not found")) {

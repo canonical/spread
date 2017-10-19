@@ -97,7 +97,7 @@ func (c *Client) dialOnReboot() error {
 		select {
 		case <-retry.C:
 		case <-relog.C:
-			printf("Reboot of %s is taking a while...", c.server)
+			printf("Reconnect after reboot of %s is taking a while...", c.server)
 		case <-timeout:
 			return fmt.Errorf("kill-timeout reached, cannot reconnect to %s after reboot: %v", c.server, err)
 		}

@@ -56,6 +56,10 @@ type Backend struct {
 	Allocate string
 	Discard  string
 
+	// Only for lxd
+	PreStart string
+	PostStop string
+
 	// Only for qemu so far.
 	Memory Size
 
@@ -515,6 +519,9 @@ func Load(path string) (*Project, error) {
 		}
 		if backend.Type == "adhoc" && strings.TrimSpace(backend.Allocate) == "" {
 			return nil, fmt.Errorf("%s requires an allocate field", backend)
+		}
+		if backend.Type != "lxd" && (backend.PreStart != "" || backend.PostStop != "") {
+			return nil, fmt.Errorf("%s cannot use pre-start and post-stop fields", backend)
 		}
 
 		backend.Prepare = strings.TrimSpace(backend.Prepare)

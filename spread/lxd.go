@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"gopkg.in/yaml.v2"
 
 	"golang.org/x/net/context"
 )
@@ -84,6 +85,42 @@ func (p *lxdProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *S
 	return s, nil
 }
 
+func (p *lxdProvider) run(script string, system *System, containerName string) (result map[string]string, err error) {
+	system.Environment.Set("LXD_CONTAINER_NAME", containerName)
+	lscript := localScript{
+		script:      script,
+		dir:         p.project.Path,
+		env:         system.Environment,
+		warnTimeout: p.backend.WarnTimeout.Duration,
+		killTimeout: p.backend.KillTimeout.Duration,
+		mode:        traceOutput,
+	}
+	output, _, err := lscript.run()
+	if err != nil {
+		return nil, err
+	}
+
+	result = make(map[string]string)
+	for _, line := range bytes.Split(bytes.TrimSpace(output), []byte{'\n'}) {
+		m := commandExp.FindStringSubmatch(string(bytes.TrimSpace(line)))
+		if m != nil {
+			result[m[1]] = m[2]
+		}
+	}
+
+	debugf("Results of %s: %# v", system, result)
+
+	fatal := result["FATAL"]
+	if fatal != "" {
+		return nil, &FatalError{fmt.Errorf("%s", fatal)}
+	}
+	error := result["ERROR"]
+	if error != "" {
+		return nil, fmt.Errorf("%s", error)
+	}
+	return result, nil
+}
+
 func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, error) {
 	lxdimage, err := p.lxdImage(system)
 	if err != nil {
@@ -92,6 +129,13 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 	name, err := lxdName(system)
 	if err != nil {
 		return nil, err
+	}
+
+	if p.backend.PreStart != "" {
+		_, err := p.run(p.backend.PreStart, system, "")
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	args := []string{"launch", lxdimage, name}

@@ -66,14 +66,22 @@ func (s *lxdServer) Discard(ctx context.Context) error {
 		return fmt.Errorf("cannot discard lxd container: %v", outputErr(output, err))
 	}
 
-	if s.system.PostStop != "" {
-		s.system.Environment.Set("LXD_CONTAINER_NAME", s.d.Name)
-		_, err := s.p.run(s.system.PostStop, s.system)
-		if err != nil {
-			return fmt.Errorf("cannot execute lxd Post-Stop script: %v", err)
-		}
+	err = s.postDiscard()
+	if err != nil {
+		return err
 	}
 
+	return nil
+}
+
+func (s *lxdServer) postDiscard() error {
+	if s.system.PostDiscard != "" {
+		s.system.Environment.Set("LXD_CONTAINER_NAME", s.d.Name)
+		_, err := s.p.run(s.system.PostDiscard, s.system)
+		if err != nil {
+			return fmt.Errorf("cannot execute lxd post-discard script: %v", err)
+		}
+	}
 	return nil
 }
 
@@ -94,39 +102,31 @@ func (p *lxdProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *S
 	return s, nil
 }
 
-func (p *lxdProvider) run(script string, system *System) (result map[string]string, err error) {
-	lscript := localScript{
-		script:      script,
-		dir:         p.project.Path,
-		env:         system.Environment,
-		warnTimeout: p.backend.WarnTimeout.Duration,
-		killTimeout: p.backend.KillTimeout.Duration,
-		mode:        traceOutput,
-	}
-	output, _, err := lscript.run()
-	if err != nil {
-		return nil, err
-	}
-
-	result = make(map[string]string)
-	for _, line := range bytes.Split(bytes.TrimSpace(output), []byte{'\n'}) {
-		m := commandExp.FindStringSubmatch(string(bytes.TrimSpace(line)))
-		if m != nil {
-			result[m[1]] = m[2]
+func (p *lxdProvider) preAllocate(system *System, containerName string) error {
+	if system.PreAllocate != "" {
+		system.Environment.Set("LXD_CONTAINER_NAME", containerName)
+		_, err := p.run(system.PreAllocate, system)
+		if err != nil {
+			args := []string{"delete", "-f", containerName}
+			_, _ = exec.Command("lxc", args...).CombinedOutput()
+			return err
 		}
 	}
 
-	debugf("Results of %s: %# v", system, result)
+	return nil
+}
 
-	fatal := result["FATAL"]
-	if fatal != "" {
-		return nil, &FatalError{fmt.Errorf("%s", fatal)}
+func (p *lxdProvider) postAllocate(system *System, containerName string) error {
+	if system.PostAllocate != "" {
+		system.Environment.Set("LXD_CONTAINER_NAME", containerName)
+		_, err := p.run(system.PostAllocate, system)
+		if err != nil {
+			args := []string{"delete", "-f", containerName}
+			_, _ = exec.Command("lxc", args...).CombinedOutput()
+			return err
+		}
 	}
-	error := result["ERROR"]
-	if error != "" {
-		return nil, fmt.Errorf("%s", error)
-	}
-	return result, nil
+	return nil
 }
 
 func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, error) {
@@ -149,17 +149,12 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		if bytes.Contains(output, []byte("error: not found")) {
 			err = fmt.Errorf("%s not found", lxdimage)
 		}
-		return nil, &FatalError{fmt.Errorf("cannot launch lxd container: %v", err)}
+		return nil, &FatalError{fmt.Errorf("cannot init lxd container: %v", err)}
 	}
 
-	if system.PreStart != "" {
-		system.Environment.Set("LXD_CONTAINER_NAME", name)
-		_, err := p.run(system.PreStart, system)
-		if err != nil {
-			args = []string{"delete", "-f", name}
-			_, _ = exec.Command("lxc", args...).CombinedOutput()
-			return nil, err
-		}
+	err = p.preAllocate(system, name)
+	if err != nil {
+		return nil, err
 	}
 
 	// lxc start
@@ -168,19 +163,14 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 	if err != nil {
 		err = outputErr(output, err)
 		if bytes.Contains(output, []byte("error: not found")) {
-			err = fmt.Errorf("%s not found", lxdimage)
+			err = fmt.Errorf("%s not found", name)
 		}
-		return nil, &FatalError{fmt.Errorf("cannot launch lxd container: %v", err)}
+		return nil, &FatalError{fmt.Errorf("cannot start lxd container: %v", err)}
 	}
 
-	if system.PostStart != "" {
-		system.Environment.Set("LXD_CONTAINER_NAME", name)
-		_, err := p.run(system.PostStart, system)
-		if err != nil {
-			args = []string{"delete", "-f", name}
-			_, _ = exec.Command("lxc", args...).CombinedOutput()
-			return nil, err
-		}
+	err = p.postAllocate(system, name)
+	if err != nil {
+		return nil, err
 	}
 
 	s := &lxdServer{
@@ -547,4 +537,39 @@ func contains(strs []string, s string) bool {
 		}
 	}
 	return false
+}
+
+func (p *lxdProvider) run(script string, system *System) (result map[string]string, err error) {
+	lscript := localScript{
+		script:      script,
+		dir:         p.project.Path,
+		env:         system.Environment,
+		warnTimeout: p.backend.WarnTimeout.Duration,
+		killTimeout: p.backend.KillTimeout.Duration,
+		mode:        traceOutput,
+	}
+	output, _, err := lscript.run()
+	if err != nil {
+		return nil, err
+	}
+
+	result = make(map[string]string)
+	for _, line := range bytes.Split(bytes.TrimSpace(output), []byte{'\n'}) {
+		m := commandExp.FindStringSubmatch(string(bytes.TrimSpace(line)))
+		if m != nil {
+			result[m[1]] = m[2]
+		}
+	}
+
+	debugf("Results of %s: %# v", system, result)
+
+	fatal := result["FATAL"]
+	if fatal != "" {
+		return nil, &FatalError{fmt.Errorf("%s", fatal)}
+	}
+	error := result["ERROR"]
+	if error != "" {
+		return nil, fmt.Errorf("%s", error)
+	}
+	return result, nil
 }

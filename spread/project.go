@@ -116,9 +116,9 @@ type System struct {
 	Workers    int
 
 	// Only for lxd
-	PreStart  string `yaml:"pre-start"`
-	PostStart string `yaml:"post-start"`
-	PostStop  string `yaml:"post-stop"`
+	PreAllocate  string `yaml:"pre-allocate"`
+	PostAllocate string `yaml:"post-allocate"`
+	PostDiscard  string `yaml:"post-discard"`
 
 	Environment *Environment
 	Variants    []string
@@ -539,8 +539,8 @@ func Load(path string) (*Project, error) {
 			if system.Workers == 0 {
 				system.Workers = 1
 			}
-			if backend.Type != "lxd" && (system.PreStart != "" || system.PostStop != "") {
-				return nil, fmt.Errorf("%s cannot use pre-start and post-stop fields", backend)
+			if backend.Type != "lxd" && (system.PreAllocate != "" || system.PostAllocate != "" || system.PostDiscard != "") {
+				return nil, fmt.Errorf("%s cannot use pre-allocate, post-allocate and post-discard fields", backend)
 			}
 			if err := checkEnv(system, &system.Environment); err != nil {
 				return nil, err

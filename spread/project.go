@@ -106,12 +106,19 @@ func (sysmap *SystemsMap) UnmarshalYAML(u func(interface{}) error) error {
 type System struct {
 	Backend string `json:"-"`
 
-	Name     string
-	Image    string
-	Kernel   string
-	Username string
-	Password string
-	Workers  int
+	Name  string
+	Image string
+	// LXD only
+	ImageAlias string `yaml:"image-alias"`
+	Kernel     string
+	Username   string
+	Password   string
+	Workers    int
+
+	// Only for lxd
+	PreAllocate  string `yaml:"pre-allocate"`
+	PostAllocate string `yaml:"post-allocate"`
+	PostDiscard  string `yaml:"post-discard"`
 
 	Environment *Environment
 	Variants    []string
@@ -531,6 +538,9 @@ func Load(path string) (*Project, error) {
 			}
 			if system.Workers == 0 {
 				system.Workers = 1
+			}
+			if backend.Type != "lxd" && (system.PreAllocate != "" || system.PostAllocate != "" || system.PostDiscard != "") {
+				return nil, fmt.Errorf("%s cannot use pre-allocate, post-allocate and post-discard fields", backend)
 			}
 			if err := checkEnv(system, &system.Environment); err != nil {
 				return nil, err

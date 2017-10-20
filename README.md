@@ -759,6 +759,24 @@ backends:
                 image: ubuntu:16.04.1
 ```
 
+For this specific provider you can define scripts to be executed before
+allocation, after allocation or after discarding. `pre-allocate` will be 
+executed just after the container has inited (`lxc init`) and before it 
+is started (`lxc start`); `post-allocate`will be executed after container
+is started and `post-discard` is executed after container deletion:
+```
+backends:
+    lxd:
+        systems:
+            - ubuntu-16.04:
+                pre-allocate: |
+                    echo "This is executed after lxc init and before lxc start"
+                post-allocate: |
+                    echo "This is executed after lxc start"
+                post-discard: |
+                    echo "This is executed after discarding backend"
+```
+
 That's it. Have fun with your self-contained multi-system task runner.
 
 

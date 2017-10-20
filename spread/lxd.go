@@ -66,9 +66,9 @@ func (s *lxdServer) Discard(ctx context.Context) error {
 		return fmt.Errorf("cannot discard lxd container: %v", outputErr(output, err))
 	}
 
-	// Post-Stop script
-	if s.p.backend.PostStop != "" {
-		_, err := s.p.run(s.p.backend.PostStop, s.system)
+	if s.system.PostStop != "" {
+		s.system.Environment.Set("LXD_CONTAINER_NAME", s.d.Name)
+		_, err := s.p.run(s.system.PostStop, s.system)
 		if err != nil {
 			return fmt.Errorf("cannot execute lxd Post-Stop script: %v", err)
 		}
@@ -139,7 +139,6 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		return nil, err
 	}
 
-	// lxc init
 	args := []string{"init", lxdimage, name}
 	if !p.options.Reuse {
 		args = append(args, "--ephemeral")
@@ -153,11 +152,12 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		return nil, &FatalError{fmt.Errorf("cannot launch lxd container: %v", err)}
 	}
 
-	// Pre-Start script
-	if p.backend.PreStart != "" {
+	if system.PreStart != "" {
 		system.Environment.Set("LXD_CONTAINER_NAME", name)
-		_, err := p.run(p.backend.PreStart, system)
+		_, err := p.run(system.PreStart, system)
 		if err != nil {
+			args = []string{"delete", "-f", name}
+			_, _ = exec.Command("lxc", args...).CombinedOutput()
 			return nil, err
 		}
 	}
@@ -173,6 +173,16 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		return nil, &FatalError{fmt.Errorf("cannot launch lxd container: %v", err)}
 	}
 
+	if system.PostStart != "" {
+		system.Environment.Set("LXD_CONTAINER_NAME", name)
+		_, err := p.run(system.PostStart, system)
+		if err != nil {
+			args = []string{"delete", "-f", name}
+			_, _ = exec.Command("lxc", args...).CombinedOutput()
+			return nil, err
+		}
+	}
+
 	s := &lxdServer{
 		p: p,
 		d: lxdServerData{
@@ -182,8 +192,8 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 	}
 
 	printf("Waiting for lxd container %s to have an address...", name)
-	timeout := time.After(10 * time.Second)
-	retry := time.NewTicker(1 * time.Second)
+	timeout := time.After(60 * time.Second)
+	retry := time.NewTicker(5 * time.Second)
 	defer retry.Stop()
 	for {
 		addr, err := p.address(name)
@@ -223,6 +233,11 @@ func isDebArch(s string) bool {
 }
 
 func (p *lxdProvider) lxdImage(system *System) (string, error) {
+	// If an LXD image alias is defined use it
+	if system.ImageAlias != "" {
+		return system.ImageAlias, nil
+	}
+
 	// LXD loves the network. Force it to use a local image if available.
 	fingerprint, err := p.lxdLocalImage(system)
 	if err == nil {

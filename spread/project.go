@@ -56,10 +56,6 @@ type Backend struct {
 	Allocate string
 	Discard  string
 
-	// Only for lxd
-	PreStart string
-	PostStop string
-
 	// Only for qemu so far.
 	Memory Size
 
@@ -110,12 +106,19 @@ func (sysmap *SystemsMap) UnmarshalYAML(u func(interface{}) error) error {
 type System struct {
 	Backend string `json:"-"`
 
-	Name     string
-	Image    string
-	Kernel   string
-	Username string
-	Password string
-	Workers  int
+	Name  string
+	Image string
+	// LXD only
+	ImageAlias string `yaml:"image-alias"`
+	Kernel     string
+	Username   string
+	Password   string
+	Workers    int
+
+	// Only for lxd
+	PreStart  string `yaml:"pre-start"`
+	PostStart string `yaml:"post-start"`
+	PostStop  string `yaml:"post-stop"`
 
 	Environment *Environment
 	Variants    []string
@@ -520,9 +523,6 @@ func Load(path string) (*Project, error) {
 		if backend.Type == "adhoc" && strings.TrimSpace(backend.Allocate) == "" {
 			return nil, fmt.Errorf("%s requires an allocate field", backend)
 		}
-		if backend.Type != "lxd" && (backend.PreStart != "" || backend.PostStop != "") {
-			return nil, fmt.Errorf("%s cannot use pre-start and post-stop fields", backend)
-		}
 
 		backend.Prepare = strings.TrimSpace(backend.Prepare)
 		backend.Restore = strings.TrimSpace(backend.Restore)
@@ -538,6 +538,9 @@ func Load(path string) (*Project, error) {
 			}
 			if system.Workers == 0 {
 				system.Workers = 1
+			}
+			if backend.Type != "lxd" && (system.PreStart != "" || system.PostStop != "") {
+				return nil, fmt.Errorf("%s cannot use pre-start and post-stop fields", backend)
 			}
 			if err := checkEnv(system, &system.Environment); err != nil {
 				return nil, err

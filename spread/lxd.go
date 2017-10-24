@@ -446,7 +446,7 @@ func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
 
 func (p *lxdProvider) tuneSSH(name string) error {
 	cmds := [][]string{
-		{"sed", "-i", `s/\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/`, "/etc/ssh/sshd_config"},
+		{"sed", "-i", `s/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/`, "/etc/ssh/sshd_config"},
 		{"/bin/bash", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", p.options.Password)},
 		{"killall", "-HUP", "sshd"},
 	}

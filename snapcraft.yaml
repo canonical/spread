@@ -16,10 +16,12 @@ grade: stable
 apps:
     spread:
         command: bin/spread
-        plugs: [home, network, network-bind]
+        plugs: [home, network, network-bind, lxd]
 
 parts:
     spread:
         plugin: go
         go-packages:
             - github.com/snapcore/spread/cmd/spread
+        stage-packages:
+            - lxd-client

@@ -59,6 +59,9 @@ type Backend struct {
 	// Only for qemu so far.
 	Memory Size
 
+	// Only for Linode so far.
+	Storage Size
+
 	Systems SystemsMap
 
 	Prepare     string

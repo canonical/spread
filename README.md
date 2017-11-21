@@ -16,6 +16,7 @@ Spread
 [Fast iterations with reuse](#reuse)  
 [Debugging](#debugging)  
 [Repeating tasks](#repeating)
+[Measuring system deviation](#measuring)
 [Passwords and usernames](#passwords)  
 [Including, excluding, and renaming files](#including)  
 [Selecting which tasks to run](#selecting)  
@@ -516,6 +517,20 @@ In a similar way to prepare and restore scripts, these can also be defined
 as a `debug-each` script at the project, backend, and suite levels, so they
 are aggregated and repeated for every task under them.
 
+<a name="measuring"/>
+
+## Measuring
+
+Tests can modify the system in unexpected ways. Using project-wide
+`measure-each` stanza you can execute a command that can measure deviations of
+the test environment.
+
+As a simple advice, collect useful information that should be invariant (file
+list, package list, mount table, etc) and store that in a set of files. Those
+files should be (ideally) removed in project-wide prepare script.
+
+The measurement command is executed before preparing and after restoring each
+job.
 
 <a name="repeating"/>
 

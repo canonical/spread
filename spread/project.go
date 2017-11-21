@@ -30,6 +30,7 @@ type Project struct {
 	PrepareEach string `yaml:"prepare-each"`
 	RestoreEach string `yaml:"restore-each"`
 	DebugEach   string `yaml:"debug-each"`
+	MeasureEach string `yaml:"measure-each"`
 
 	Suites map[string]*Suite
 
@@ -487,6 +488,7 @@ func Load(path string) (*Project, error) {
 	project.PrepareEach = strings.TrimSpace(project.PrepareEach)
 	project.RestoreEach = strings.TrimSpace(project.RestoreEach)
 	project.DebugEach = strings.TrimSpace(project.DebugEach)
+	project.MeasureEach = strings.TrimSpace(project.MeasureEach)
 
 	if err := checkEnv(project, &project.Environment); err != nil {
 		return nil, err

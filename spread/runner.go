@@ -411,6 +411,7 @@ func (r *Runner) waitContent() (io.Reader, error) {
 }
 
 const (
+	measuring = "measuring"
 	preparing = "preparing"
 	executing = "executing"
 	restoring = "restoring"
@@ -596,6 +597,14 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 
 		debug := job.Debug()
 		for repeat := r.options.Repeat; repeat >= 0; repeat-- {
+
+			if !r.run(client, job, measuring, r.project, r.project.MeasureEach, r.project.Debug, &abend) {
+				r.add(&stats.ProjectMeasureError, job)
+				r.add(&stats.TaskAbort, job)
+				badProject = true
+				repeat = -1
+			}
+
 			if r.options.Restore {
 				// Do not prepare or execute, and don't repeat.
 				repeat = -1
@@ -619,6 +628,13 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 			}
 			if !abend && !r.run(client, job, restoring, job, job.Restore(), debug, &abend) {
 				r.add(&stats.TaskRestoreError, job)
+				badProject = true
+				repeat = -1
+			}
+
+			if !r.run(client, job, measuring, r.project, r.project.MeasureEach, r.project.Debug, &abend) {
+				r.add(&stats.ProjectMeasureError, job)
+				r.add(&stats.TaskAbort, job)
 				badProject = true
 				repeat = -1
 			}
@@ -1008,6 +1024,7 @@ type stats struct {
 	BackendRestoreError []*Job
 	ProjectPrepareError []*Job
 	ProjectRestoreError []*Job
+	ProjectMeasureError []*Job
 }
 
 func (s *stats) errorCount() int {
@@ -1021,6 +1038,7 @@ func (s *stats) errorCount() int {
 		s.BackendRestoreError,
 		s.ProjectPrepareError,
 		s.ProjectRestoreError,
+		s.ProjectMeasureError,
 	}
 	count := 0
 	for _, jobs := range errors {
@@ -1042,6 +1060,7 @@ func (s *stats) log() {
 	logNames(printf, "Failed backend restore", s.BackendRestoreError, backendName)
 	logNames(printf, "Failed project prepare", s.ProjectPrepareError, projectName)
 	logNames(printf, "Failed project restore", s.ProjectRestoreError, projectName)
+	logNames(printf, "Failed project measure", s.ProjectMeasureError, projectName)
 }
 
 func projectName(job *Job) string { return "project" }

@@ -43,6 +43,20 @@ func Dial(server Server, username, password string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect to %s: %v", server, err)
 	}
+
+    // send keepalive packets every 10 seconds
+    go func() {
+        t := time.NewTicker(10 * time.Second)
+        defer t.Stop()
+        for {
+            <-t.C
+            _, _, err := sshc.Conn.SendRequest("keepalive@golang.org", true, nil)
+            if err != nil {
+                return
+            }
+        }
+    }()
+
 	client := &Client{
 		server: server,
 		sshc:   sshc,

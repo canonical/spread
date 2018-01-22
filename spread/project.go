@@ -60,7 +60,9 @@ type Backend struct {
 	Memory Size
 
 	// Only for Linode so far.
-	Storage Size
+	Plan     string
+	Location string
+	Storage  Size
 
 	Systems SystemsMap
 

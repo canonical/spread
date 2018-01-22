@@ -564,6 +564,9 @@ func Load(path string) (*Project, error) {
 	orig := project.Suites
 	project.Suites = make(map[string]*Suite)
 	for sname, suite := range orig {
+		if suite == nil {
+			suite = &Suite{}
+		}
 		if !strings.HasSuffix(sname, "/") {
 			return nil, fmt.Errorf("invalid suite name (must end with /): %q", sname)
 		}

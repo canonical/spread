@@ -743,6 +743,9 @@ func (r *Runner) client(backend *Backend, system *System) *Client {
 		client := r.reuseServer(backend, system)
 		reused := client != nil
 		if !reused {
+			if r.options.Reuse && len(r.reuse.ReuseSystems(system)) > 0 {
+				break
+			}
 			client = r.allocateServer(backend, system)
 			if client == nil {
 				break
@@ -979,8 +982,7 @@ func (r *Runner) reuseServer(backend *Backend, system *System) *Client {
 
 		server, err := provider.Reuse(r.tomb.Context(nil), rsystem, system)
 		if err != nil {
-			printf("Discarding %s at %s, cannot reuse: %v", system, rsystem.Address, err)
-			r.discardServer(server)
+			printf("Cannot reuse %s at %s: %v", system, rsystem.Address, err)
 			continue
 		}
 
@@ -998,8 +1000,12 @@ func (r *Runner) reuseServer(backend *Backend, system *System) *Client {
 		}
 		client, err := Dial(server, username, password)
 		if err != nil {
-			printf("Discarding %s, cannot connect: %v", server, err)
-			r.discardServer(server)
+			if r.options.Reuse {
+				printf("Cannot reuse %s at %s: %v", system, rsystem.Address, err)
+			} else {
+				printf("Discarding %s: %v", server, err)
+				r.discardServer(server)
+			}
 			continue
 		}
 

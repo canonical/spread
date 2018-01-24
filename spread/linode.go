@@ -75,13 +75,19 @@ type linodeServer struct {
 }
 
 type linodeServerData struct {
-	ID        int    `json:"LINODEID"`
-	Label     string `json:"LABEL"`
-	Status    int    `json:"STATUS" yaml:"-"`
-	Config    int    `json:"-"`
-	Root      int    `json:"-"`
-	Swap      int    `json:"-"`
-	Ephemeral bool   `json:"-"`
+	ID     int    `json:"LINODEID"`
+	Label  string `json:"LABEL"`
+	Group  string `json:"LPM_DISPLAYGROUP"`
+	Status int    `json:"STATUS" yaml:"-"`
+	Config int    `json:"-"`
+	Root   int    `json:"-"`
+	Swap   int    `json:"-"`
+}
+
+const linodeEphemeralGroup = "# Spread Ephemeral"
+
+func (s *linodeServer) Ephemeral() bool {
+	return s.d.Group == linodeEphemeralGroup
 }
 
 func (s *linodeServer) String() string {
@@ -313,7 +319,7 @@ func (s *linodeServer) Discard(ctx context.Context) error {
 	s.watchTomb.Wait()
 
 	var err error
-	if s.d.Ephemeral {
+	if s.Ephemeral() {
 		err = s.p.removeMachine(s)
 	} else {
 		_, err1 := s.p.shutdown(s)
@@ -899,9 +905,9 @@ func (p *linodeProvider) createMachine(system *System) (*linodeServer, error) {
 	s := &linodeServer{
 		p: p,
 		d: linodeServerData{
-			ID:        result.Data.ID,
-			Label:     fmt.Sprintf("Spread-%d", result.Data.ID),
-			Ephemeral: true,
+			ID:    result.Data.ID,
+			Label: fmt.Sprintf("Spread-%d", result.Data.ID),
+			Group: linodeEphemeralGroup,
 		},
 	}
 
@@ -909,7 +915,7 @@ func (p *linodeProvider) createMachine(system *System) (*linodeServer, error) {
 		"api_action":       "linode.update",
 		"LinodeID":         s.d.ID,
 		"Label":            s.d.Label,
-		"lpm_displayGroup": "# Spread Ephemeral",
+		"lpm_displayGroup": s.d.Group,
 	}
 	err = p.do(params, &result)
 	if err == nil {

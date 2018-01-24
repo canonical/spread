@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -1463,7 +1464,19 @@ func (p *linodeProvider) dofl(params linodeParams, result interface{}, flags doF
 	}
 	values["api_key"] = []string{p.backend.Key}
 
-	resp, err := client.PostForm("https://api.linode.com", values)
+	// Linode may 503 on too many calls, apparently due to a rate limit
+	// that surfaces as an HTML error page. Retry for now.
+	var err error
+	var resp *http.Response
+	var delays = rand.Perm(10)
+	for i := 0; i < 10; i++ {
+		resp, err = client.PostForm("https://api.linode.com", values)
+		if err == nil && 500 <= resp.StatusCode && resp.StatusCode < 600 {
+			time.Sleep(time.Duration(delays[i]) * 250 * time.Millisecond)
+			continue
+		}
+		break
+	}
 	if err != nil {
 		return fmt.Errorf("cannot perform Linode request: %v", err)
 	}
@@ -1484,7 +1497,7 @@ func (p *linodeProvider) dofl(params linodeParams, result interface{}, flags doF
 	err = json.Unmarshal(data, result)
 	if err != nil {
 		info := pretty.Sprintf("Request:\n-----\n%# v\n-----\nResponse:\n-----\n%s\n-----\n", params, data)
-		return fmt.Errorf("cannot decode Linode response: %s\n%s", err, info)
+		return fmt.Errorf("cannot decode Linode response (status %d): %s\n%s", resp.StatusCode, err, info)
 	}
 	return nil
 }

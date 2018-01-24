@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"gopkg.in/tomb.v2"
+	"math"
 	"math/rand"
 )
 
@@ -423,6 +424,8 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	}
 	start := time.Now()
 	contextStr := job.StringFor(context)
+	client.SetJob(contextStr)
+	defer client.ResetJob()
 	if verb == executing {
 		r.mu.Lock()
 		if r.sequence[job] == 0 {
@@ -659,11 +662,20 @@ func (r *Runner) job(backend *Backend, system *System, suite *Suite, last *Job, 
 			return job
 		}
 	}
+
+	// Find the current top priority for this backend and system.
+	var priority int64 = math.MinInt64
+	for _, job := range r.pending {
+		if job != nil && job.Priority > priority && job.Backend == backend && job.System == system {
+			priority = job.Priority
+		}
+	}
+
 	var best = -1
 	var bestWorkers = 1000000
 	for _, i := range order {
 		job := r.pending[i]
-		if job == nil {
+		if job == nil || job.Priority < priority {
 			continue
 		}
 		if job.Backend != backend || job.System != system {
@@ -731,6 +743,9 @@ func (r *Runner) client(backend *Backend, system *System) *Client {
 		client := r.reuseServer(backend, system)
 		reused := client != nil
 		if !reused {
+			if r.options.Reuse && len(r.reuse.ReuseSystems(system)) > 0 {
+				break
+			}
 			client = r.allocateServer(backend, system)
 			if client == nil {
 				break
@@ -967,8 +982,7 @@ func (r *Runner) reuseServer(backend *Backend, system *System) *Client {
 
 		server, err := provider.Reuse(r.tomb.Context(nil), rsystem, system)
 		if err != nil {
-			printf("Discarding %s at %s, cannot reuse: %v", system, rsystem.Address, err)
-			r.discardServer(server)
+			printf("Cannot reuse %s at %s: %v", system, rsystem.Address, err)
 			continue
 		}
 
@@ -986,8 +1000,12 @@ func (r *Runner) reuseServer(backend *Backend, system *System) *Client {
 		}
 		client, err := Dial(server, username, password)
 		if err != nil {
-			printf("Discarding %s, cannot connect: %v", server, err)
-			r.discardServer(server)
+			if r.options.Reuse {
+				printf("Cannot reuse %s at %s: %v", system, rsystem.Address, err)
+			} else {
+				printf("Discarding %s: %v", server, err)
+				r.discardServer(server)
+			}
 			continue
 		}
 

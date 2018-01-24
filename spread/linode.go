@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -50,6 +51,16 @@ type linodeProvider struct {
 		next time.Time
 		data []*linodeServer
 	}
+
+	planCache struct {
+		mu   sync.Mutex
+		data []*linodePlan
+	}
+
+	locationCache struct {
+		mu   sync.Mutex
+		data []*linodeLocation
+	}
 }
 
 var client = &http.Client{}
@@ -67,10 +78,17 @@ type linodeServer struct {
 type linodeServerData struct {
 	ID     int    `json:"LINODEID"`
 	Label  string `json:"LABEL"`
+	Group  string `json:"LPM_DISPLAYGROUP"`
 	Status int    `json:"STATUS" yaml:"-"`
 	Config int    `json:"-"`
 	Root   int    `json:"-"`
 	Swap   int    `json:"-"`
+}
+
+const linodeEphemeralGroup = "# Spread Ephemeral"
+
+func (s *linodeServer) Ephemeral() bool {
+	return s.d.Group == linodeEphemeralGroup
 }
 
 func (s *linodeServer) String() string {
@@ -192,9 +210,10 @@ func (p *linodeProvider) Allocate(ctx context.Context, system *System) (Server, 
 	if err != nil {
 		return nil, err
 	}
-	if len(servers) == 0 {
-		return nil, FatalError{fmt.Errorf("no servers in Linode account")}
-	}
+
+	// HACK HACK HACK - While we introduce the dynamic allocation in Travis.
+	p.backend.Location = "fremont"
+	p.backend.Plan = "8GB"
 
 	// Iterate out of order to reduce conflicts.
 	perm := rnd.Perm(len(servers))
@@ -221,8 +240,8 @@ func (p *linodeProvider) Allocate(ctx context.Context, system *System) (Server, 
 		s.watch()
 		return s, nil
 	}
-	if len(servers) == 0 || p.backend.HaltTimeout.Duration == 0 {
-		return nil, fmt.Errorf("no powered off servers in Linode account")
+	if p.backend.Plan == "" && (len(servers) == 0 || p.backend.HaltTimeout.Duration == 0) {
+		return nil, fmt.Errorf("no powered off servers in Linode account and no plan to allocate new machines")
 	}
 
 	// See if it's time to shutdown servers based on halt-timeout.
@@ -273,24 +292,54 @@ func (p *linodeProvider) Allocate(ctx context.Context, system *System) (Server, 
 		s.watch()
 		return s, nil
 	}
+
+	// Allocate a brand new machine if allowed.
+	if p.backend.Plan != "" {
+		s, err := p.createMachine(system)
+		if err != nil {
+			return nil, err
+		}
+		p.reserve(s)
+
+		err = p.setup(s, system, time.Time{})
+		if err != nil {
+			if p.removeMachine(s) != nil {
+				err = fmt.Errorf("cannot deallocate machine after setup error: %v", err)
+			}
+			return nil, err
+		}
+		printf("Allocated %s.", s)
+		s.watch()
+		return s, nil
+	}
+
 	return nil, fmt.Errorf("no powered off servers in Linode account exceed halt-timeout")
 }
 
 func (s *linodeServer) Discard(ctx context.Context) error {
 	s.watchTomb.Kill(nil)
 	s.watchTomb.Wait()
-	_, err1 := s.p.shutdown(s)
-	err2 := s.p.removeConfig(s, "", s.d.Config)
-	err3 := s.p.removeDisks(s, "", 0, s.d.Root, s.d.Swap)
-	s.p.removeAbandoned(s)
+
+	var err error
+	if s.Ephemeral() {
+		err = s.p.removeMachine(s)
+	} else {
+		_, err1 := s.p.shutdown(s)
+		err2 := s.p.removeConfig(s, "", s.d.Config)
+		err3 := s.p.removeDisks(s, "", 0, s.d.Root, s.d.Swap)
+		s.p.removeAbandoned(s)
+		err = firstErr(err1, err2, err3)
+	}
 	s.p.unreserve(s)
-	return firstErr(err1, err2, err3)
+	return err
 }
 
 type linodeListResult struct {
 	linodeResult
 	Data []linodeServerData `json:"DATA"`
 }
+
+var linodeLabelWarning = true
 
 func (p *linodeProvider) list() ([]*linodeServer, error) {
 	p.listCache.mu.Lock()
@@ -312,9 +361,16 @@ func (p *linodeProvider) list() ([]*linodeServer, error) {
 	if err != nil {
 		return nil, err
 	}
-	servers := make([]*linodeServer, len(result.Data))
-	for i, d := range result.Data {
-		servers[i] = &linodeServer{p: p, d: d}
+	servers := make([]*linodeServer, 0, len(result.Data))
+	for _, d := range result.Data {
+		if !p.safeLabel(d.Label) {
+			if linodeLabelWarning {
+				linodeLabelWarning = false
+				printf("WARNING: Some Linode servers ignored due to unsafe labels (must be \"Spread-...\").")
+			}
+			continue
+		}
+		servers = append(servers, &linodeServer{p: p, d: d})
 	}
 
 	p.listCache.data = servers
@@ -710,6 +766,205 @@ func (p *linodeProvider) removeAbandoned(s *linodeServer) {
 			printf(warn, s, err)
 		}
 	}
+}
+
+type linodePlan struct {
+	ID       int    `json:"PLANID"`
+	Label    string `json:"LABEL"`
+	AltLabel string `json:"-"`
+}
+
+func (p *linodeProvider) planID(name string) (int, error) {
+	p.planCache.mu.Lock()
+	defer p.planCache.mu.Unlock()
+
+	plans := p.planCache.data
+	if plans == nil {
+		params := linodeParams{
+			"api_action": "avail.linodeplans",
+		}
+		var result struct {
+			linodeResult
+			Data []*linodePlan `json:"DATA"`
+		}
+		err := p.do(params, &result)
+		if err == nil {
+			err = result.err()
+		}
+		if err != nil {
+			return 0, fmt.Errorf("cannot list available Linode plans: %v", err)
+		}
+		plans = result.Data
+
+		for _, plan := range plans {
+			i := strings.LastIndex(plan.Label, " ")
+			if i > 0 {
+				n, err := strconv.Atoi(plan.Label[i+1:])
+				if err == nil {
+					plan.AltLabel = fmt.Sprintf("%s %dGB", plan.Label[:i], n/1024)
+				}
+			}
+			plan.Label = strings.TrimPrefix(plan.Label, "Linode ")
+			plan.AltLabel = strings.TrimPrefix(plan.AltLabel, "Linode ")
+		}
+		p.planCache.data = plans
+	}
+
+	name = strings.TrimPrefix(name, "Linode ")
+
+	for _, plan := range plans {
+		if name == plan.Label || name == plan.AltLabel {
+			return plan.ID, nil
+		}
+	}
+
+	return 0, fmt.Errorf("cannot find Linode plan %q", name)
+}
+
+type linodeLocation struct {
+	ID    int    `json:"DATACENTERID"`
+	Label string `json:"LABEL"`
+	Abbr  string `json:"ABBR"`
+}
+
+func (p *linodeProvider) locationID(name string) (int, error) {
+	p.locationCache.mu.Lock()
+	defer p.locationCache.mu.Unlock()
+
+	locations := p.locationCache.data
+	if locations == nil {
+		params := linodeParams{
+			"api_action": "avail.datacenters",
+		}
+		var result struct {
+			linodeResult
+			Data []*linodeLocation `json:"DATA"`
+		}
+		err := p.do(params, &result)
+		if err == nil {
+			err = result.err()
+		}
+		if err != nil {
+			return 0, fmt.Errorf("cannot list available Linode locations: %v", err)
+		}
+		locations = result.Data
+
+		for _, location := range locations {
+			location.Label = strings.ToLower(location.Label)
+			location.Abbr = strings.ToLower(location.Abbr)
+		}
+		p.locationCache.data = locations
+	}
+
+	name = strings.ToLower(name)
+	for _, location := range locations {
+		if name == location.Label || name == location.Abbr {
+			return location.ID, nil
+		}
+	}
+
+	return 0, fmt.Errorf("cannot find Linode location %q", name)
+}
+
+func (p *linodeProvider) createMachine(system *System) (*linodeServer, error) {
+	printf("Creating new Linode machine for %s...", system.Name)
+
+	location := p.backend.Location
+	if location == "" {
+		location = "fremont"
+	}
+	locationID, err := p.locationID(location)
+	if err != nil {
+		return nil, &FatalError{err}
+	}
+
+	plan := p.backend.Plan
+	if plan == "" {
+		plan = "2GB"
+	}
+	planID, err := p.planID(plan)
+	if err != nil {
+		return nil, &FatalError{err}
+	}
+
+	params := linodeParams{
+		"api_action":   "linode.create",
+		"PlanID":       planID,
+		"DatacenterID": locationID,
+	}
+	var result struct {
+		linodeResult
+		Data linodeServerData `json:"DATA"`
+	}
+	err = p.do(params, &result)
+	if err == nil {
+		err = result.err()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("cannot allocate new Linode machine for %s: %v", system.Name, err)
+	}
+
+	s := &linodeServer{
+		p: p,
+		d: linodeServerData{
+			ID:    result.Data.ID,
+			Label: fmt.Sprintf("Spread-%d", result.Data.ID),
+			Group: linodeEphemeralGroup,
+		},
+	}
+
+	params = linodeParams{
+		"api_action":       "linode.update",
+		"LinodeID":         s.d.ID,
+		"Label":            s.d.Label,
+		"lpm_displayGroup": s.d.Group,
+	}
+	err = p.do(params, &result)
+	if err == nil {
+		err = result.err()
+	}
+	if err != nil {
+		if p.removeMachine(s) != nil {
+			return nil, fmt.Errorf("cannot update or deallocate (!) new Linode machine %s: %v", s, err)
+		}
+		return nil, fmt.Errorf("cannot update newly allocated Linode machine %s: %v", s, err)
+	}
+
+	return s, nil
+}
+
+func (p *linodeProvider) safeLabel(label string) bool {
+	return strings.HasPrefix(label, "Spread-")
+}
+
+func (p *linodeProvider) checkLabel(s *linodeServer) error {
+	if !p.safeLabel(s.d.Label) {
+		return fmt.Errorf("Linode server labels must start with \"Spread-\" to prevent mistakes")
+	}
+	return nil
+}
+
+func (p *linodeProvider) removeMachine(s *linodeServer) error {
+	if err := p.checkLabel(s); err != nil {
+		return fmt.Errorf("cannot deallocate Linode machine %s: %v", s, err)
+	}
+
+	printf("Removing Linode machine %s...", s)
+
+	params := linodeParams{
+		"api_action": "linode.delete",
+		"LinodeID":   s.d.ID,
+		"skipChecks": true,
+	}
+	var result linodeResult
+	err := p.do(params, &result)
+	if err == nil {
+		err = result.err()
+	}
+	if err != nil {
+		return fmt.Errorf("cannot deallocate Linode machine %s: %v", s, err)
+	}
+	return nil
 }
 
 type linodeJob struct {
@@ -1161,7 +1416,7 @@ func (p *linodeProvider) checkKey() error {
 			err = result.err()
 		}
 	}
-	if err == nil && linodeLocation == nil {
+	if err == nil && linodeTimezone == nil {
 		err = fmt.Errorf("cannot use Linode backends without a timezone database available")
 	}
 	if err != nil {
@@ -1210,7 +1465,19 @@ func (p *linodeProvider) dofl(params linodeParams, result interface{}, flags doF
 	}
 	values["api_key"] = []string{p.backend.Key}
 
-	resp, err := client.PostForm("https://api.linode.com", values)
+	// Linode may 503 on too many calls, apparently due to a rate limit
+	// that surfaces as an HTML error page. Retry for now.
+	var err error
+	var resp *http.Response
+	var delays = rand.Perm(10)
+	for i := 0; i < 10; i++ {
+		resp, err = client.PostForm("https://api.linode.com", values)
+		if err == nil && 500 <= resp.StatusCode && resp.StatusCode < 600 {
+			time.Sleep(time.Duration(delays[i]) * 250 * time.Millisecond)
+			continue
+		}
+		break
+	}
 	if err != nil {
 		return fmt.Errorf("cannot perform Linode request: %v", err)
 	}
@@ -1231,20 +1498,20 @@ func (p *linodeProvider) dofl(params linodeParams, result interface{}, flags doF
 	err = json.Unmarshal(data, result)
 	if err != nil {
 		info := pretty.Sprintf("Request:\n-----\n%# v\n-----\nResponse:\n-----\n%s\n-----\n", params, data)
-		return fmt.Errorf("cannot decode Linode response: %s\n%s", err, info)
+		return fmt.Errorf("cannot decode Linode response (status %d): %s\n%s", resp.StatusCode, err, info)
 	}
 	return nil
 }
 
-var linodeLocation *time.Location
+var linodeTimezone *time.Location
 
 func init() {
-	linodeLocation, _ = time.LoadLocation("America/New_York")
+	linodeTimezone, _ = time.LoadLocation("America/New_York")
 }
 
 func parseLinodeDT(dt string) time.Time {
 	if dt != "" {
-		t, err := time.ParseInLocation("2006-01-02 15:04:05.0", dt, linodeLocation)
+		t, err := time.ParseInLocation("2006-01-02 15:04:05.0", dt, linodeTimezone)
 		if err == nil {
 			return t
 		}

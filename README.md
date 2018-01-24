@@ -517,6 +517,37 @@ as a `debug-each` script at the project, backend, and suite levels, so they
 are aggregated and repeated for every task under them.
 
 
+<a name="ordering">
+
+## Ordering tasks
+
+The order of tasks on every run is random by default, so that it becomes visible
+when the correctness of some tasks depends on unspecified side effects of
+prior tasks.
+
+When breakages related to ordering occur, Spread can attempt to reproduce the
+ordering used via the `-seed` parameter. On every run, the required seed to
+reproduce the order utilized will be logged in the output. Note that when
+several workers are being used, they will steal pending work from a common
+queue based on timing, which means the order may not be exactly the same.
+
+In some cases, it may also be useful to explicitly prioritize some tasks. For
+example, if there are two workers and one long task, it's best if that known
+long task starts first, so that the workers can share more of the load. If
+the long task comes last the two workers will share all the smaller tasks,
+then one worker will pick the long task, and the other worker will stop since
+there's nothing else to do. The outcome is a longer total run time.
+
+To define the priority of a task, suite, system, or backend, simply specify
+the priority field in the desired context:
+```
+priority: 100
+```
+
+The larger the priority, the earlier it will be scheduled. The default
+priority is zero, and negative priorities are supported too.
+
+
 <a name="repeating"/>
 
 ## Repeating tasks
@@ -535,7 +566,7 @@ the number of reexecutions to do, being 0 the default value.
 
 To keep things simple and convenient, Spread prepares systems to connect over SSH
 as the root user using a single password for all systems. Unless explicitly defined
-via the _-pass_ command line option, the password will be random and different on
+via the `-pass` command line option, the password will be random and different on
 each run.
 
 Some of the supported backends may be unable to provide an image with the correct
@@ -887,6 +918,22 @@ backends:
 	systems:
 	    - ubuntu-16.04
 ```
+
+The Linode backend can also allocate systems dynamically. For that, just define
+these two fields specifying which plan you'd like to use for the new machines,
+and which datacenter to allocate them on:
+```
+backends:
+    linode:
+        key: (...)
+	plan: 4GB
+	location: newark
+```
+
+When these machines terminate running, they will be removed. If anything
+happens that prevents the immediate removal, they will remain in the account
+and then be reused by follow up runs and removed when done, effectively garbage
+collecting what's left behind. System reuse works as explained above too.
 
 Note that in Linode you can create additional users inside your own account
 that have limited access to a selection of servers only, and with limited

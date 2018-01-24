@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"gopkg.in/tomb.v2"
+	"math"
 	"math/rand"
 )
 
@@ -661,11 +662,20 @@ func (r *Runner) job(backend *Backend, system *System, suite *Suite, last *Job, 
 			return job
 		}
 	}
+
+	// Find the current top priority for this backend and system.
+	var priority int64 = math.MinInt64
+	for _, job := range r.pending {
+		if job != nil && job.Priority > priority && job.Backend == backend && job.System == system {
+			priority = job.Priority
+		}
+	}
+
 	var best = -1
 	var bestWorkers = 1000000
 	for _, i := range order {
 		job := r.pending[i]
-		if job == nil {
+		if job == nil || job.Priority < priority {
 			continue
 		}
 		if job.Backend != backend || job.System != system {

@@ -21,8 +21,9 @@ type Server interface {
 	Provider() Provider
 	Address() string
 	Discard(ctx context.Context) error
-	System() *System
 	ReuseData() interface{}
+	System() *System
+	Label() string
 	String() string
 }
 

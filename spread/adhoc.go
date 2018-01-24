@@ -30,6 +30,10 @@ func (s *adhocServer) String() string {
 	return s.system.String()
 }
 
+func (s *adhocServer) Label() string {
+	return s.system.String()
+}
+
 func (s *adhocServer) Provider() Provider {
 	return s.p
 }

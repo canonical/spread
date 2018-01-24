@@ -98,6 +98,10 @@ func (s *linodeServer) String() string {
 	return fmt.Sprintf("%s (%s)", s.system, s.d.Label)
 }
 
+func (s *linodeServer) Label() string {
+	return s.d.Label
+}
+
 func (s *linodeServer) Provider() Provider {
 	return s.p
 }

@@ -43,6 +43,10 @@ func (s *lxdServer) String() string {
 	return fmt.Sprintf("%s (%s)", s.system, s.d.Name)
 }
 
+func (s *lxdServer) Label() string {
+	return s.d.Name
+}
+
 func (s *lxdServer) Provider() Provider {
 	return s.p
 }

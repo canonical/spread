@@ -36,6 +36,10 @@ func (s *qemuServer) String() string {
 	return s.system.String()
 }
 
+func (s *qemuServer) Label() string {
+	return s.system.String()
+}
+
 func (s *qemuServer) Provider() Provider {
 	return s.p
 }

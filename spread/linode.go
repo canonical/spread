@@ -36,7 +36,8 @@ type linodeProvider struct {
 	backend *Backend
 	options *Options
 
-	mu sync.Mutex
+	mu   sync.Mutex
+	domu sync.Mutex
 
 	keyChecked bool
 	keyErr     error
@@ -287,7 +288,6 @@ func (p *linodeProvider) Allocate(ctx context.Context, system *System) (Server, 
 		if err != nil {
 			return nil, err
 		}
-		p.reserve(s)
 
 		err = p.setup(s, system, time.Time{})
 		if err != nil {
@@ -778,7 +778,7 @@ func (p *linodeProvider) planID(name string) (int, error) {
 		}
 	}
 
-	return 0, fmt.Errorf("cannot find Linode plan %q", name)
+	return 0, &FatalError{fmt.Errorf("cannot find Linode plan %q", name)}
 }
 
 type linodeLocation struct {
@@ -819,7 +819,7 @@ func (p *linodeProvider) locationID(name string) (int, error) {
 		}
 	}
 
-	return 0, fmt.Errorf("cannot find Linode location %q", name)
+	return 0, &FatalError{fmt.Errorf("cannot find Linode location %q", name)}
 }
 
 func (p *linodeProvider) createMachine(system *System) (*linodeServer, error) {
@@ -831,7 +831,7 @@ func (p *linodeProvider) createMachine(system *System) (*linodeServer, error) {
 	}
 	locationID, err := p.locationID(location)
 	if err != nil {
-		return nil, &FatalError{err}
+		return nil, err
 	}
 
 	plan := p.backend.Plan
@@ -840,7 +840,7 @@ func (p *linodeProvider) createMachine(system *System) (*linodeServer, error) {
 	}
 	planID, err := p.planID(plan)
 	if err != nil {
-		return nil, &FatalError{err}
+		return nil, err
 	}
 
 	params := linodeParams{
@@ -864,6 +864,10 @@ func (p *linodeProvider) createMachine(system *System) (*linodeServer, error) {
 			Group: linodeEphemeralGroup,
 		},
 	}
+
+	// Reserve early so that once it's renamed we won't have
+	// other goroutines attempting to pick it up.
+	p.reserve(s)
 
 	params = linodeParams{
 		"api_action":       "linode.update",
@@ -909,6 +913,8 @@ func (p *linodeProvider) removeMachine(s *linodeServer) error {
 	if err != nil {
 		return fmt.Errorf("cannot deallocate Linode machine %s: %v", s, err)
 	}
+
+	p.unreserve(s)
 	return nil
 }
 
@@ -1376,6 +1382,10 @@ func (p *linodeProvider) dofl(params linodeParams, result interface{}, flags doF
 	if log {
 		debugf("Linode request: %# v\n", params)
 	}
+
+	// Linode frequently breaks if we call it concurrently.
+	p.domu.Lock()
+	defer p.domu.Unlock()
 
 	values := make(url.Values)
 	for k, v := range params {

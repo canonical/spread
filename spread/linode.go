@@ -210,9 +210,10 @@ func (p *linodeProvider) Allocate(ctx context.Context, system *System) (Server, 
 	if err != nil {
 		return nil, err
 	}
-	if len(servers) == 0 {
-		return nil, FatalError{fmt.Errorf("no servers in Linode account")}
-	}
+
+	// HACK HACK HACK - While we introduce the dynamic allocation in Travis.
+	p.backend.Location = "fremont"
+	p.backend.Plan = "8GB"
 
 	// Iterate out of order to reduce conflicts.
 	perm := rnd.Perm(len(servers))

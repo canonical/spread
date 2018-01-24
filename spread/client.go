@@ -23,6 +23,7 @@ type Client struct {
 	sshc   *ssh.Client
 	config *ssh.ClientConfig
 	addr   string
+	job    string
 
 	warnTimeout time.Duration
 	killTimeout time.Duration
@@ -51,7 +52,20 @@ func Dial(server Server, username, password string) (*Client, error) {
 	}
 	client.SetWarnTimeout(0)
 	client.SetKillTimeout(0)
+	client.SetJob("")
 	return client, nil
+}
+
+func (c *Client) SetJob(job string) {
+	if job == "" {
+		c.job = c.server.String()
+	} else {
+		c.job = fmt.Sprintf("%s (%s)", c.server, job)
+	}
+}
+
+func (c *Client) ResetJob() {
+	c.SetJob("")
 }
 
 func (c *Client) dialOnReboot() error {
@@ -80,9 +94,9 @@ func (c *Client) dialOnReboot() error {
 		select {
 		case <-retry.C:
 		case <-relog.C:
-			printf("Reboot of %s is taking a while...", c.server)
+			printf("Reboot on %s is taking a while...", c.job)
 		case <-timeout:
-			return fmt.Errorf("kill-timeout reached, %s did not reboot after request", c.server)
+			return fmt.Errorf("kill-timeout reached after %s reboot request", c.job)
 		}
 	}
 
@@ -97,9 +111,9 @@ func (c *Client) dialOnReboot() error {
 		select {
 		case <-retry.C:
 		case <-relog.C:
-			printf("Reboot of %s is taking a while...", c.server)
+			printf("Reboot on %s is taking a while...", c.job)
 		case <-timeout:
-			return fmt.Errorf("kill-timeout reached, cannot reconnect to %s after reboot: %v", c.server, err)
+			return fmt.Errorf("kill-timeout reached, cannot reconnect %s after reboot: %v", c.job, err)
 		}
 	}
 }
@@ -162,7 +176,7 @@ func (c *Client) WriteFile(path string, data []byte) error {
 		errch <- stdin.Close()
 	}()
 
-	debugf("Writing to %s at %s:\n-----\n%# v\n-----", c.server, path, string(data))
+	debugf("Writing to %s on %s:\n-----\n%# v\n-----", path, c.job, string(data))
 
 	var stderr safeBuffer
 	session.Stderr = &stderr
@@ -170,11 +184,11 @@ func (c *Client) WriteFile(path string, data []byte) error {
 	err = c.runCommand(session, cmd, nil, &stderr)
 	if err != nil {
 		err = outputErr(stderr.Bytes(), err)
-		return fmt.Errorf("cannot write to %s at %s: %v", c.server, path, err)
+		return fmt.Errorf("cannot write to %s on %s: %v", path, c.job, err)
 	}
 
 	if err := <-errch; err != nil {
-		printf("Error writing to %s at %s: %v", c.server, path, err)
+		printf("Error writing to %s on %s: %v", path, c.job, err)
 	}
 	return nil
 }
@@ -186,7 +200,7 @@ func (c *Client) ReadFile(path string) ([]byte, error) {
 	}
 	defer session.Close()
 
-	debugf("Reading from %s at %s...", c.server, path)
+	debugf("Reading from %s on %s...", path, c.job)
 
 	var stdout, stderr safeBuffer
 	session.Stdout = &stdout
@@ -195,11 +209,11 @@ func (c *Client) ReadFile(path string) ([]byte, error) {
 	err = c.runCommand(session, cmd, nil, &stderr)
 	if err != nil {
 		err = outputErr(stderr.Bytes(), err)
-		logf("Cannot read from %s at %s: %v", c.server, path, err)
-		return nil, fmt.Errorf("cannot read from %s at %s: %v", c.server, path, err)
+		logf("Cannot read from %s on %s: %v", path, c.job, err)
+		return nil, fmt.Errorf("cannot read from %s on %s: %v", path, c.job, err)
 	}
 	output := stdout.Bytes()
-	debugf("Got data from %s at %s:\n-----\n%# v\n-----", c.server, path, string(output))
+	debugf("Got data from %s on %s:\n-----\n%# v\n-----", path, c.job, string(output))
 	return output, nil
 }
 
@@ -258,10 +272,10 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 			return output, err
 		}
 		if reboot > maxReboots {
-			return nil, fmt.Errorf("%s rebooted more than %d times", c.server, maxReboots)
+			return nil, fmt.Errorf("rebooted on %s more than %d times", c.job, maxReboots)
 		}
 
-		printf("Rebooting %s as requested...", c.server)
+		printf("Rebooting on %s as requested...", c.job)
 
 		rebootKey = rerr.Key
 		output = append(output, '\n')
@@ -274,10 +288,10 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 		if err == nil {
 			select {
 			case <-timedout:
-				return nil, fmt.Errorf("kill-timeout reached while waiting for %s to reboot", c.server)
+				return nil, fmt.Errorf("kill-timeout reached on %s while waiting for reboot", c.job)
 			default:
 			}
-			return nil, fmt.Errorf("reboot request on %s failed", c.server)
+			return nil, fmt.Errorf("reboot request on %s failed", c.job)
 		}
 		if err := c.dialOnReboot(); err != nil {
 			return nil, err
@@ -380,7 +394,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		}()
 	}
 
-	debugf("Sending script to %s:\n-----\n%s\n------", c.server, buf.Bytes())
+	debugf("Sending script for %s:\n-----\n%s\n------", c.job, buf.Bytes())
 
 	var stdout, stderr safeBuffer
 	var cmd string
@@ -421,10 +435,10 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	}
 
 	if stdout.Len() > 0 {
-		debugf("Output from running script on %s:\n-----\n%s\n-----", c.server, stdout.Bytes())
+		debugf("Output from running script on %s:\n-----\n%s\n-----", c.job, stdout.Bytes())
 	}
 	if stderr.Len() > 0 {
-		debugf("Error output from running script on %s:\n-----\n%s\n-----", c.server, stderr.Bytes())
+		debugf("Error output from running script on %s:\n-----\n%s\n-----", c.job, stderr.Bytes())
 	}
 
 	if e, ok := err.(*ssh.ExitError); ok && e.ExitStatus() == 213 {
@@ -454,7 +468,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		return nil, outputErr(output, err)
 	}
 	if err := <-errch; err != nil {
-		printf("Error writing script to %s: %v", c.server, err)
+		printf("Error writing script for %s: %v", c.job, err)
 	}
 	return output, nil
 }
@@ -502,13 +516,13 @@ func (c *Client) SetupRootAccess(password string) error {
 func (c *Client) MissingOrEmpty(dir string) (bool, error) {
 	output, err := c.Output(fmt.Sprintf(`! test -e "%s" || ls -a "%s"`, dir, dir), "", nil)
 	if err != nil {
-		return false, fmt.Errorf("cannot check if %s on %s is empty: %v", dir, c.server, err)
+		return false, fmt.Errorf("cannot check if %s on %s is empty: %v", dir, c.job, err)
 	}
 	output = bytes.TrimSpace(output)
 	if len(output) > 0 {
 		for _, s := range strings.Split(string(output), "\n") {
 			if s != "." && s != ".." {
-				debugf("Found %q inside %q, considering non-empty.", s, dir)
+				debugf("Found %q inside %q on %s, considering non-empty.", s, dir, c.job)
 				return false, nil
 			}
 		}
@@ -522,7 +536,7 @@ func (c *Client) Send(from, to string, include, exclude []string) error {
 		return err
 	}
 	if !empty {
-		return fmt.Errorf("remote directory %s is not empty", to)
+		return fmt.Errorf("remote directory %s on %s is not empty", to, c.job)
 	}
 
 	session, err := c.sshc.NewSession()
@@ -585,7 +599,7 @@ func (c *Client) SendTar(tar io.Reader, unpackDir string) error {
 		return err
 	}
 	if !empty {
-		return fmt.Errorf("remote directory %s is not empty", unpackDir)
+		return fmt.Errorf("remote directory %s on %s is not empty", unpackDir, c.job)
 	}
 
 	session, err := c.sshc.NewSession()
@@ -646,7 +660,7 @@ func (c *Client) runCommand(session *ssh.Session, cmd string, stdout, stderr io.
 
 	err := session.Start(cmd)
 	if err != nil {
-		return fmt.Errorf("cannot start remote command: %v", err)
+		return fmt.Errorf("cannot start remote command on %s: %v", c.job, err)
 	}
 
 	done := make(chan error)
@@ -692,11 +706,11 @@ func (c *Client) runCommand(session *ssh.Session, cmd string, stdout, stderr io.
 			// the original start time so the message shows the task time so far.
 			start = start.Add(1)
 			if bytes.Equal(output, unchangedMarker) {
-				printft(start, startTime|endTime, "WARNING: %s running late. Output unchanged.", c.server)
+				printft(start, startTime|endTime, "WARNING: %s running late. Output unchanged.", c.job)
 			} else if len(output) == 0 {
-				printft(start, startTime|endTime, "WARNING: %s running late. Output still empty.", c.server)
+				printft(start, startTime|endTime, "WARNING: %s running late. Output still empty.", c.job)
 			} else {
-				printft(start, startTime|endTime|startFold|endFold, "WARNING: %s running late. Current output:\n-----\n%s\n-----", c.server, tail(output))
+				printft(start, startTime|endTime|startFold|endFold, "WARNING: %s running late. Current output:\n-----\n%s\n-----", c.job, tail(output))
 			}
 		}
 	}

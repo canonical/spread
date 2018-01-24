@@ -423,6 +423,8 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	}
 	start := time.Now()
 	contextStr := job.StringFor(context)
+	client.SetJob(contextStr)
+	defer client.ResetJob()
 	if verb == executing {
 		r.mu.Lock()
 		if r.sequence[job] == 0 {

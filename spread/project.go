@@ -365,9 +365,7 @@ func (job *Job) String() string {
 
 func (job *Job) StringFor(context interface{}) string {
 	switch context {
-	case job.Project:
-		return fmt.Sprintf("project on %s:%s", job.Backend.Name, job.System.Name)
-	case job.Backend, job.System:
+	case job.Project, job.Backend, job.System:
 		return fmt.Sprintf("%s:%s", job.Backend.Name, job.System.Name)
 	case job.Suite:
 		return fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System.Name, job.Suite.Name)

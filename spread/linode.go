@@ -150,22 +150,6 @@ const (
 	linodePoweredOff   = 2
 )
 
-type linodeResult struct {
-	Errors []linodeError `json:"ERRORARRAY"`
-}
-
-type linodeError struct {
-	Code    int    `json:"ERRORCODE"`
-	Message string `json:"ERRORMESSAGE"`
-}
-
-func (r *linodeResult) err() error {
-	for _, e := range r.Errors {
-		return fmt.Errorf("%s", strings.ToLower(string(e.Message[0]))+e.Message[1:])
-	}
-	return nil
-}
-
 func (p *linodeProvider) Backend() *Backend {
 	return p.backend
 }
@@ -335,7 +319,6 @@ func (s *linodeServer) Discard(ctx context.Context) error {
 }
 
 type linodeListResult struct {
-	linodeResult
 	Data []linodeServerData `json:"DATA"`
 }
 
@@ -355,9 +338,6 @@ func (p *linodeProvider) list() ([]*linodeServer, error) {
 	}
 	var result linodeListResult
 	err := p.do(params, &result)
-	if err == nil {
-		err = result.err()
-	}
 	if err != nil {
 		return nil, err
 	}
@@ -468,7 +448,6 @@ type linodeSimpleJob struct {
 }
 
 type linodeSimpleJobResult struct {
-	linodeResult
 	Data *linodeSimpleJob `json:"DATA"`
 }
 
@@ -498,9 +477,6 @@ func (p *linodeProvider) shutdown(s *linodeServer) (*linodeSimpleJob, error) {
 func (p *linodeProvider) simpleJob(s *linodeServer, verb string, params linodeParams) (*linodeSimpleJob, error) {
 	var result linodeSimpleJobResult
 	err := p.do(params, &result)
-	if err == nil {
-		err = result.err()
-	}
 	if err != nil {
 		return nil, fmt.Errorf("cannot %s %s: %v", verb, s, err)
 	}
@@ -513,7 +489,6 @@ type linodeDiskJob struct {
 }
 
 type linodeDiskJobResult struct {
-	linodeResult
 	Data *linodeDiskJob `json:"DATA"`
 }
 
@@ -561,9 +536,6 @@ func (p *linodeProvider) createDisk(s *linodeServer, system *System) (root, swap
 	var results []linodeDiskJobResult
 	err = p.do(params, &results)
 	for i, result := range results {
-		if err == nil {
-			err = result.err()
-		}
 		if i == 0 {
 			root = result.Data
 		} else {
@@ -636,7 +608,6 @@ type linodeConfig struct {
 }
 
 type linodeConfigResult struct {
-	linodeResult
 	Data []*linodeConfig `json:"DATA"`
 }
 
@@ -676,14 +647,10 @@ func (p *linodeProvider) createConfig(s *linodeServer, system *System, rootID, s
 	}
 
 	var result struct {
-		linodeResult
 		Data linodeConfig `json:"DATA"`
 	}
 
 	err = p.do(params, &result)
-	if err == nil {
-		err = result.err()
-	}
 	if err != nil {
 		return 0, fmt.Errorf("cannot create config on %s with %s: %v", s, system.Name, err)
 	}
@@ -701,11 +668,7 @@ func (p *linodeProvider) removeConfig(s *linodeServer, what string, configID int
 		"LinodeID":   s.d.ID,
 		"ConfigID":   configID,
 	}
-	var result linodeResult
-	err := p.do(params, &result)
-	if err == nil {
-		err = result.err()
-	}
+	err := p.do(params, nil)
 	if err != nil {
 		return fmt.Errorf("cannot remove %sconfig from %s: %v", what, s, err)
 	}
@@ -719,11 +682,8 @@ func (p *linodeProvider) configs(s *linodeServer) ([]*linodeConfig, error) {
 	}
 	var result linodeConfigResult
 	err := p.do(params, &result)
-	if err == nil {
-		err = result.err()
-	}
 	if err != nil {
-		return nil, fmt.Errorf("cannot get list configs for %s: %v", s, err)
+		return nil, fmt.Errorf("cannot list configurations for %s: %v", s, err)
 	}
 	return result.Data, nil
 }
@@ -784,13 +744,9 @@ func (p *linodeProvider) planID(name string) (int, error) {
 			"api_action": "avail.linodeplans",
 		}
 		var result struct {
-			linodeResult
 			Data []*linodePlan `json:"DATA"`
 		}
 		err := p.do(params, &result)
-		if err == nil {
-			err = result.err()
-		}
 		if err != nil {
 			return 0, fmt.Errorf("cannot list available Linode plans: %v", err)
 		}
@@ -837,13 +793,9 @@ func (p *linodeProvider) locationID(name string) (int, error) {
 			"api_action": "avail.datacenters",
 		}
 		var result struct {
-			linodeResult
 			Data []*linodeLocation `json:"DATA"`
 		}
 		err := p.do(params, &result)
-		if err == nil {
-			err = result.err()
-		}
 		if err != nil {
 			return 0, fmt.Errorf("cannot list available Linode locations: %v", err)
 		}
@@ -893,13 +845,9 @@ func (p *linodeProvider) createMachine(system *System) (*linodeServer, error) {
 		"DatacenterID": locationID,
 	}
 	var result struct {
-		linodeResult
 		Data linodeServerData `json:"DATA"`
 	}
 	err = p.do(params, &result)
-	if err == nil {
-		err = result.err()
-	}
 	if err != nil {
 		return nil, fmt.Errorf("cannot allocate new Linode machine for %s: %v", system.Name, err)
 	}
@@ -920,9 +868,6 @@ func (p *linodeProvider) createMachine(system *System) (*linodeServer, error) {
 		"lpm_displayGroup": s.d.Group,
 	}
 	err = p.do(params, &result)
-	if err == nil {
-		err = result.err()
-	}
 	if err != nil {
 		if p.removeMachine(s) != nil {
 			return nil, fmt.Errorf("cannot update or deallocate (!) new Linode machine %s: %v", s, err)
@@ -956,11 +901,7 @@ func (p *linodeProvider) removeMachine(s *linodeServer) error {
 		"LinodeID":   s.d.ID,
 		"skipChecks": true,
 	}
-	var result linodeResult
-	err := p.do(params, &result)
-	if err == nil {
-		err = result.err()
-	}
+	err := p.do(params, nil)
 	if err != nil {
 		return fmt.Errorf("cannot deallocate Linode machine %s: %v", s, err)
 	}
@@ -996,7 +937,6 @@ func (job *linodeJob) err() error {
 }
 
 type linodeJobResult struct {
-	linodeResult
 	Data []*linodeJob `json:"DATA"`
 }
 
@@ -1007,9 +947,6 @@ func (p *linodeProvider) jobs(s *linodeServer, flags doFlags) ([]*linodeJob, err
 	}
 	var result linodeJobResult
 	err := p.dofl(params, &result, flags)
-	if err == nil {
-		err = result.err()
-	}
 	if err != nil {
 		return nil, fmt.Errorf("cannot get job details for %s: %v", s, err)
 	}
@@ -1024,9 +961,6 @@ func (p *linodeProvider) job(s *linodeServer, jobID int) (*linodeJob, error) {
 	}
 	var result linodeJobResult
 	err := p.do(params, &result)
-	if err == nil {
-		err = result.err()
-	}
 	if err == nil && len(result.Data) == 0 {
 		err = fmt.Errorf("empty result")
 	}
@@ -1134,7 +1068,6 @@ func (d *linodeDisk) Created() time.Time {
 }
 
 type linodeDiskResult struct {
-	linodeResult
 	Data []*linodeDisk `json:"DATA"`
 }
 
@@ -1145,9 +1078,6 @@ func (p *linodeProvider) disks(s *linodeServer) ([]*linodeDisk, error) {
 	}
 	var result linodeDiskResult
 	err := p.do(params, &result)
-	if err == nil {
-		err = result.err()
-	}
 	if err != nil {
 		return nil, err
 	}
@@ -1186,7 +1116,6 @@ func (p *linodeProvider) hasRecentDisk(s *linodeServer, diskID int) (bool, error
 }
 
 type linodeIPResult struct {
-	linodeResult
 	Data []*linodeIP `json:"DATA"`
 }
 
@@ -1208,9 +1137,6 @@ func (p *linodeProvider) ip(s *linodeServer) (*linodeIP, error) {
 	var result linodeIPResult
 	err := p.do(params, &result)
 	if err != nil {
-		return nil, err
-	}
-	if err := result.err(); err != nil {
 		return nil, fmt.Errorf("cannot list IPs for %s: %v", s, err)
 	}
 	for _, ip := range result.Data {
@@ -1223,7 +1149,6 @@ func (p *linodeProvider) ip(s *linodeServer) (*linodeIP, error) {
 }
 
 type linodeTemplateResult struct {
-	linodeResult
 	Data []*linodeTemplate
 }
 
@@ -1241,7 +1166,6 @@ type linodeTemplate struct {
 }
 
 type linodeKernelResult struct {
-	linodeResult
 	Data []*linodeKernel
 }
 
@@ -1315,9 +1239,6 @@ func (p *linodeProvider) cacheTemplates() error {
 		var result linodeTemplateResult
 		err = p.do(params, &result)
 		if err == nil {
-			err = result.err()
-		}
-		if err == nil {
 			p.templatesCache = result.Data
 			break
 		}
@@ -1332,9 +1253,6 @@ func (p *linodeProvider) cacheTemplates() error {
 		var result linodeTemplateResult
 		err = p.do(params, &result)
 		if err == nil {
-			err = result.err()
-		}
-		if err == nil {
 			p.templatesCache = append(p.templatesCache, result.Data...)
 			break
 		}
@@ -1348,9 +1266,6 @@ func (p *linodeProvider) cacheTemplates() error {
 		}
 		var result linodeKernelResult
 		err = p.do(params, &result)
-		if err == nil {
-			err = result.err()
-		}
 		if err == nil {
 			p.kernelsCache = result.Data
 			break
@@ -1410,11 +1325,7 @@ func (p *linodeProvider) checkKey() error {
 	if p.backend.Key == "" {
 		err = fmt.Errorf("%s missing Linode API key", p.backend)
 	} else {
-		var result linodeResult
-		err = p.do(linodeParams{"api_action": "test.echo"}, &result)
-		if err == nil {
-			err = result.err()
-		}
+		err = p.do(linodeParams{"api_action": "test.echo"}, nil)
 	}
 	if err == nil && linodeTimezone == nil {
 		err = fmt.Errorf("cannot use Linode backends without a timezone database available")
@@ -1426,6 +1337,22 @@ func (p *linodeProvider) checkKey() error {
 	p.keyChecked = true
 	p.keyErr = err
 	return err
+}
+
+type linodeResult struct {
+	Errors []linodeError `json:"ERRORARRAY"`
+}
+
+type linodeError struct {
+	Code    int    `json:"ERRORCODE"`
+	Message string `json:"ERRORMESSAGE"`
+}
+
+func (r *linodeResult) err() error {
+	for _, e := range r.Errors {
+		return fmt.Errorf("%s", strings.ToLower(string(e.Message[0]))+e.Message[1:])
+	}
+	return nil
 }
 
 type linodeParams map[string]interface{}
@@ -1495,11 +1422,23 @@ func (p *linodeProvider) dofl(params linodeParams, result interface{}, flags doF
 		}
 	}
 
-	err = json.Unmarshal(data, result)
+	if result != nil {
+		// Unmarshal even on errors, so the call site has a chance to inspect the data on errors.
+		err = json.Unmarshal(data, result)
+	}
+
+	var eresult linodeResult
+	if jerr := json.Unmarshal(data, &eresult); jerr == nil {
+		if rerr := eresult.err(); rerr != nil {
+			return rerr
+		}
+	}
+
 	if err != nil {
 		info := pretty.Sprintf("Request:\n-----\n%# v\n-----\nResponse:\n-----\n%s\n-----\n", params, data)
 		return fmt.Errorf("cannot decode Linode response (status %d): %s\n%s", resp.StatusCode, err, info)
 	}
+
 	return nil
 }
 

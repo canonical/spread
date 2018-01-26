@@ -75,6 +75,10 @@ func (p *lxdProvider) Backend() *Backend {
 	return p.backend
 }
 
+func (p *lxdProvider) GarbageCollect() error {
+	return nil
+}
+
 func (p *lxdProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {
 	s := &lxdServer{
 		p:       p,

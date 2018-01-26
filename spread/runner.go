@@ -20,21 +20,22 @@ import (
 )
 
 type Options struct {
-	Password    string
-	Filter      Filter
-	Reuse       bool
-	ReusePid    int
-	Debug       bool
-	Shell       bool
-	ShellBefore bool
-	ShellAfter  bool
-	Abend       bool
-	Restore     bool
-	Resend      bool
-	Discard     bool
-	Residue     string
-	Seed        int64
-	Repeat      int
+	Password       string
+	Filter         Filter
+	Reuse          bool
+	ReusePid       int
+	Debug          bool
+	Shell          bool
+	ShellBefore    bool
+	ShellAfter     bool
+	Abend          bool
+	Restore        bool
+	Resend         bool
+	Discard        bool
+	Residue        string
+	Seed           int64
+	Repeat         int
+	GarbageCollect bool
 }
 
 type Runner struct {
@@ -58,8 +59,6 @@ type Runner struct {
 	pending  []*Job
 	sequence map[*Job]int
 	stats    stats
-
-	allocated bool
 
 	suiteWorkers map[[3]string]int
 }
@@ -96,6 +95,14 @@ func Start(project *Project, options *Options) (*Runner, error) {
 	}
 	r.pending = pending
 
+	if options.GarbageCollect {
+		for _, p := range r.providers {
+			if err := p.GarbageCollect(); err != nil {
+				printf("Error collecting garbage from %q: %v", p.Backend().Name, err)
+			}
+		}
+	}
+
 	r.reuse, err = OpenReuse(r.reusePath())
 	if err != nil {
 		return nil, err
@@ -130,6 +137,9 @@ func (r *Runner) Stop() error {
 }
 
 func (r *Runner) loop() (err error) {
+	if r.options.GarbageCollect {
+		return nil
+	}
 	defer func() {
 		r.contentTomb.Kill(nil)
 		r.contentTomb.Wait()
@@ -203,6 +213,9 @@ func (r *Runner) loop() (err error) {
 		seed = time.Now().Unix()
 		printf("Sequence of jobs produced with -seed=%d", seed)
 	}
+	if !r.options.Discard && !r.options.Reuse && r.options.ReusePid == 0 {
+		printf("If killed, discard servers with: spread -reuse-pid=%d -discard", os.Getpid())
+	}
 
 	for _, backend := range r.project.Backends {
 		for _, system := range backend.Systems {
@@ -248,7 +261,7 @@ func (r *Runner) prepareContent() (err error) {
 			size = fmt.Sprintf("%.2fMB", float64(r.contentSize)/(1024*1024))
 		}
 		if err == nil {
-			logf("Project content is packed for delivery (%s).", size)
+			printf("Project content is packed for delivery (%s).", size)
 		} else {
 			printf("Error packing project content for delivery: %v", err)
 			file.Close()
@@ -431,10 +444,10 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		if r.sequence[job] == 0 {
 			r.sequence[job] = len(r.sequence) + 1
 		}
-		logft(start, startTime, "%s %s (%d/%d)...", strings.Title(verb), contextStr, r.sequence[job], len(r.pending))
+		printft(start, startTime, "%s %s (%d/%d)...", strings.Title(verb), contextStr, r.sequence[job], len(r.pending))
 		r.mu.Unlock()
 	} else {
-		logft(start, startTime, "%s %s...", strings.Title(verb), contextStr)
+		printft(start, startTime, "%s %s...", strings.Title(verb), contextStr)
 	}
 	var dir string
 	if context == job.Backend || context == job.Project {
@@ -895,13 +908,6 @@ Allocate:
 	if err := r.reuse.Add(server, r.options.Password); err != nil {
 		printf("Error adding %s to reuse file: %v", server, err)
 	}
-
-	r.mu.Lock()
-	if !r.allocated && !r.options.Reuse && r.options.ReusePid == 0 {
-		printf("If killed, discard servers with: spread -reuse-pid=%d -discard", os.Getpid())
-	}
-	r.allocated = true
-	r.mu.Unlock()
 
 	printf("Connecting to %s...", server)
 

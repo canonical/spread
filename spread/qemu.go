@@ -76,6 +76,10 @@ func (p *qemuProvider) Backend() *Backend {
 	return p.backend
 }
 
+func (p *qemuProvider) GarbageCollect() error {
+	return nil
+}
+
 func (p *qemuProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {
 	s := &qemuServer{
 		p:       p,

@@ -855,8 +855,62 @@ func (p *linodeProvider) locationID(name string) (int, error) {
 	return 0, &FatalError{fmt.Errorf("cannot find Linode location %q", name)}
 }
 
+func (p *linodeProvider) GarbageCollect() error {
+	params := linodeParams{
+		"api_action": "linode.list",
+	}
+	var result linodeListResult
+	err := p.do(params, &result)
+	if err != nil {
+		return err
+	}
+
+	// Iterate out of order to reduce conflicts.
+	perm := rnd.Perm(len(result.Data))
+
+	now := time.Now()
+	recent := now.Add(-p.backend.HaltTimeout.Duration)
+	halt := now.Add(-p.backend.HaltTimeout.Duration)
+	for _, i := range perm {
+		d := result.Data[i]
+		s := &linodeServer{p: p, d: d}
+
+		if !p.reserve(s) {
+			continue
+		}
+
+		when, err := p.recentActivity(s)
+		if err != nil {
+			printf("Cannot check %s for activity: %v", s, err)
+			continue
+		}
+		if when.Before(recent) && s.brandNew() {
+			printf("Server %s is brand new and has no activity. Removing it...", s)
+		} else if when.Before(halt) && (s.ephemeral() || s.d.Status == linodeRunning) {
+			printf("Server %s exceeds halt-timeout. Shutting it down...", s)
+		} else {
+			continue
+		}
+
+		if s.ephemeral() || s.brandNew() {
+			err = p.removeMachine(s)
+		} else {
+			if s.d.Status == linodeRunning {
+				_, err = p.shutdown(s)
+			}
+			s.p.removeAbandoned(s)
+			p.unreserve(s)
+		}
+		if err != nil {
+			printf("WARNING: Cannot garbage collect %s: %v", s, err)
+		}
+	}
+
+	return nil
+}
+
 func (p *linodeProvider) createMachine(system *System) (*linodeServer, error) {
-	printf("Creating new Linode machine for %s...", system.Name)
+	debugf("Creating new Linode server for %s...", system.Name)
 
 	location := p.backend.Location
 	if location == "" {

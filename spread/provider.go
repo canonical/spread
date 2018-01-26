@@ -15,6 +15,7 @@ type Provider interface {
 	Backend() *Backend
 	Allocate(ctx context.Context, system *System) (Server, error)
 	Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error)
+	GarbageCollect() error
 }
 
 type Server interface {

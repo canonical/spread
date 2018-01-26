@@ -62,6 +62,10 @@ func (p *adhocProvider) Backend() *Backend {
 	return p.backend
 }
 
+func (p *adhocProvider) GarbageCollect() error {
+	return nil
+}
+
 func (p *adhocProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {
 	s := &adhocServer{
 		p:       p,

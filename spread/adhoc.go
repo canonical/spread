@@ -30,6 +30,10 @@ func (s *adhocServer) String() string {
 	return s.system.String()
 }
 
+func (s *adhocServer) Label() string {
+	return s.system.String()
+}
+
 func (s *adhocServer) Provider() Provider {
 	return s.p
 }
@@ -56,6 +60,10 @@ func (s *adhocServer) Discard(ctx context.Context) error {
 
 func (p *adhocProvider) Backend() *Backend {
 	return p.backend
+}
+
+func (p *adhocProvider) GarbageCollect() error {
+	return nil
 }
 
 func (p *adhocProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {

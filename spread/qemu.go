@@ -36,6 +36,10 @@ func (s *qemuServer) String() string {
 	return s.system.String()
 }
 
+func (s *qemuServer) Label() string {
+	return s.system.String()
+}
+
 func (s *qemuServer) Provider() Provider {
 	return s.p
 }
@@ -70,6 +74,10 @@ func (s *qemuServer) Discard(ctx context.Context) error {
 
 func (p *qemuProvider) Backend() *Backend {
 	return p.backend
+}
+
+func (p *qemuProvider) GarbageCollect() error {
+	return nil
 }
 
 func (p *qemuProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {

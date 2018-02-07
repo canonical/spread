@@ -74,7 +74,7 @@ func (c *Client) SetJob(job string) {
 	if job == "" {
 		c.job = c.server.String()
 	} else {
-		c.job = fmt.Sprintf("%s (%s)", c.server, job)
+		c.job = fmt.Sprintf("%s (%s)", c.server.Label(), job)
 	}
 }
 

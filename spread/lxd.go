@@ -43,6 +43,10 @@ func (s *lxdServer) String() string {
 	return fmt.Sprintf("%s (%s)", s.system, s.d.Name)
 }
 
+func (s *lxdServer) Label() string {
+	return s.d.Name
+}
+
 func (s *lxdServer) Provider() Provider {
 	return s.p
 }
@@ -69,6 +73,10 @@ func (s *lxdServer) Discard(ctx context.Context) error {
 
 func (p *lxdProvider) Backend() *Backend {
 	return p.backend
+}
+
+func (p *lxdProvider) GarbageCollect() error {
+	return nil
 }
 
 func (p *lxdProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {

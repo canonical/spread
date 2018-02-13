@@ -94,6 +94,7 @@ func run() error {
 		Discard:        *discard,
 		Residue:        *residue,
 		Seed:           *seed,
+		Repeat:         *repeat,
 		GarbageCollect: *garbageCollect,
 	}
 

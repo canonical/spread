@@ -82,10 +82,11 @@ type linodeServerData struct {
 	Group    string `json:"LPM_DISPLAYGROUP"`
 	Status   int    `json:"STATUS" yaml:"-"`
 	CreateDT string `json:"CREATE_DT" yaml:"created"`
-	Plan     int    `json:"PLANID"`
-	Config   int    `json:"-"`
-	Root     int    `json:"-"`
-	Swap     int    `json:"-"`
+	// Plan should be an int but may be an empty string due to bugs in Linode's end.
+	Plan   interface{} `json:"PLANID"`
+	Config int         `json:"-"`
+	Root   int         `json:"-"`
+	Swap   int         `json:"-"`
 }
 
 var (
@@ -104,6 +105,13 @@ func (s *linodeServer) created() time.Time {
 
 func (s *linodeServer) ephemeral() bool {
 	return s.d.Group == linodeEphemeralGroup
+}
+
+func (s *linodeServer) plan() int {
+	if id, ok := s.d.Plan.(int); ok {
+		return id
+	}
+	return -1
 }
 
 func (s *linodeServer) String() string {
@@ -217,7 +225,7 @@ func (p *linodeProvider) Allocate(ctx context.Context, system *System) (Server, 
 	// HACK HACK HACK - Force snapd to use 4GB systems.
 	if p.backend.HaltTimeout.Duration == 2*time.Hour {
 		p.backend.Location = "fremont"
-		p.backend.Plan = "4GB"
+		p.backend.Plan = "2GB"
 	}
 
 	plan := 0
@@ -234,7 +242,7 @@ func (p *linodeProvider) Allocate(ctx context.Context, system *System) (Server, 
 	adopt := time.Now().Add(-30 * time.Second)
 	for _, i := range perm {
 		s := servers[i]
-		if plan > 0 && s.d.Plan != plan {
+		if plan > 0 && s.plan() != plan {
 			continue
 		}
 		if (s.d.Status != linodeBrandNew && s.d.Status != linodePoweredOff) || !p.reserve(s) {
@@ -271,7 +279,7 @@ func (p *linodeProvider) Allocate(ctx context.Context, system *System) (Server, 
 	halt := time.Now().Add(-p.backend.HaltTimeout.Duration)
 	for _, i := range perm {
 		s := servers[i]
-		if plan > 0 && s.d.Plan != plan {
+		if plan > 0 && s.plan() != plan {
 			continue
 		}
 
@@ -869,26 +877,34 @@ func (p *linodeProvider) GarbageCollect() error {
 	perm := rnd.Perm(len(result.Data))
 
 	now := time.Now()
-	recent := now.Add(-p.backend.HaltTimeout.Duration)
+	recent := now.Add(-3 * time.Minute)
 	halt := now.Add(-p.backend.HaltTimeout.Duration)
 	for _, i := range perm {
 		d := result.Data[i]
 		s := &linodeServer{p: p, d: d}
 
+		if !(linodeSpreadLabel.MatchString(d.Label) || linodeDefaultLabel.MatchString(d.Label)) {
+			// Don't even look at anything that doesn't seem like
+			// a server spread should be working with.
+			continue
+		}
+
 		if !p.reserve(s) {
 			continue
 		}
 
+		printf("Checking %s...", s)
 		when, err := p.recentActivity(s)
 		if err != nil {
 			printf("Cannot check %s for activity: %v", s, err)
 			continue
 		}
-		if when.Before(recent) && s.brandNew() {
+		switch {
+		case when.Before(recent) && s.brandNew():
 			printf("Server %s is brand new and has no activity. Removing it...", s)
-		} else if when.Before(halt) && (s.ephemeral() || s.d.Status == linodeRunning) {
+		case when.Before(halt) && (s.ephemeral() || s.d.Status == linodeRunning):
 			printf("Server %s exceeds halt-timeout. Shutting it down...", s)
-		} else {
+		default:
 			continue
 		}
 

@@ -466,6 +466,7 @@ func (p *linodeProvider) setup(s *linodeServer, system *System) error {
 
 	bootJob, err := p.boot(s, configID)
 	if err == nil {
+		printf("Waiting for %s to boot at %s...", s, s.address)
 		_, err = p.waitJob(s, "boot", bootJob.JobID)
 	}
 	if err != nil {
@@ -1260,7 +1261,6 @@ func (p *linodeProvider) ip(s *linodeServer) (*linodeIP, error) {
 	}
 	for _, ip := range result.Data {
 		if ip.IsPublic == 1 {
-			printf("Got address of %s: %s", s, ip.IPAddress)
 			return ip, nil
 		}
 	}
@@ -1479,7 +1479,9 @@ type linodeParams map[string]interface{}
 type doFlags int
 
 const (
-	noLog doFlags = 1
+	noLog doFlags = 1 << iota
+	noCheckKey
+	noPathPrefix
 )
 
 var linodeThrottle = throttle(time.Second / 10)

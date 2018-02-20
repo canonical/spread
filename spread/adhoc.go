@@ -92,7 +92,7 @@ func (p *adhocProvider) Allocate(ctx context.Context, system *System) (Server, e
 	}
 
 	printf("Waiting for %s to make SSH available at %s...", system, addr)
-	if err := waitPortUp(system, s.address); err != nil {
+	if err := waitPortUp(ctx, system, s.address); err != nil {
 		s.Discard(ctx)
 		return nil, fmt.Errorf("cannot connect to %s at %s: %s", s, s.Address(), err)
 	}

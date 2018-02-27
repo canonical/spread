@@ -135,9 +135,9 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 	}
 
 	printf("Waiting for %s to make SSH available...", system)
-	if err := waitPortUp(system, s.address); err != nil {
+	if err := waitPortUp(ctx, system, s.address); err != nil {
 		s.Discard(ctx)
-		return nil, fmt.Errorf("cannot connect to %s: %s", s, err)
+		return nil, err
 	}
 	printf("Allocated %s.", s)
 	return s, nil

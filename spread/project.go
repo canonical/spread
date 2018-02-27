@@ -514,7 +514,7 @@ func Load(path string) (*Project, error) {
 			backend.Type = bname
 		}
 		switch backend.Type {
-		case "linode", "lxd", "qemu", "adhoc":
+		case "google", "linode", "lxd", "qemu", "adhoc":
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}

@@ -2,6 +2,7 @@ package spread
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -1002,7 +1003,7 @@ func outputErr(output []byte, err error) error {
 	return err
 }
 
-func waitPortUp(what fmt.Stringer, address string) error {
+func waitPortUp(ctx context.Context, what fmt.Stringer, address string) error {
 	if !strings.Contains(address, ":") {
 		address += ":22"
 	}
@@ -1014,6 +1015,7 @@ func waitPortUp(what fmt.Stringer, address string) error {
 	defer retry.Stop()
 
 	for {
+		debugf("Waiting until %s is listening at %s...", what, address)
 		conn, err := net.Dial("tcp", address)
 		if err == nil {
 			conn.Close()
@@ -1025,6 +1027,8 @@ func waitPortUp(what fmt.Stringer, address string) error {
 			printf("Cannot connect to %s: %v", what, err)
 		case <-timeout:
 			return fmt.Errorf("cannot connect to %s: %v", what, err)
+		case <-ctx.Done():
+			return fmt.Errorf("cannot connect to %s: interrupted", what)
 		}
 	}
 	return nil

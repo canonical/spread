@@ -387,6 +387,11 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 		plan = p.backend.Plan
 	}
 
+	storage := 10
+	if p.backend.Storage > 0 {
+		storage = int(p.backend.Storage / gb)
+	}
+
 	image, family, err := p.image(system)
 	if err != nil {
 		return nil, err
@@ -439,6 +444,7 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 			"type":       "PERSISTENT",
 			"initializeParams": googleParams{
 				"sourceImage": sourceImage,
+				"diskSizeGb": storage,
 			},
 		}},
 		"metadata": googleParams{

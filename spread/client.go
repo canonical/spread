@@ -69,7 +69,7 @@ func (c *Client) ResetJob() {
 	c.SetJob("")
 }
 
-func (c *Client) dialOnReboot() error {
+func (c *Client) dialOnReboot(prevUptime string) error {
 	// First wait until SSH isn't working anymore.
 	timeout := time.After(c.killTimeout)
 	relog := time.NewTicker(c.warnTimeout)
@@ -79,12 +79,22 @@ func (c *Client) dialOnReboot() error {
 
 	waitConfig := *c.config
 	waitConfig.Timeout = 5 * time.Second
+
+	printf("previous uptime: %s", prevUptime)
 	for {
 		before := time.Now()
 		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
 		if err != nil {
 			// It's gone.
-			break
+			continue
+		}
+		currUptime, _ := c.Output("uptime -s", "", nil)
+		printf("current uptime: %s", currUptime)
+		if prevUptime != string(currUptime) {
+			printf("NO MATCH")
+			c.sshc.Close()
+			c.sshc = sshc
+			return nil
 		}
 		sshc.Close()
 		// Dial was observed not respecting the timeout by a long shot. Enforce it.
@@ -101,22 +111,7 @@ func (c *Client) dialOnReboot() error {
 		}
 	}
 
-	// Then wait for it to come back up.
-	for {
-		sshc, err := ssh.Dial("tcp", c.addr, c.config)
-		if err == nil {
-			c.sshc.Close()
-			c.sshc = sshc
-			return nil
-		}
-		select {
-		case <-retry.C:
-		case <-relog.C:
-			printf("Reboot on %s is taking a while...", c.job)
-		case <-timeout:
-			return fmt.Errorf("kill-timeout reached, cannot reconnect %s after reboot: %v", c.job, err)
-		}
-	}
+	return nil
 }
 
 func (c *Client) Close() error {
@@ -281,7 +276,8 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 		rebootKey = rerr.Key
 		output = append(output, '\n')
 
-		timedout := time.After(c.killTimeout)
+		timedout := time.After(c.killTimeout)	
+		uptime, _ := c.Output("uptime -s", "", nil)
 		err := c.Run(fmt.Sprintf("reboot &\nsleep %.0f", c.killTimeout.Seconds()), "", nil)
 		if err != nil {
 			err = c.Run("echo should-have-disconnected", "", nil)
@@ -294,7 +290,7 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 			}
 			return nil, fmt.Errorf("reboot request on %s failed", c.job)
 		}
-		if err := c.dialOnReboot(); err != nil {
+		if err := c.dialOnReboot(string(uptime)); err != nil {
 			return nil, err
 		}
 	}

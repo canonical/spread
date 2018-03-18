@@ -69,7 +69,7 @@ func (c *Client) ResetJob() {
 	c.SetJob("")
 }
 
-func (c *Client) dialOnReboot(prevUptime string) error {
+func (c *Client) dialOnReboot(prevUptime time.Time) error {
 	// First wait until SSH isn't working anymore.
 	timeout := time.After(c.killTimeout)
 	relog := time.NewTicker(c.warnTimeout)
@@ -79,6 +79,7 @@ func (c *Client) dialOnReboot(prevUptime string) error {
 
 	waitConfig := *c.config
 	waitConfig.Timeout = 5 * time.Second
+	uptimeDelta := 3 * time.Second
 
 	for {
 		before := time.Now()
@@ -90,8 +91,15 @@ func (c *Client) dialOnReboot(prevUptime string) error {
 
 		c.sshc.Close()
 		c.sshc = sshc
-		currUptime, _ := c.Output("uptime -s", "", nil)
-		if len(currUptime) > 0 && prevUptime != string(currUptime) {
+		currUptime, err := c.getUptime()
+		if err != nil {
+			// Not available uptime yet
+			continue
+		}
+
+		elapsedTime := currUptime.Sub(prevUptime)
+		if  elapsedTime > uptimeDelta {
+			// Reboot done
 			return nil
 		}
 		// Dial was observed not respecting the timeout by a long shot. Enforce it.
@@ -273,25 +281,30 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 		rebootKey = rerr.Key
 		output = append(output, '\n')
 
-		timedout := time.After(c.killTimeout)
-		uptime, _ := c.Output("uptime -s", "", nil)
-		err := c.Run(fmt.Sprintf("reboot &\nsleep %.0f", c.killTimeout.Seconds()), "", nil)
+		uptime, err := c.getUptime()
 		if err != nil {
-			err = c.Run("echo should-have-disconnected", "", nil)
+			return nil, fmt.Errorf("failed to get uptime before reboot, error: %v", err)
 		}
-		if err == nil {
-			select {
-			case <-timedout:
-				return nil, fmt.Errorf("kill-timeout reached on %s while waiting for reboot", c.job)
-			default:
-			}
-			return nil, fmt.Errorf("reboot request on %s failed", c.job)
-		}
-		if err := c.dialOnReboot(string(uptime)); err != nil {
+		c.Run(fmt.Sprintf("reboot"), "", nil)
+		if err := c.dialOnReboot(uptime); err != nil {
 			return nil, err
 		}
 	}
 	panic("unreachable")
+}
+
+func (c *Client) getUptime() (time.Time, error) {
+	uptime, err := c.Output("date -u --iso-8601=seconds -d \"`cut -f1 -d. /proc/uptime` seconds ago\"", "", nil)
+	if err != nil {
+		return time.Now(), err
+	}
+
+	// Convert unsupported +0000 to +00:00
+	parts := strings.Split(string(uptime), "+")
+	if (len(parts) == 2) && (! strings.Contains(parts[1], ":")) {
+		parts[1] = "00:00"
+	}
+	return time.Parse(time.RFC3339, strings.Join(parts, "+"))
 }
 
 var toBashRC = map[string]bool{

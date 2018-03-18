@@ -80,7 +80,6 @@ func (c *Client) dialOnReboot(prevUptime string) error {
 	waitConfig := *c.config
 	waitConfig.Timeout = 5 * time.Second
 
-	printf("previous uptime: %s", prevUptime)
 	for {
 		before := time.Now()
 		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
@@ -88,15 +87,13 @@ func (c *Client) dialOnReboot(prevUptime string) error {
 			// It's gone.
 			continue
 		}
+
+		c.sshc.Close()
+		c.sshc = sshc
 		currUptime, _ := c.Output("uptime -s", "", nil)
-		printf("current uptime: %s", currUptime)
-		if prevUptime != string(currUptime) {
-			printf("NO MATCH")
-			c.sshc.Close()
-			c.sshc = sshc
+		if len(currUptime) > 0 && prevUptime != string(currUptime) {
 			return nil
 		}
-		sshc.Close()
 		// Dial was observed not respecting the timeout by a long shot. Enforce it.
 		if time.Now().After(before.Add(waitConfig.Timeout)) {
 			break
@@ -276,7 +273,7 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 		rebootKey = rerr.Key
 		output = append(output, '\n')
 
-		timedout := time.After(c.killTimeout)	
+		timedout := time.After(c.killTimeout)
 		uptime, _ := c.Output("uptime -s", "", nil)
 		err := c.Run(fmt.Sprintf("reboot &\nsleep %.0f", c.killTimeout.Seconds()), "", nil)
 		if err != nil {

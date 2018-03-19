@@ -79,7 +79,7 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 
 	waitConfig := *c.config
 	waitConfig.Timeout = 5 * time.Second
-	uptimeDelta := 3 * time.Second
+	uptimeChanged := 3 * time.Second
 
 	for {
 		before := time.Now()
@@ -97,8 +97,8 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 			continue
 		}
 
-		elapsedTime := currUptime.Sub(prevUptime)
-		if  elapsedTime > uptimeDelta {
+		uptimeDelta := currUptime.Sub(prevUptime)
+		if  uptimeDelta > uptimeChanged {
 			// Reboot done
 			return nil
 		}
@@ -283,9 +283,11 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 
 		uptime, err := c.getUptime()
 		if err != nil {
-			return nil, fmt.Errorf("failed to get uptime before reboot, error: %v", err)
+			return nil, err
 		}
-		c.Run(fmt.Sprintf("reboot"), "", nil)
+		c.Run("reboot", "", nil)
+		time.Sleep(3 * time.Second)
+
 		if err := c.dialOnReboot(uptime); err != nil {
 			return nil, err
 		}
@@ -294,17 +296,17 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 }
 
 func (c *Client) getUptime() (time.Time, error) {
-	uptime, err := c.Output("date -u --iso-8601=seconds -d \"`cut -f1 -d. /proc/uptime` seconds ago\"", "", nil)
+	uptime, err := c.Output("date -u -d \"$(cut -f1 -d. /proc/uptime) seconds ago\" +\"%Y-%m-%dT%H:%M:%SZ\"", "", nil)
 	if err != nil {
-		return time.Now(), err
+		return time.Time{}, fmt.Errorf("cannot obtain the remote system uptime: %v", err)
 	}
 
-	// Convert unsupported +0000 to +00:00
-	parts := strings.Split(string(uptime), "+")
-	if (len(parts) == 2) && (! strings.Contains(parts[1], ":")) {
-		parts[1] = "00:00"
+	parsedUptime, err := time.Parse(time.RFC3339, string(uptime))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cannot parse the remote system uptime: %q", parsedUptime)
 	}
-	return time.Parse(time.RFC3339, strings.Join(parts, "+"))
+
+	return parsedUptime, nil
 }
 
 var toBashRC = map[string]bool{

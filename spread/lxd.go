@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -128,7 +129,7 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 	}
 
 	printf("Waiting for lxd container %s to have an address...", name)
-	timeout := time.After(10 * time.Second)
+	timeout := time.After(30 * time.Second)
 	retry := time.NewTicker(1 * time.Second)
 	defer retry.Stop()
 	for {
@@ -168,6 +169,28 @@ func isDebArch(s string) bool {
 	return false
 }
 
+func debArch() string {
+	switch runtime.GOARCH {
+	case "386":
+		return "i386"
+	case "amd64":
+		return "amd64"
+	case "arm":
+		return "armhf"
+	case "arm64":
+		return "arm64"
+	case "ppc64le":
+		return "ppc64el"
+	case "s390x":
+		return "s390x"
+	case "ppc":
+		return "powerpc"
+	case "ppc64":
+		return "ppc64"
+	}
+	return "amd64"
+}
+
 func (p *lxdProvider) lxdImage(system *System) (string, error) {
 	// LXD loves the network. Force it to use a local image if available.
 	fingerprint, err := p.lxdLocalImage(system)
@@ -188,7 +211,7 @@ func (p *lxdProvider) lxdImage(system *System) (string, error) {
 	// Translate spread-like name to LXD-like URL.
 	parts := strings.Split(system.Image, "-")
 	if !isDebArch(parts[len(parts)-1]) {
-		parts = append(parts, "amd64")
+		parts = append(parts, debArch())
 	}
 	if parts[0] == "ubuntu" {
 		return "ubuntu:" + strings.Join(parts[1:], "/"), nil

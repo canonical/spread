@@ -303,7 +303,7 @@ func (c *Client) getUptime() (time.Time, error) {
 
 	parsedUptime, err := time.Parse(time.RFC3339, string(uptime))
 	if err != nil {
-		return time.Time{}, fmt.Errorf("cannot parse the remote system uptime: %s", uptime)
+		return time.Time{}, fmt.Errorf("cannot parse the remote system uptime: %q", uptime)
 	}
 
 	return parsedUptime, nil

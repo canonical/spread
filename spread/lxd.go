@@ -103,7 +103,7 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 	}
 
 	if p.backend.Location != "" {
-		name += p.backend.Location + ":" + name
+		name = p.backend.Location + ":" + name
 	}
 
 	args := []string{"launch", lxdimage, name}

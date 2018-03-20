@@ -284,7 +284,7 @@ func (p *lxdProvider) lxdLocalImage(system *System) (string, error) {
 	}
 
 	if !isDebArch(parts[len(parts)-1]) {
-		parts = append(parts, "amd64")
+		parts = append(parts, debArch())
 	}
 
 	remoteNames, err := p.lxdRemoteNames()

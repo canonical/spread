@@ -69,7 +69,7 @@ func (c *Client) ResetJob() {
 	c.SetJob("")
 }
 
-func (c *Client) dialOnReboot() error {
+func (c *Client) dialOnReboot(prevUptime time.Time) error {
 	// First wait until SSH isn't working anymore.
 	timeout := time.After(c.killTimeout)
 	relog := time.NewTicker(c.warnTimeout)
@@ -79,14 +79,29 @@ func (c *Client) dialOnReboot() error {
 
 	waitConfig := *c.config
 	waitConfig.Timeout = 5 * time.Second
+	uptimeChanged := 3 * time.Second
+
 	for {
 		before := time.Now()
 		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
 		if err != nil {
 			// It's gone.
-			break
+			continue
 		}
-		sshc.Close()
+
+		c.sshc.Close()
+		c.sshc = sshc
+		currUptime, err := c.getUptime()
+		if err != nil {
+			// Not available uptime yet
+			continue
+		}
+
+		uptimeDelta := currUptime.Sub(prevUptime)
+		if  uptimeDelta > uptimeChanged {
+			// Reboot done
+			return nil
+		}
 		// Dial was observed not respecting the timeout by a long shot. Enforce it.
 		if time.Now().After(before.Add(waitConfig.Timeout)) {
 			break
@@ -101,22 +116,7 @@ func (c *Client) dialOnReboot() error {
 		}
 	}
 
-	// Then wait for it to come back up.
-	for {
-		sshc, err := ssh.Dial("tcp", c.addr, c.config)
-		if err == nil {
-			c.sshc.Close()
-			c.sshc = sshc
-			return nil
-		}
-		select {
-		case <-retry.C:
-		case <-relog.C:
-			printf("Reboot on %s is taking a while...", c.job)
-		case <-timeout:
-			return fmt.Errorf("kill-timeout reached, cannot reconnect %s after reboot: %v", c.job, err)
-		}
-	}
+	return nil
 }
 
 func (c *Client) Close() error {
@@ -281,24 +281,32 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 		rebootKey = rerr.Key
 		output = append(output, '\n')
 
-		timedout := time.After(c.killTimeout)
-		err := c.Run(fmt.Sprintf("reboot &\nsleep %.0f", c.killTimeout.Seconds()), "", nil)
+		uptime, err := c.getUptime()
 		if err != nil {
-			err = c.Run("echo should-have-disconnected", "", nil)
+			return nil, err
 		}
-		if err == nil {
-			select {
-			case <-timedout:
-				return nil, fmt.Errorf("kill-timeout reached on %s while waiting for reboot", c.job)
-			default:
-			}
-			return nil, fmt.Errorf("reboot request on %s failed", c.job)
-		}
-		if err := c.dialOnReboot(); err != nil {
+		c.Run("reboot", "", nil)
+		time.Sleep(3 * time.Second)
+
+		if err := c.dialOnReboot(uptime); err != nil {
 			return nil, err
 		}
 	}
 	panic("unreachable")
+}
+
+func (c *Client) getUptime() (time.Time, error) {
+	uptime, err := c.Output("date -u -d \"$(cut -f1 -d. /proc/uptime) seconds ago\" +\"%Y-%m-%dT%H:%M:%SZ\"", "", nil)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cannot obtain the remote system uptime: %v", err)
+	}
+
+	parsedUptime, err := time.Parse(time.RFC3339, string(uptime))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("cannot parse the remote system uptime: %q", uptime)
+	}
+
+	return parsedUptime, nil
 }
 
 var toBashRC = map[string]bool{

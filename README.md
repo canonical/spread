@@ -858,27 +858,31 @@ backends:
 	location: yourproject/southamerica-east1-a
         systems:
             - ubuntu-16.04
-```
 
-With these settings the Linode backend in Spread will pick credentials from
-the JSON file pointed to in `$GOOGLE_JSON_FILENAME` environment variable
-(we don't want that content inside `spread.yaml` itself), then look for an
-image that can match the provided system using some sensible heuristics.
-
-Alternatively, the extended system syntax may be used to define more details:
-```
-(...)
-
-backends:
-    linode:
-        (...)
-	systems:
-	    - ubuntu-16.04-64:
-	        image: ubuntu-16.04-64
+	    # Extended syntax:
+	    - another-system:
+	        image: some-other-image
 		workers: 3
 ```
 
-The image is located by first attempting to match the provided value exactly
+With these settings the Google backend in Spread will pick credentials from
+the JSON file pointed to in `$GOOGLE_JSON_FILENAME` environment variable
+(we don't want that content inside `spread.yaml` itself). If no key is
+explicitly provided, Spread will attempt to use the "application default"
+credentials as traditional in the Google platform. You can set those up by
+using either a service account:
+```
+$ gcloud auth application-default activate-service-account --key-file=$GOOGLE_JSON_FILENAME
+```
+or your own credentials:
+```
+$ gcloud auth application-default login
+```
+Service accounts are best as they can be further constrained and not be
+associated with your overall authenticated access. Do not ship your own
+credentials to remote systems.
+
+Images are located by first attempting to match the provided value exactly
 against the image name, and then some processing is done to verify if an
 image with the individual tokens in its description exists. Images are
 first searched for in the project itself, and then if the prefix is a
@@ -891,9 +895,8 @@ When these machines terminate running, they will be removed. If anything
 happens that prevents the immediate removal, they will remain in the account
 and need to be removed by hand.
 
-Note that in using the AMI features of GCE you can create additional service
-users that have more strict access to your resources. For long term use,
-dedicated users inside a dedicated project is recommended.
+For long term use, a dedicated project in the Google Cloud Platform is
+recommended to prevent automated manipulation of important machines.
 
 
 <a name="linode"/>

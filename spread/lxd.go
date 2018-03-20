@@ -102,6 +102,10 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		return nil, err
 	}
 
+	if p.backend.Location != "" {
+		name += p.backend.Location + ":" + name
+	}
+
 	args := []string{"launch", lxdimage, name}
 	if !p.options.Reuse {
 		args = append(args, "--ephemeral")

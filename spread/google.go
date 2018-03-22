@@ -158,6 +158,10 @@ sed -i 's/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /et
 
 pkill -o -HUP sshd || true
 
+if [ -f /var/lib/spread/init.sh ]; then
+	/var/lib/spread/init.sh
+fi
+
 echo '` + googleReadyMarker + `' > /dev/ttyS2
 `
 

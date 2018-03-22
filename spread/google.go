@@ -157,6 +157,8 @@ echo root:%s | chpasswd
 sed -i 's/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /etc/ssh/sshd_config
 
 pkill -o -HUP sshd || true
+growpart /dev/sda 1 || true
+resize2fs /dev/sda1 || true
 
 echo '` + googleReadyMarker + `' > /dev/ttyS2
 `

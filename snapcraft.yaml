@@ -1,5 +1,5 @@
 name: spread
-version: 2017.09.21
+version: 2017.10.02
 summary: Convenient full-system test (task) distribution
 description: |
     Spread is a plesant way distribute full-system integration tests and
@@ -16,10 +16,25 @@ grade: stable
 apps:
     spread:
         command: bin/spread
-        plugs: [home, network, network-bind]
+        plugs: [home, network, network-bind, kvm, x11]
 
 parts:
     spread:
         plugin: go
         go-packages:
             - github.com/snapcore/spread/cmd/spread
+        go-importpath: github.com/snapcore/spread
+    qemu:
+        plugin: dump
+        source: backends/qemu/bin
+        stage-packages:
+            - qemu-kvm
+        organize:
+            kvm-launcher: bin/
+    # needed by qemu-kvm, to find the paths to the roms
+    snappypreload:
+        plugin: cmake
+        source: backends/qemu/snappypreload
+        build-packages:
+            - build-essential
+

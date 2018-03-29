@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 
 	"golang.org/x/net/context"
@@ -94,7 +95,15 @@ func (p *qemuProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *
 }
 
 func systemPath(system *System) string {
-	return os.ExpandEnv("$HOME/.spread/qemu/" + system.Image + ".img")
+	basePath := os.Getenv("SPREAD_QEMU_PATH")
+	if basePath == "" {
+		if snapPath := os.Getenv("SNAP_USER_DATA"); len(snapPath) > 0 {
+			basePath = os.ExpandEnv(filepath.Join(snapPath, ".spread/qemu"))
+		} else {
+			basePath = "$HOME/.spread/qemu/"
+		}
+	}
+	return os.ExpandEnv(filepath.Join(basePath, system.Image+".img"))
 }
 
 func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, error) {
@@ -111,10 +120,17 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 		mem = int(p.backend.Memory / mb)
 	}
 
+	kvm := "kvm"
+	snapPath := os.Getenv("SNAP")
+	if len(snapPath) > 0 {
+		kvm = filepath.Join(snapPath, "/bin/kvm-launcher")
+	}
+
 	serial := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+100)
 	monitor := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+200)
 	fwd := fmt.Sprintf("user,hostfwd=tcp:127.0.0.1:%d-:22", port)
-	cmd := exec.Command("kvm", "-snapshot", "-m", strconv.Itoa(mem), "-net", "nic", "-net", fwd, "-serial", serial, "-monitor", monitor, path)
+	cmd := exec.Command(kvm, "-snapshot", "-m", strconv.Itoa(mem), "-net", "nic", "-net", fwd, "-serial", serial, "-monitor", monitor, path)
+
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
 	}

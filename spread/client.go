@@ -2,7 +2,6 @@ package spread
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +9,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	// used instead of just importing "context" for compatibility
+	// with go1.6 which is used in the xenial autopkgtests
+	"golang.org/x/net/context"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
@@ -98,7 +101,7 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 		}
 
 		uptimeDelta := currUptime.Sub(prevUptime)
-		if  uptimeDelta > uptimeChanged {
+		if uptimeDelta > uptimeChanged {
 			// Reboot done
 			return nil
 		}

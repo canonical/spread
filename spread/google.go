@@ -428,6 +428,18 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 		})
 	}
 
+	initializeParams := googleParams{}
+	if system.Preserve == true {
+		initializeParams = googleParams{
+			"sourceImage": sourceImage,
+		}
+	} else {
+		initializeParams = googleParams{
+			"sourceImage": sourceImage,
+			"diskSizeGb": storage,
+		}
+	}
+
 	params := googleParams{
 		"name":        name,
 		"machineType": "zones/" + p.gzone() + "/machineTypes/" + plan,
@@ -442,10 +454,7 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 			"autoDelete": "true",
 			"boot":       "true",
 			"type":       "PERSISTENT",
-			"initializeParams": googleParams{
-				"sourceImage": sourceImage,
-				"diskSizeGb": storage,
-			},
+			"initializeParams": initializeParams,
 		}},
 		"metadata": googleParams{
 			"items": []googleParams{{

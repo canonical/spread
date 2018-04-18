@@ -510,7 +510,7 @@ func (c *Client) SetupRootAccess(password string) error {
 		script = fmt.Sprintf(`echo root:'%s' | chpasswd`, password)
 	} else {
 		script = strings.Join([]string{
-			`sudo sed -i 's/\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /etc/ssh/sshd_config`,
+			`sudo sed -i 's/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /etc/ssh/sshd_config`,
 			`echo root:'` + password + `' | sudo chpasswd`,
 			`sudo pkill -o -HUP sshd || true`,
 		}, "\n")

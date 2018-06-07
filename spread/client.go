@@ -1030,3 +1030,30 @@ func waitPortUp(ctx context.Context, what fmt.Stringer, address string) error {
 	}
 	return nil
 }
+
+func waitServerUp(ctx context.Context, server Server, username, password string) error {
+	var timeout = time.After(5 * time.Minute)
+	var relog = time.NewTicker(2 * time.Minute)
+	defer relog.Stop()
+	var retry = time.NewTicker(1 * time.Second)
+	defer retry.Stop()
+
+	for {
+		debugf("Waiting until %s is listening...", server)
+		client, err := Dial(server, username, password)
+		if err == nil {
+			client.Close()
+			break
+		}
+		select {
+		case <-retry.C:
+		case <-relog.C:
+			printf("Cannot connect to %s: %v", server, err)
+		case <-timeout:
+			return fmt.Errorf("cannot connect to %s: %v", server, err)
+		case <-ctx.Done():
+			return fmt.Errorf("cannot connect to %s: interrupted", server)
+		}
+	}
+	return nil
+}

@@ -753,7 +753,11 @@ type googleError struct {
 
 func (r *googleResult) err() error {
 	for _, e := range r.Error.Errors {
-		return fmt.Errorf("%s", strings.ToLower(string(e.Message[0]))+e.Message[1:])
+		msg := "<no-message-provided>"
+		if e.Message != "" {
+			msg = strings.ToLower(string(e.Message[0])) + e.Message[1:]
+		}
+		return fmt.Errorf("(%s) %s: %s", e.Domain, e.Reason, msg)
 	}
 	return nil
 }

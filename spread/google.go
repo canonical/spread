@@ -149,6 +149,7 @@ func (s *googleServer) Discard(ctx context.Context) error {
 }
 
 func (p *googleProvider) GarbageCollect() error {
+	printf("Collecting garbage for google")
 	result, err := p.listMachines()
 	if err != nil {
 		return err

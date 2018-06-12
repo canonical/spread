@@ -1,8 +1,7 @@
 Spread
 ======
 
-Convenient full-system test (task) distribution 
------------------------------------------------
+## Convenient full-system test (task) distribution 
 
 [Why?](#why)  
 [The cascading matrix](#matrix)  
@@ -16,6 +15,7 @@ Convenient full-system test (task) distribution
 [Timeouts](#timeouts)  
 [Fast iterations with reuse](#reuse)  
 [Debugging](#debugging)  
+[Repeating tasks](#repeating)
 [Passwords and usernames](#passwords)  
 [Including, excluding, and renaming files](#including)  
 [Selecting which tasks to run](#selecting)  
@@ -23,14 +23,15 @@ Convenient full-system test (task) distribution
 [Fetching residual artifacts](#residue)  
 [LXD backend](#lxd)  
 [QEMU backend](#qemu)  
+[Google backend](#google)  
 [Linode backend](#linode)  
 [AdHoc backend](#adhoc)  
 [More on parallelism](#parallelism)  
 [Repacking and delta uploads](#repacking)  
 
 <a name="why"/>
-Why?
-----
+
+## Why?
 
 Because our integration test machinery was unreasonably frustrating. It was
 slow, very unstable, hard to make sense of the output, impossible to debug,
@@ -46,8 +47,8 @@ minor variations without copy & paste.
 
 
 <a name="matrix"/>
-The cascading matrix
---------------------
+
+## The cascading matrix
 
 Each individual job in Spread has a:
 
@@ -88,8 +89,8 @@ backend:system:suite/task:variant
 ```
 
 <a name="hello-world"/>
-Hello world
------------
+
+## Hello world
 
 Two tiny files and you are in business:
 
@@ -155,8 +156,8 @@ Hello world!
 ```
 
 <a name="environments"/>
-Environments
-------------
+
+## Environments
 
 Pretty much everything in Spread can be customized with environment variables.
 
@@ -201,8 +202,8 @@ be ordered accordingly on executed scripts.
 
 
 <a name="variants"/>
-Variants
---------
+
+## Variants
 
 The cascading logic explained is nice, but a great deal of the convenience
 offered by Spread comes from _variants._
@@ -257,8 +258,8 @@ Some key takeaways here:
 
 
 <a name="blacklisting"/>
-Blacklisting and whitelisting
------------------------------
+
+## Blacklisting and whitelisting
 
 The described cascading and multiplication semantics of that matrix offers
 plenty of comfort for reproducing the same tasks with minor or major
@@ -309,8 +310,8 @@ add/remove/replace what the previous level defined, again with the ordering:
  * _Project => Backend => System => Suite => Task_
 
 <a name="preparing"/>
-Preparing and restoring
------------------------
+
+## Preparing and restoring
 
 A similar group of tasks will often depend on a similar setup of the system.
 Instead of copying & pasting logic, suites can define scripts for tasks under
@@ -392,8 +393,8 @@ be helpful when trying to understand what went wrong.
 
 
 <a name="functions"/>
-Functions
----------
+
+## Functions
 
 A few helper functions are available for scripts to use:
 
@@ -405,8 +406,8 @@ A few helper functions are available for scripts to use:
 
 
 <a name="rebooting"/>
-Rebooting
----------
+
+## Rebooting
 
 Scripts can reboot the system at any point by simply running the REBOOT
 function at the exact point the reboot should happen. The system will
@@ -429,8 +430,8 @@ parameter which will be used as the value of `$SPREAD_REBOOT` after
 the system reboots, instead of the count.
 
 <a name="timeouts"/>
-Timeouts
---------
+
+## Timeouts
 
 Every 5 minutes a warning will be issued including the operation output since
 the last warning. If the operation does not finish within 15 minutes, it is
@@ -445,8 +446,8 @@ altogether.
 
 
 <a name="reuse"/>
-Fast iterations with reuse
---------------------------
+
+## Fast iterations with reuse
 
 For fast iterations during development or debugging, it's best to keep the
 servers around so they're not allocated and discarded on every run. To do
@@ -474,8 +475,8 @@ correct and more resilient.
 
 
 <a name="debugging"/>
-Debugging
----------
+
+## Debugging
 
 Debugging such remote tasking systems is generally quite boring, and Spread
 offers a good hand to make the problem less painful. Just add `-debug` to
@@ -517,13 +518,56 @@ as a `debug-each` script at the project, backend, and suite levels, so they
 are aggregated and repeated for every task under them.
 
 
+<a name="ordering">
+
+## Ordering tasks
+
+The order of tasks on every run is random by default, so that it becomes visible
+when the correctness of some tasks depends on unspecified side effects of
+prior tasks.
+
+When breakages related to ordering occur, Spread can attempt to reproduce the
+ordering used via the `-seed` parameter. On every run, the required seed to
+reproduce the order utilized will be logged in the output. Note that when
+several workers are being used, they will steal pending work from a common
+queue based on timing, which means the order may not be exactly the same.
+
+In some cases, it may also be useful to explicitly prioritize some tasks. For
+example, if there are two workers and one long task, it's best if that known
+long task starts first, so that the workers can share more of the load. If
+the long task comes last the two workers will share all the smaller tasks,
+then one worker will pick the long task, and the other worker will stop since
+there's nothing else to do. The outcome is a longer total run time.
+
+To define the priority of a task, suite, system, or backend, simply specify
+the priority field in the desired context:
+```
+priority: 100
+```
+
+The larger the priority, the earlier it will be scheduled. The default
+priority is zero, and negative priorities are supported too.
+
+
+<a name="repeating"/>
+
+## Repeating tasks
+
+Reproducing an error may be a very boring experience, and Spread has a way to
+simplify that process by reexecuting the tasks as many times as desired until
+the task fails.
+
+To do that there is an option `-repeat` which receives an integer indicating 
+the number of reexecutions to do, being 0 the default value.
+
+
 <a name="passwords">
-Passwords and usernames
------------------------
+
+## Passwords and usernames
 
 To keep things simple and convenient, Spread prepares systems to connect over SSH
 as the root user using a single password for all systems. Unless explicitly defined
-via the _-pass_ command line option, the password will be random and different on
+via the `-pass` command line option, the password will be random and different on
 each run.
 
 Some of the supported backends may be unable to provide an image with the correct
@@ -552,8 +596,8 @@ In all cases the end result is the same: a system that executes scripts as root.
 
 
 <a name="including"/>
-Including, excluding, and renaming files
-----------------------------------------
+
+## Including, excluding, and renaming files
 
 The following fields define what is pushed to the remote servers after
 each server is allocated and where that content is placed:
@@ -588,8 +632,8 @@ they do locally, so these directories cannot be moved.
 
 
 <a name="selecting"/>
-Selecting which tasks to run
-----------------------------
+
+## Selecting which tasks to run
 
 Often times you'll want to iterate over a single task or a few of these, or
 a given suite, or perhaps select a specific backend to run on instead of
@@ -631,8 +675,8 @@ filter without actually running them.
 
 
 <a name="manual"/>
-Disabling unless manually selected
-----------------------------------
+
+## Disabling unless manually selected
 
 It may be useful to have a task written down as part of the suite without it
 being run all the time together with the usual tasks.  For that, just add a
@@ -667,8 +711,8 @@ selected to run.
 
 
 <a name="residue"/>
-Fetching residual artifacts
----------------------------
+
+## Fetching residual artifacts
 
 Content generated by tasks may easily be retrieved after the task completes
 by registering the desired content under the `residue` field:
@@ -702,8 +746,8 @@ and even if some of the provided paths are missing.
 
 
 <a name="lxd"/>
-LXD backend
------------
+
+## LXD backend
 
 The LXD backend depends on the [LXD](http://www.ubuntu.com/cloud/lxd) container
 hypervisor available on Ubuntu 16.04 or later, and allows you to run tasks
@@ -751,8 +795,8 @@ That's it. Have fun with your self-contained multi-system task runner.
 
 
 <a name="qemu"/>
-QEMU backend
------------
+
+## QEMU backend
 
 The QEMU backend depends on the [QEMU](http://www.qemu.org) emulator
 available from various sources and allows you to run tasks using the
@@ -797,12 +841,71 @@ adt-buildvm-ubuntu-cloud
 When done move the downloaded image into the location described above.
 
 
+<a name="google"/>
+
+## Google backend
+
+The Google backend is easy to setup and use, and allows distributing
+your tasks to remote infrastructure in Google Compute Engine (GCE).
+
+_$PROJECT/spread.yaml_
+```
+(...)
+
+backends:
+    google:
+        key: $(HOST:echo $GOOGLE_JSON_FILENAME)
+	location: yourproject/southamerica-east1-a
+        systems:
+            - ubuntu-16.04
+
+	    # Extended syntax:
+	    - another-system:
+	        image: some-other-image
+		workers: 3
+```
+
+With these settings the Google backend in Spread will pick credentials from
+the JSON file pointed to in `$GOOGLE_JSON_FILENAME` environment variable
+(we don't want that content inside `spread.yaml` itself). If no key is
+explicitly provided, Spread will attempt to use the "application default"
+credentials as traditional in the Google platform. You can set those up by
+using either a service account:
+```
+$ gcloud auth application-default activate-service-account --key-file=$GOOGLE_JSON_FILENAME
+```
+or your own credentials:
+```
+$ gcloud auth application-default login
+```
+Service accounts are best as they can be further constrained and not be
+associated with your overall authenticated access. Do not ship your own
+credentials to remote systems.
+
+Images are located by first attempting to match the provided value exactly
+against the image name, and then some processing is done to verify if an
+image with the individual tokens in its description exists. Images are
+first searched for in the project itself, and then if the prefix is a
+recognized name for which a public image project exists (e.g. `ubuntu-*`
+is searched for in the `ubuntu-os-cloud` project too). An explicit image
+project may also be requested by prefixing the image name with a project
+name, as in "ubuntu-os-cloud/ubuntu-16.04-64".
+
+When these machines terminate running, they will be removed. If anything
+happens that prevents the immediate removal, they will remain in the account
+and need to be removed by hand.
+
+For long term use, a dedicated project in the Google Cloud Platform is
+recommended to prevent automated manipulation of important machines.
+
+
 <a name="linode"/>
-Linode backend
---------------
+
+## Linode backend
 
 The Linode backend is very simple to setup and use as well, and allows
-distributing your tasks over into remote infrastructure.
+distributing your tasks over into remote infrastructure runing in
+Linode's data centers.
 
 _$PROJECT/spread.yaml_
 ```
@@ -876,6 +979,22 @@ backends:
 	    - ubuntu-16.04
 ```
 
+The Linode backend can also allocate systems dynamically. For that, just define
+these two fields specifying which plan you'd like to use for the new machines,
+and which datacenter to allocate them on:
+```
+backends:
+    linode:
+        key: (...)
+	plan: 4GB
+	location: newark
+```
+
+When these machines terminate running, they will be removed. If anything
+happens that prevents the immediate removal, they will remain in the account
+and then be reused by follow up runs and removed when done, effectively garbage
+collecting what's left behind. System reuse works as explained above too.
+
 Note that in Linode you can create additional users inside your own account
 that have limited access to a selection of servers only, and with limited
 permissions on them. You should use this even if your account is entirely
@@ -890,8 +1009,8 @@ Some links to make your life easier:
 
 
 <a name="adhoc"/>
-AdHoc backend
--------------
+
+## AdHoc backend
 
 The AdHoc backend allows scripting the procedure for allocating and deallocating
 systems directly in the body of the backend:
@@ -942,8 +1061,8 @@ be run against important systems, as it will fiddle with their configuration.
 
 
 <a name="parallelism"/>
-More on parallelism
--------------------
+
+## More on parallelism
 
 The `systems` entry under each backend contains a list of systems that will be
 allocated on that backend for running tasks concurrently. 
@@ -993,8 +1112,8 @@ over the use of sets of remote machines.
 
 
 <a name="repacking"/>
-Repacking and delta uploads
----------------------------
+
+## Repacking and delta uploads
 
 When working over slow networks even small uploads tend to take a bit too
 long. Spread offers a general "repacking" mechanism that may be used to

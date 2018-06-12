@@ -1,9 +1,6 @@
 package spread
 
 import (
-	"strconv"
-	"time"
-
 	"encoding/xml"
 	"io/ioutil"
 )
@@ -62,16 +59,14 @@ type XUnitTestCase struct {
 	XMLName     xml.Name          `xml:"testcase"`
 	Classname   string            `xml:"classname,attr"`
 	Name        string            `xml:"name,attr"`
-	Time        string            `xml:"time,attr"`
 	SkipMessage *XUnitSkipMessage `xml:"skipped,omitempty"`
 	Failure     *XUnitFailure     `xml:"failure,omitempty"`
 }
 
-func NewTestCase(testName string, className string, duration time.Duration) *XUnitTestCase {
+func NewTestCase(testName string, className string) *XUnitTestCase {
 	return &XUnitTestCase{
 				Classname: className,
 				Name:      testName,
-				Time:      strconv.FormatFloat(float64(duration/time.Millisecond)/1000, 'f' , 3, 64),
 				Failure:   nil,
 			}	
 }
@@ -118,8 +113,8 @@ func (r XUnitReport) addTest(suiteName string, test *XUnitTestCase) {
 	suite.addTest(test)
 }
 
-func (r XUnitReport) addFailedTest(suiteName string, className string, testName string, duration time.Duration) {
-	testcase := NewTestCase(testName, className, duration)
+func (r XUnitReport) addFailedTest(suiteName string, className string, testName string) {
+	testcase := NewTestCase(testName, className)
 	testcase.Failure = &XUnitFailure{
 					Message:  "Failed",
 					Type:     "",
@@ -128,8 +123,8 @@ func (r XUnitReport) addFailedTest(suiteName string, className string, testName 
 	r.addTest(suiteName, testcase)
 }
 
-func (r XUnitReport) addPassedTest(suiteName string, className string, testName string, duration time.Duration) {
-	testcase := NewTestCase(testName, className, duration)
+func (r XUnitReport) addPassedTest(suiteName string, className string, testName string) {
+	testcase := NewTestCase(testName, className)
 	r.addTest(suiteName, testcase)
 }
 

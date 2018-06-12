@@ -59,6 +59,11 @@ type Backend struct {
 	// Only for qemu so far.
 	Memory Size
 
+	// Only for Linode and Google so far.
+	Plan     string
+	Location string
+	Storage  Size
+
 	Systems SystemsMap
 
 	Prepare     string
@@ -75,7 +80,8 @@ type Backend struct {
 	KillTimeout Timeout `yaml:"kill-timeout"`
 	HaltTimeout Timeout `yaml:"halt-timeout"`
 
-	Manual bool
+	Priority OptionalInt
+	Manual   bool
 }
 
 func (b *Backend) String() string { return fmt.Sprintf("backend %q", b.Name) }
@@ -116,7 +122,8 @@ type System struct {
 	Environment *Environment
 	Variants    []string
 
-	Manual bool
+	Priority OptionalInt
+	Manual   bool
 }
 
 func (system *System) String() string { return system.Backend + ":" + system.Name }
@@ -306,7 +313,8 @@ type Suite struct {
 	WarnTimeout Timeout `yaml:"warn-timeout"`
 	KillTimeout Timeout `yaml:"kill-timeout"`
 
-	Manual bool
+	Priority OptionalInt
+	Manual   bool
 }
 
 func (s *Suite) String() string { return "suite " + s.Name }
@@ -321,6 +329,7 @@ type Task struct {
 
 	Variants    []string
 	Environment *Environment
+	Samples     int
 
 	Prepare string
 	Restore string
@@ -335,7 +344,8 @@ type Task struct {
 	WarnTimeout Timeout `yaml:"warn-timeout"`
 	KillTimeout Timeout `yaml:"kill-timeout"`
 
-	Manual bool
+	Priority OptionalInt
+	Manual   bool
 }
 
 func (t *Task) String() string { return t.Name }
@@ -350,7 +360,9 @@ type Job struct {
 
 	Variant     string
 	Environment *Environment
-	Duration    time.Duration
+	Sample      int
+
+	Priority int64
 }
 
 func (job *Job) String() string {
@@ -359,9 +371,7 @@ func (job *Job) String() string {
 
 func (job *Job) StringFor(context interface{}) string {
 	switch context {
-	case job.Project:
-		return fmt.Sprintf("project on %s:%s", job.Backend.Name, job.System.Name)
-	case job.Backend, job.System:
+	case job.Project, job.Backend, job.System:
 		return fmt.Sprintf("%s:%s", job.Backend.Name, job.System.Name)
 	case job.Suite:
 		return fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System.Name, job.Suite.Name)
@@ -434,9 +444,15 @@ func join(scripts ...string) string {
 
 type jobsByName []*Job
 
-func (jobs jobsByName) Len() int           { return len(jobs) }
-func (jobs jobsByName) Less(i, j int) bool { return jobs[i].Name < jobs[j].Name }
-func (jobs jobsByName) Swap(i, j int)      { jobs[i], jobs[j] = jobs[j], jobs[i] }
+func (jobs jobsByName) Len() int      { return len(jobs) }
+func (jobs jobsByName) Swap(i, j int) { jobs[i], jobs[j] = jobs[j], jobs[i] }
+func (jobs jobsByName) Less(i, j int) bool {
+	ji, jj := jobs[i], jobs[j]
+	if ji.Backend == jj.Backend && ji.System == jj.System && ji.Task == jj.Task {
+		return ji.Sample < jj.Sample
+	}
+	return ji.Name < jj.Name
+}
 
 func SplitVariants(s string) (prefix string, variants []string) {
 	if i := strings.LastIndex(s, "/"); i >= 0 {
@@ -447,13 +463,16 @@ func SplitVariants(s string) (prefix string, variants []string) {
 
 var (
 	validName   = regexp.MustCompile("^[a-z0-9]+(?:[-._][a-z0-9]+)*$")
-	validSystem = regexp.MustCompile("^[a-z]+-[a-z0-9*]+(?:[-.][a-z0-9*]+)*$")
+	validSystem = regexp.MustCompile("^[a-z*]+-[a-z0-9*]+(?:[-.][a-z0-9*]+)*$")
 	validSuite  = regexp.MustCompile("^(?:[a-z0-9]+(?:[-._][a-z0-9]+)*/)+$")
 	validTask   = regexp.MustCompile("^(?:[a-z0-9]+(?:[-._][a-z0-9]+)*/)+[a-z0-9]+(?:[-._][a-z0-9]+)*$")
 )
 
 func Load(path string) (*Project, error) {
 	filename, data, err := readProject(path)
+	if err != nil {
+		return nil, fmt.Errorf("cannot load project file from %s: %v", path, err)
+	}
 
 	project := &Project{}
 	err = yaml.Unmarshal(data, project)
@@ -495,7 +514,7 @@ func Load(path string) (*Project, error) {
 			backend.Type = bname
 		}
 		switch backend.Type {
-		case "linode", "lxd", "qemu", "adhoc":
+		case "google", "linode", "lxd", "qemu", "adhoc":
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}
@@ -549,6 +568,9 @@ func Load(path string) (*Project, error) {
 	orig := project.Suites
 	project.Suites = make(map[string]*Suite)
 	for sname, suite := range orig {
+		if suite == nil {
+			suite = &Suite{}
+		}
 		if !strings.HasSuffix(sname, "/") {
 			return nil, fmt.Errorf("invalid suite name (must end with /): %q", sname)
 		}
@@ -622,6 +644,9 @@ func Load(path string) (*Project, error) {
 			}
 			if task.Summary == "" {
 				return nil, fmt.Errorf("%s is missing a summary", task)
+			}
+			if task.Samples == 0 {
+				task.Samples = 1
 			}
 
 			if err := checkEnv(task, &task.Environment); err != nil {
@@ -698,8 +723,14 @@ type Filter interface {
 	Pass(job *Job) bool
 }
 
+type filterExp struct {
+	regexp      *regexp.Regexp
+	firstSample int
+	lastSample  int
+}
+
 type filter struct {
-	exps []*regexp.Regexp
+	exps []*filterExp
 }
 
 func (f *filter) Pass(job *Job) bool {
@@ -707,20 +738,46 @@ func (f *filter) Pass(job *Job) bool {
 		return true
 	}
 	for _, exp := range f.exps {
-		if exp.MatchString(job.Name) {
+		if exp.firstSample > 0 {
+			if job.Sample < exp.firstSample {
+				continue
+			}
+			if job.Sample > exp.lastSample {
+				continue
+			}
+		}
+		if exp.regexp.MatchString(job.Name) {
 			return true
 		}
 	}
 	return false
 }
 
-var dots = regexp.MustCompile(`\.+|:+`)
-
 func NewFilter(args []string) (Filter, error) {
+	var dots = regexp.MustCompile(`\.+|:+|#`)
+	var sample = regexp.MustCompile(`^(.*)#(\d+)(?:\.\.(\d+))?$`)
 	var err error
-	var exps []*regexp.Regexp
+	var exps []*filterExp
 	for _, arg := range args {
-		arg = dots.ReplaceAllStringFunc(arg, func(s string) string {
+		var argre = arg
+		var firstSample, lastSample int
+		if m := sample.FindStringSubmatch(argre); len(m) > 0 {
+			argre = m[1]
+			firstSample, err = strconv.Atoi(m[2])
+			if err == nil && m[3] != "" {
+				lastSample, err = strconv.Atoi(m[3])
+			}
+			if err != nil {
+				panic(fmt.Sprintf("internal error: regexp matched non-int on %q", arg))
+			}
+			if firstSample > 0 && lastSample == 0 {
+				lastSample = firstSample
+			}
+			if firstSample < 1 || lastSample < firstSample {
+				return nil, fmt.Errorf("invalid sample range in filter string: %q", arg)
+			}
+		}
+		argre = dots.ReplaceAllStringFunc(argre, func(s string) string {
 			switch s {
 			case ".":
 				return `\.`
@@ -728,6 +785,8 @@ func NewFilter(args []string) (Filter, error) {
 				return `[^:]*`
 			case ":":
 				return "(:.+)*:(.+:)*"
+			case "#":
+				// Error below. Should have been parsed above.
 			}
 			err = fmt.Errorf("invalid filter string: %q", s)
 			return s
@@ -735,17 +794,21 @@ func NewFilter(args []string) (Filter, error) {
 		if err != nil {
 			return nil, err
 		}
-		if strings.HasPrefix(arg, "(:.+)*:") || strings.HasPrefix(arg, "/") {
-			arg = ".+" + arg
+		if strings.HasPrefix(argre, "(:.+)*:") || strings.HasPrefix(argre, "/") {
+			argre = ".+" + argre
 		}
-		if strings.HasSuffix(arg, ":(.+:)*") || strings.HasSuffix(arg, "/") {
-			arg = arg + ".+"
+		if strings.HasSuffix(argre, ":(.+:)*") || strings.HasSuffix(argre, "/") {
+			argre = argre + ".+"
 		}
-		exp, err := regexp.Compile("(?:^|:)" + arg + "(?:$|:)")
+		exp, err := regexp.Compile("(?:^|:)" + argre + "(?:$|[:#])")
 		if err != nil {
 			return nil, fmt.Errorf("invalid filter string: %q", arg)
 		}
-		exps = append(exps, exp)
+		exps = append(exps, &filterExp{
+			regexp:      exp,
+			firstSample: firstSample,
+			lastSample:  lastSample,
+		})
 
 	}
 	return &filter{exps}, nil
@@ -823,6 +886,8 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 					yevr := strmap{system, evars(system.Environment, "+")}
 					yvar := strmap{system, system.Variants}
 
+					priority := evaloint(task.Priority, suite.Priority, system.Priority, backend.Priority)
+
 					strmaps := []strmap{pevr, bevr, bvar, yevr, yvar, sevr, svar, tevr, tvar}
 					variants, err := evalstr("variants", strmaps...)
 					if err != nil {
@@ -834,54 +899,62 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 							continue
 						}
 
-						job := &Job{
-							Project: p,
-							Backend: backend,
-							System:  system,
-							Suite:   p.Suites[task.Suite],
-							Task:    task,
-							Variant: variant,
-						}
-						if job.Variant == "" {
-							job.Name = fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System.Name, job.Task.Name)
-						} else {
-							job.Name = fmt.Sprintf("%s:%s:%s:%s", job.Backend.Name, job.System.Name, job.Task.Name, job.Variant)
-						}
+						for sample := 1; sample <= task.Samples; sample++ {
+							job := &Job{
+								Project:  p,
+								Backend:  backend,
+								System:   system,
+								Suite:    p.Suites[task.Suite],
+								Task:     task,
+								Variant:  variant,
+								Sample:   sample,
+								Priority: priority,
+							}
+							if job.Variant == "" {
+								job.Name = fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System.Name, job.Task.Name)
+							} else {
+								job.Name = fmt.Sprintf("%s:%s:%s:%s", job.Backend.Name, job.System.Name, job.Task.Name, job.Variant)
+							}
+							if task.Samples > 1 {
+								job.Name += "#" + strconv.Itoa(sample)
+							}
 
-						sprenv := envmap{stringer("$SPREAD_*"), NewEnvironment(
-							"SPREAD_JOB", job.Name,
-							"SPREAD_PROJECT", job.Project.Name,
-							"SPREAD_PATH", job.Project.RemotePath,
-							"SPREAD_BACKEND", job.Backend.Name,
-							"SPREAD_SYSTEM", job.System.Name,
-							"SPREAD_SUITE", job.Suite.Name,
-							"SPREAD_TASK", job.Task.Name,
-							"SPREAD_VARIANT", job.Variant,
-						)}
+							sprenv := envmap{stringer("$SPREAD_*"), NewEnvironment(
+								"SPREAD_JOB", job.Name,
+								"SPREAD_PROJECT", job.Project.Name,
+								"SPREAD_PATH", job.Project.RemotePath,
+								"SPREAD_BACKEND", job.Backend.Name,
+								"SPREAD_SYSTEM", job.System.Name,
+								"SPREAD_SUITE", job.Suite.Name,
+								"SPREAD_TASK", job.Task.Name,
+								"SPREAD_VARIANT", job.Variant,
+								"SPREAD_SAMPLE", strconv.Itoa(job.Sample),
+							)}
 
-						env, err := evalenv(cmdcache, true, sprenv, penv, benv, yenv, senv, tenv)
-						if err != nil {
-							return nil, err
-						}
-						job.Environment = env.Variant(variant)
+							env, err := evalenv(cmdcache, true, sprenv, penv, benv, yenv, senv, tenv)
+							if err != nil {
+								return nil, err
+							}
+							job.Environment = env.Variant(variant)
 
-						if options.Filter != nil && !options.Filter.Pass(job) {
-							continue
-						}
+							if options.Filter != nil && !options.Filter.Pass(job) {
+								continue
+							}
 
-						jobs = append(jobs, job)
+							jobs = append(jobs, job)
 
-						if !job.Backend.Manual {
-							manualBackends = false
-						}
-						if !job.System.Manual {
-							manualSystems = false
-						}
-						if !job.Suite.Manual {
-							manualSuites = false
-						}
-						if !job.Task.Manual {
-							manualTasks = false
+							if !job.Backend.Manual {
+								manualBackends = false
+							}
+							if !job.System.Manual {
+								manualSystems = false
+							}
+							if !job.Suite.Manual {
+								manualSuites = false
+							}
+							if !job.Task.Manual {
+								manualTasks = false
+							}
 						}
 					}
 				}
@@ -1128,21 +1201,18 @@ func evalstr(what string, strmaps ...strmap) ([]string, error) {
 			if delta > 0 && plain > 0 {
 				return nil, fmt.Errorf("%s specifies %s both in delta and plain format", strmap.context, what)
 			}
+			matches, err := matches(name, strmaps[:i+1]...)
+			if err != nil {
+				return nil, err
+			}
+
 			if add {
-				matches, err := matches(name, strmaps...)
-				if err != nil {
-					return nil, err
-				}
 				for _, match := range matches {
 					final[match] = true
 				}
 				continue
 			}
 			if remove {
-				matches, err := matches(name, strmaps...)
-				if err != nil {
-					return nil, err
-				}
 				for _, match := range matches {
 					delete(final, match)
 				}
@@ -1155,7 +1225,9 @@ func evalstr(what string, strmaps ...strmap) ([]string, error) {
 				}
 			}
 
-			final[name] = true
+			for _, match := range matches {
+				final[match] = true
+			}
 		}
 	}
 
@@ -1164,6 +1236,15 @@ func evalstr(what string, strmaps ...strmap) ([]string, error) {
 		strs = append(strs, name)
 	}
 	return strs, nil
+}
+
+func evaloint(values ...OptionalInt) int64 {
+	for _, v := range values {
+		if v.IsSet {
+			return v.Value
+		}
+	}
+	return 0
 }
 
 type Timeout struct {
@@ -1224,6 +1305,26 @@ func (s *Size) UnmarshalYAML(u func(interface{}) error) error {
 	default:
 		return fmt.Errorf("unknown size suffix in %q, must be one of: B, K, M, G", str)
 	}
+	return nil
+}
+
+type OptionalInt struct {
+	IsSet bool
+	Value int64
+}
+
+func (s OptionalInt) String() string {
+	return strconv.FormatInt(s.Value, 64)
+}
+
+func (s *OptionalInt) UnmarshalYAML(u func(interface{}) error) error {
+	var value int64
+	err := u(&value)
+	if err != nil {
+		return err
+	}
+	s.Value = value
+	s.IsSet = true
 	return nil
 }
 

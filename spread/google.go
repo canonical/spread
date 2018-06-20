@@ -65,6 +65,8 @@ type googleServerData struct {
 	Plan    string    `json:"machineType"`
 	Status  string    `yaml:"-"`
 	Created time.Time `json:"creationTimestamp"`
+
+	Labels map[string]string `yaml:"-"`
 }
 
 func (d *googleServerData) cleanup() {
@@ -148,52 +150,6 @@ func (s *googleServer) Discard(ctx context.Context) error {
 	return s.p.removeMachine(ctx, s)
 }
 
-func (p *googleProvider) GarbageCollect() error {
-	printf("Collecting garbage for google")
-	result, err := p.listMachines()
-	if err != nil {
-		return err
-	}
-
-	// Iterate over all the running instances
-	for _, instance := range result.Items {
-		printf("Checking %s...", instance.Name)
-		creationTime, err := time.Parse(time.RFC3339, instance.CreationTimestamp) 
-		if err != nil {
-			printf("Creation timestamp with wrong format %q", instance.CreationTimestamp)
-		}
-
-		// 120 minutes is the default timeout
-		var haltTimeout = 120 * time.Minute
-		for label, value := range instance.Labels {
-			if label == "halt-timeout" {
-				d, err := time.ParseDuration(strings.TrimSpace(value))
-				if err != nil {
-					printf("halt-timeout must look like 10s or 15m or 1.5h, not %q", value)
-				} else {
-					haltTimeout = d
-				}
-			}
-		}
-		runningTime := time.Now().Sub(creationTime)
-		if runningTime > haltTimeout {
-			printf("Server %s exceeds halt-timeout. Shutting it down...", instance.Name)
-			s := &googleServer{
-				p: p,
-				d: googleServerData{
-					Name:    instance.Name,
-					Plan:    googleDefaultPlan,
-					Status:  instance.Status,
-					Created: creationTime,
-				},
-			}
-			p.doRemoveMachine(s)
-		}
-
-	}
-	return nil
-}
-
 const googleStartupScript = `
 echo root:%s | chpasswd
 
@@ -209,7 +165,7 @@ const googleNameLayout = "Jan021504.000000"
 const googleDefaultPlan = "n1-standard-1"
 
 func googleName() string {
-	return strings.ToLower(strings.Replace(time.Now().Format(googleNameLayout), ".", "-", 1))
+	return strings.ToLower(strings.Replace(time.Now().UTC().Format(googleNameLayout), ".", "-", 1))
 }
 
 func googleParseName(name string) (time.Time, error) {
@@ -491,13 +447,8 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 				"diskSizeGb":  storage,
 			},
 		}},
-		"metadata": googleParams{
-			"items": []googleParams{{
-				"key":   "startup-script",
-				"value": fmt.Sprintf(googleStartupScript, p.options.Password),
-			}},
-		},
-		"labels": labels,
+		"metadata": metadata,
+		"labels":   labels,
 		"tags": googleParams{
 			"items": []string{"spread"},
 		},
@@ -634,47 +585,88 @@ func (p *googleProvider) setMetadata(s *googleServer, meta *googleInstanceMetada
 	return nil
 }
 
-func (p *googleProvider) listMachines() (*googleInstances, error) {
-	var result googleInstances
-	err := p.doz("GET", "/instances", nil, &result)
-	if err != nil {
-		return &result, fmt.Errorf("cannot get instances list: %v", err)
-	}
-	return &result, err
+type googleListResult struct {
+	Items []googleServerData
 }
 
-func (p *googleProvider) doRemoveMachine(s *googleServer) (*googleOperation, error) {
-	var op googleOperation
-	err := p.doz("DELETE", "/instances/"+s.d.Name, nil, &op)
+var googleLabelWarning = true
+
+func (p *googleProvider) list() ([]*googleServer, error) {
+	debug("Listing available Google servers...")
+
+	var result googleListResult
+	err := p.doz("GET", "/instances", nil, &result)
 	if err != nil {
-		return &op, fmt.Errorf("cannot deallocate Google server %s: %v", s, err)
+		return nil, fmt.Errorf("cannot get instances list: %v", err)
 	}
-	return &op, err
+
+	servers := make([]*googleServer, 0, len(result.Items))
+	for _, d := range result.Items {
+		if _, err := googleParseName(d.Name); err != nil {
+			if googleLabelWarning {
+				googleLabelWarning = false
+				printf("WARNING: Some Google servers ignored due to unsafe labels.")
+			}
+			continue
+		}
+		servers = append(servers, &googleServer{p: p, d: d})
+	}
+
+	return servers, nil
 }
 
 func (p *googleProvider) removeMachine(ctx context.Context, s *googleServer) error {
 	if err := p.checkLabel(s); err != nil {
 		return fmt.Errorf("cannot deallocate Google server %s: %v", s, err)
 	}
-	_, err := p.doRemoveMachine(s)
+
+	var op googleOperation
+	err := p.doz("DELETE", "/instances/"+s.d.Name, nil, &op)
+	if err != nil {
+		return fmt.Errorf("cannot deallocate Google server %s: %v", s, err)
+	}
 
 	//_, err = p.waitOperation(ctx, s, "deallocate", op.Name)
 	return err
 }
 
-type googleInstance struct {
-	Id                    string
-	CreationTimestamp     string
-	Name                  string
-	MachineType           string
-	Status                string
-	Zone                  string
-	Labels                map[string]string
-}
+func (p *googleProvider) GarbageCollect() error {
+	servers, err := p.list()
+	if err != nil {
+		return err
+	}
 
-type googleInstances struct {
-	Id                    string
-	Items                 []googleInstance
+	now := time.Now()
+	haltTimeout := p.backend.HaltTimeout.Duration
+
+	// Iterate over all the running instances
+	for _, s := range servers {
+		serverTimeout := haltTimeout
+		if value, ok := s.d.Labels["halt-timeout"]; ok {
+			d, err := time.ParseDuration(strings.TrimSpace(value))
+			if err != nil {
+				printf("WARNING: Ignoring bad Google server %s halt-timeout label: %q", s, value)
+			} else {
+				serverTimeout = d
+			}
+		}
+
+		if serverTimeout == 0 {
+			continue
+		}
+
+		printf("Checking %s...", s)
+
+		runningTime := now.Sub(s.d.Created)
+		if runningTime > serverTimeout {
+			printf("Server %s exceeds halt-timeout. Shutting it down...", s)
+			err := p.removeMachine(context.Background(), s)
+			if err != nil {
+				printf("WARNING: Cannot garbage collect %s: %v", s, err)
+			}
+		}
+	}
+	return nil
 }
 
 type googleOperation struct {

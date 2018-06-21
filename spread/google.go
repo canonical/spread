@@ -447,8 +447,10 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 				"diskSizeGb":  storage,
 			},
 		}},
-		"metadata": metadata,
-		"labels":   labels,
+		"metadata": googleParams{
+			"items": metadata,
+		},
+		"labels": labels,
 		"tags": googleParams{
 			"items": []string{"spread"},
 		},

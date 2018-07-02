@@ -22,6 +22,8 @@ import (
 	"syscall"
 )
 
+var sshDial = ssh.Dial
+
 type Client struct {
 	server Server
 	sshc   *ssh.Client
@@ -44,7 +46,7 @@ func Dial(server Server, username, password string) (*Client, error) {
 	if !strings.Contains(addr, ":") {
 		addr += ":22"
 	}
-	sshc, err := ssh.Dial("tcp", addr, config)
+	sshc, err := sshDial("tcp", addr, config)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect to %s: %v", server, err)
 	}
@@ -85,13 +87,15 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 	uptimeChanged := 3 * time.Second
 
 	// close old session
-	c.sshc.Close()
+	if c.sshc != nil {
+		c.sshc.Close()
+	}
 	for {
 		// Try to connect to the rebooting system, note that
 		// waitConfig is not well honored by golang, it is
 		// set to 5sec above but in reality it takes ~60sec
 		// before the code times out.
-		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
+		sshc, err := sshDial("tcp", c.addr, &waitConfig)
 		if err == nil {
 			// once successfully connected, check uptime to
 			// see if the reboot actually happend

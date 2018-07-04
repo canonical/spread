@@ -85,37 +85,47 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 	uptimeChanged := 3 * time.Second
 
 	for {
-		before := time.Now()
-		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
-		if err != nil {
-			// It's gone.
-			continue
-		}
-
+		// Close old session
 		c.sshc.Close()
-		c.sshc = sshc
-		currUptime, err := c.getUptime()
-		if err != nil {
-			// Not available uptime yet
-			continue
+
+		// Try to connect to the rebooting system, note that
+		// waitConfig is not well honored by golang, it is
+		// set to 5sec above but in reality it takes ~60sec
+		// before the code times out.
+		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
+		if err == nil {
+			// once successfully connected, check uptime to
+			// see if the reboot actually happend
+			c.sshc = sshc
+			currUptime, err := c.getUptime()
+			if err == nil {
+				uptimeDelta := currUptime.Sub(prevUptime)
+				if uptimeDelta > uptimeChanged {
+					// Reboot done
+					return nil
+				}
+			}
 		}
 
-		uptimeDelta := currUptime.Sub(prevUptime)
-		if uptimeDelta > uptimeChanged {
-			// Reboot done
-			return nil
-		}
-		// Dial was observed not respecting the timeout by a long shot. Enforce it.
-		if time.Now().After(before.Add(waitConfig.Timeout)) {
-			break
-		}
-
+		// Use multiple selects to ensure that the channels get
+		// checked in the right order. If a single select is used
+		// and all channels have data golang will pick a random
+		// channel. This means that on timeout there is a 1/2 chance
+		// that there is also a retry and ssh.Dial() is run again
+		// which needs to timeout first before the channels are
+		// checked again.
 		select {
-		case <-retry.C:
-		case <-relog.C:
-			printf("Reboot on %s is taking a while...", c.job)
 		case <-timeout:
 			return fmt.Errorf("kill-timeout reached after %s reboot request", c.job)
+		default:
+		}
+		select {
+		case <-relog.C:
+			printf("Reboot on %s is taking a while...", c.job)
+		default:
+		}
+		select {
+		case <-retry.C:
 		}
 	}
 
@@ -289,7 +299,6 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 			return nil, err
 		}
 		c.Run("reboot", "", nil)
-		time.Sleep(3 * time.Second)
 
 		if err := c.dialOnReboot(uptime); err != nil {
 			return nil, err

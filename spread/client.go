@@ -85,9 +85,6 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 	uptimeChanged := 3 * time.Second
 
 	for {
-		// Close old session
-		c.sshc.Close()
-
 		// Try to connect to the rebooting system, note that
 		// waitConfig is not well honored by golang, it is
 		// set to 5sec above but in reality it takes ~60sec
@@ -96,6 +93,7 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 		if err == nil {
 			// once successfully connected, check uptime to
 			// see if the reboot actually happend
+			c.sshc.Close()
 			c.sshc = sshc
 			currUptime, err := c.getUptime()
 			if err == nil {

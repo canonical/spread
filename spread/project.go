@@ -1289,6 +1289,10 @@ func (s *Size) UnmarshalYAML(u func(interface{}) error) error {
 		*s = 0
 		return nil
 	}
+	if str == "image-size" {
+		*s = -1
+		return nil
+	}
 	n, err := strconv.Atoi(str[:len(str)-1])
 	if err != nil {
 		return fmt.Errorf("invalid size string: %q", str)

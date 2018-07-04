@@ -118,6 +118,7 @@ type System struct {
 	Username string
 	Password string
 	Workers  int
+	Preserve bool
 
 	Environment *Environment
 	Variants    []string

@@ -887,14 +887,15 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 
 	<-googleThrottle
 
-	url := "https://www.googleapis.com/"
+	url := "https://www.googleapis.com"
 	if flags&noPathPrefix == 0 {
 		url += "/compute/v1/projects/" + p.gproject() + subpath
 	} else {
 		url += subpath
 	}
 
-	// Repeat on 500s. Comes from Linode logic, not observed on Google so far.
+	// Repeat on 500s. Note that Google's 500s may come in late, as a marshaled error
+	// under a different code. See the INTERNAL handling at the end below.
 	var resp *http.Response
 	var req *http.Request
 	var delays = rand.Perm(10)
@@ -941,6 +942,9 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 			if eresult.Error.Status == "INTERNAL" && eresult.Error.Code == 500 {
 				// Google has broken down like this before:
 				// https://paste.ubuntu.com/p/HMvvxNMq9G/
+				if i == 0 {
+					printf("Google internal error on %s. Retrying a few times...", subpath)
+				}
 				continue
 			}
 			if rerr := eresult.err(); rerr != nil {

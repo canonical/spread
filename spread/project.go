@@ -1289,7 +1289,7 @@ func (s *Size) UnmarshalYAML(u func(interface{}) error) error {
 		*s = 0
 		return nil
 	}
-	if str == "image-size" {
+	if str == "preserve-size" {
 		*s = -1
 		return nil
 	}

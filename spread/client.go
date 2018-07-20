@@ -22,6 +22,32 @@ import (
 	"syscall"
 )
 
+var match string = `MATCH() {
+    {
+        set +xu
+    } 2> /dev/null
+
+    [ ${#@} -gt 0 ] || { echo "error: missing regexp argument"; return 1; }
+
+    local stdin="$(cat)"
+
+    # disable pipefail temporarily, "echo" can get SIGPIPE in the pattern below
+    pf="$(shopt -po pipefail)"
+    set +o pipefail
+    # do the grep
+    echo "$stdin" | grep -q -E "$@" || res=$?
+    # restore pipefail
+    eval "$pf"
+    if [ -n "$res" ]; then
+        echo "error: pattern not found, got:\n$stdin">&2
+        if [ "$res" != 1 ]; then
+            echo "unexpected exit status: $res"
+        fi
+        return 1
+    fi
+}
+`
+
 type Client struct {
 	server Server
 	sshc   *ssh.Client
@@ -361,7 +387,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	}
 	buf.WriteString(rc(false, "REBOOT() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<REBOOT>' || echo \"<REBOOT $1>\"; exit 213; }\n"))
 	buf.WriteString(rc(false, "ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n"))
-	buf.WriteString(rc(true, "MATCH() { { set +xu; } 2> /dev/null; [ ${#@} -gt 0 ] || { echo \"error: missing regexp argument\"; return 1; }; local stdin=\"$(cat)\"; echo \"$stdin\" | grep -q -E \"$@\" || { res=$?; echo \"error: pattern not found, got:\n$stdin\">&2; if [ $res != 1 ]; then echo \"unexpected exit status: $res\"; fi; return 1; }; }\n"))
+	buf.WriteString(rc(true, match))
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
 	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\n")

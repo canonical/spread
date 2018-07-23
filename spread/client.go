@@ -30,14 +30,9 @@ var match string = `MATCH() {
     [ ${#@} -gt 0 ] || { echo "error: missing regexp argument"; return 1; }
 
     local stdin="$(cat)"
-
-    # disable pipefail temporarily, "echo" can get SIGPIPE in the pattern below
-    pf="$(shopt -po pipefail)"
-    set +o pipefail
-    # do the grep
-    echo "$stdin" | grep -q -E "$@" || res=$?
-    # restore pipefail
-    eval "$pf"
+    # We are not using pipes here, see:
+    #   https://github.com/snapcore/spread/pull/64
+    grep -q -E "$@" <<< "$stdin" || res=$?
     if [ -n "$res" ]; then
         echo "error: pattern not found, got:\n$stdin">&2
         if [ "$res" != 1 ]; then

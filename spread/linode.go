@@ -537,7 +537,9 @@ func (p *linodeProvider) createDisk(s *linodeServer, system *System) (root, swap
 	}
 
 	storage := 10000
-	if p.backend.Storage > 0 {
+	if system.Storage > 0 {
+		storage = int(system.Storage / mb)
+	} else if p.backend.Storage > 0 {
 		storage = int(p.backend.Storage / mb)
 	}
 

@@ -119,6 +119,9 @@ type System struct {
 	Password string
 	Workers  int
 
+	// Only for Linode and Google so far.
+	Storage  Size
+
 	Environment *Environment
 	Variants    []string
 

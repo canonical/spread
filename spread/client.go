@@ -363,7 +363,9 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	buf.WriteString(rc(false, "ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n"))
 	// We are not using pipes here, see:
 	//  https://github.com/snapcore/spread/pull/64
-	buf.WriteString(rc(true, "MATCH() { { set +xu; } 2> /dev/null; [ ${#@} -gt 0 ] || { echo \"error: missing regexp argument\"; return 1; }; local stdin=\"$(cat)\"; grep -q -E \"$@\" <<< \"$stdin\" || { res=$?; echo \"grep error: pattern not found, got:\n$stdin\">&2; if [ $res != 1 ]; then echo \"unexpected grep exit status: $res\"; fi; return 1; }; }\n"))
+	// We also run it in a subshell, see
+	//  https://github.com/snapcore/spread/pull/67
+	buf.WriteString(rc(true, "MATCH() ( { set +xu; } 2> /dev/null; [ ${#@} -gt 0 ] || { echo \"error: missing regexp argument\"; return 1; }; local stdin=\"$(cat)\"; grep -q -E \"$@\" <<< \"$stdin\" || { res=$?; echo \"grep error: pattern not found, got:\n$stdin\">&2; if [ $res != 1 ]; then echo \"unexpected grep exit status: $res\"; fi; return 1; }; )\n"))
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
 	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\n")

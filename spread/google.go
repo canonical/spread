@@ -426,12 +426,11 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 	diskParams := googleParams{
 		"sourceImage": sourceImage,
 	}
-	if system.Storage == 0 && p.backend.Storage == 0 {
+
+	if system.Storage == 0 {
 		diskParams["diskSizeGb"] = 10
 	} else if system.Storage > 0 {
 		diskParams["diskSizeGb"] = int(system.Storage / gb)
-	} else if p.backend.Storage > 0 {
-		diskParams["diskSizeGb"] = int(p.backend.Storage / gb)
 	}
 
 	params := googleParams{

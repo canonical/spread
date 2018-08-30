@@ -881,10 +881,6 @@ func (r *Runner) allocateServer(backend *Backend, system *System) *Client {
 Allocate:
 	for {
 		lerr := err
-
-		if system.Storage == 0 {
-			system.Storage = backend.Storage
-		}
 		server, err = r.providers[backend.Name].Allocate(r.tomb.Context(nil), system)
 		if err == nil {
 			break

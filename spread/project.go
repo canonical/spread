@@ -119,6 +119,9 @@ type System struct {
 	Password string
 	Workers  int
 
+	// Only for Linode and Google so far.
+	Storage  Size
+
 	Environment *Environment
 	Variants    []string
 
@@ -540,6 +543,9 @@ func Load(path string) (*Project, error) {
 			}
 			if system.Workers == 0 {
 				system.Workers = 1
+			}
+			if system.Storage == 0 {
+				system.Storage = backend.Storage
 			}
 			if err := checkEnv(system, &system.Environment); err != nil {
 				return nil, err

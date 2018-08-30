@@ -537,8 +537,8 @@ func (p *linodeProvider) createDisk(s *linodeServer, system *System) (root, swap
 	}
 
 	storage := 10000
-	if p.backend.Storage > 0 {
-		storage = int(p.backend.Storage / mb)
+	if system.Storage > 0 {
+		storage = int(system.Storage / mb)
 	}
 
 	// Smallest disk is 30720MB. (10000+240)*3 == 30720,

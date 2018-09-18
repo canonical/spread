@@ -336,12 +336,12 @@ type googleImagesCache struct {
 
 type googleImageListResult struct {
 	Items []struct {
-		Description string
-		Status      string
-		Name        string
-		Family      string
+		Description	string
+		Status		string
+		Name		string
+		Family		string
 	}
-	NextPageToken 	string
+	NextPageToken	string
 }
 
 func (p *googleProvider) projectImages(project string) ([]googleImage, error) {

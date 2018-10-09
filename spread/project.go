@@ -1190,8 +1190,7 @@ func matches(pattern string, strmaps ...strmap) ([]string, error) {
 func evalstr(what string, strmaps ...strmap) ([]string, error) {
 	final := make(map[string]bool)
 	for i, strmap := range strmaps {
-		delta := 0
-		plain := 0
+		hadDelta := false
 		for j, name := range strmap.strings {
 			add := strings.HasPrefix(name, "+")
 			remove := strings.HasPrefix(name, "-")
@@ -1200,12 +1199,9 @@ func evalstr(what string, strmaps ...strmap) ([]string, error) {
 				if i == 0 {
 					return nil, fmt.Errorf("%s specifies %s in delta format", strmap.context, what)
 				}
-				delta++
-			} else {
-				plain++
-			}
-			if delta > 0 && plain > 0 {
-				return nil, fmt.Errorf("%s specifies %s both in delta and plain format", strmap.context, what)
+				hadDelta = true
+			} else if hadDelta {
+				return nil, fmt.Errorf("%s specifies %s using plain format after delta", strmap.context, what)
 			}
 			matches, err := matches(name, strmaps[:i+1]...)
 			if err != nil {

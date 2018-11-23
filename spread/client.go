@@ -296,7 +296,7 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 		if err != nil {
 			return nil, err
 		}
-		c.Run("reboot -f >/dev/null &", "", nil)
+		c.Run("reboot -f >/dev/null && exit &", "", nil)
 
 		if err := c.dialOnReboot(uptime); err != nil {
 			return nil, err

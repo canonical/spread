@@ -60,6 +60,11 @@ type Backend struct {
 	// Only for qemu so far.
 	Memory Size
 
+	// Only for Linode and Google so far.
+	Plan     string
+	Location string
+	Storage  Size
+
 	Systems SystemsMap
 
 	Prepare     string
@@ -76,7 +81,8 @@ type Backend struct {
 	KillTimeout Timeout `yaml:"kill-timeout"`
 	HaltTimeout Timeout `yaml:"halt-timeout"`
 
-	Manual bool
+	Priority OptionalInt
+	Manual   bool
 }
 
 func (b *Backend) String() string { return fmt.Sprintf("backend %q", b.Name) }
@@ -114,10 +120,14 @@ type System struct {
 	Password string
 	Workers  int
 
+	// Only for Linode and Google so far.
+	Storage  Size
+
 	Environment *Environment
 	Variants    []string
 
-	Manual bool
+	Priority OptionalInt
+	Manual   bool
 }
 
 func (system *System) String() string { return system.Backend + ":" + system.Name }
@@ -307,7 +317,8 @@ type Suite struct {
 	WarnTimeout Timeout `yaml:"warn-timeout"`
 	KillTimeout Timeout `yaml:"kill-timeout"`
 
-	Manual bool
+	Priority OptionalInt
+	Manual   bool
 }
 
 func (s *Suite) String() string { return "suite " + s.Name }
@@ -337,7 +348,8 @@ type Task struct {
 	WarnTimeout Timeout `yaml:"warn-timeout"`
 	KillTimeout Timeout `yaml:"kill-timeout"`
 
-	Manual bool
+	Priority OptionalInt
+	Manual   bool
 }
 
 func (t *Task) String() string { return t.Name }
@@ -353,6 +365,8 @@ type Job struct {
 	Variant     string
 	Environment *Environment
 	Sample      int
+
+	Priority int64
 }
 
 func (job *Job) String() string {
@@ -361,9 +375,7 @@ func (job *Job) String() string {
 
 func (job *Job) StringFor(context interface{}) string {
 	switch context {
-	case job.Project:
-		return fmt.Sprintf("project on %s:%s", job.Backend.Name, job.System.Name)
-	case job.Backend, job.System:
+	case job.Project, job.Backend, job.System:
 		return fmt.Sprintf("%s:%s", job.Backend.Name, job.System.Name)
 	case job.Suite:
 		return fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System.Name, job.Suite.Name)
@@ -455,7 +467,7 @@ func SplitVariants(s string) (prefix string, variants []string) {
 
 var (
 	validName   = regexp.MustCompile("^[a-z0-9]+(?:[-._][a-z0-9]+)*$")
-	validSystem = regexp.MustCompile("^[a-z]+-[a-z0-9*]+(?:[-.][a-z0-9*]+)*$")
+	validSystem = regexp.MustCompile("^[a-z*]+-[a-z0-9*]+(?:[-.][a-z0-9*]+)*$")
 	validSuite  = regexp.MustCompile("^(?:[a-z0-9]+(?:[-._][a-z0-9]+)*/)+$")
 	validTask   = regexp.MustCompile("^(?:[a-z0-9]+(?:[-._][a-z0-9]+)*/)+[a-z0-9]+(?:[-._][a-z0-9]+)*$")
 )
@@ -507,7 +519,7 @@ func Load(path string) (*Project, error) {
 			backend.Type = bname
 		}
 		switch backend.Type {
-		case "linode", "lxd", "qemu", "adhoc":
+		case "google", "linode", "lxd", "qemu", "adhoc", "humbox":
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}
@@ -533,6 +545,9 @@ func Load(path string) (*Project, error) {
 			}
 			if system.Workers == 0 {
 				system.Workers = 1
+			}
+			if system.Storage == 0 {
+				system.Storage = backend.Storage
 			}
 			if err := checkEnv(system, &system.Environment); err != nil {
 				return nil, err
@@ -561,6 +576,9 @@ func Load(path string) (*Project, error) {
 	orig := project.Suites
 	project.Suites = make(map[string]*Suite)
 	for sname, suite := range orig {
+		if suite == nil {
+			suite = &Suite{}
+		}
 		if !strings.HasSuffix(sname, "/") {
 			return nil, fmt.Errorf("invalid suite name (must end with /): %q", sname)
 		}
@@ -876,6 +894,8 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 					yevr := strmap{system, evars(system.Environment, "+")}
 					yvar := strmap{system, system.Variants}
 
+					priority := evaloint(task.Priority, suite.Priority, system.Priority, backend.Priority)
+
 					strmaps := []strmap{pevr, bevr, bvar, yevr, yvar, sevr, svar, tevr, tvar}
 					variants, err := evalstr("variants", strmaps...)
 					if err != nil {
@@ -889,13 +909,14 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 
 						for sample := 1; sample <= task.Samples; sample++ {
 							job := &Job{
-								Project: p,
-								Backend: backend,
-								System:  system,
-								Suite:   p.Suites[task.Suite],
-								Task:    task,
-								Variant: variant,
-								Sample:  sample,
+								Project:  p,
+								Backend:  backend,
+								System:   system,
+								Suite:    p.Suites[task.Suite],
+								Task:     task,
+								Variant:  variant,
+								Sample:   sample,
+								Priority: priority,
 							}
 							if job.Variant == "" {
 								job.Name = fmt.Sprintf("%s:%s:%s", job.Backend.Name, job.System.Name, job.Task.Name)
@@ -1225,6 +1246,15 @@ func evalstr(what string, strmaps ...strmap) ([]string, error) {
 	return strs, nil
 }
 
+func evaloint(values ...OptionalInt) int64 {
+	for _, v := range values {
+		if v.IsSet {
+			return v.Value
+		}
+	}
+	return 0
+}
+
 type Timeout struct {
 	time.Duration
 }
@@ -1267,6 +1297,10 @@ func (s *Size) UnmarshalYAML(u func(interface{}) error) error {
 		*s = 0
 		return nil
 	}
+	if str == "preserve-size" {
+		*s = -1
+		return nil
+	}
 	n, err := strconv.Atoi(str[:len(str)-1])
 	if err != nil {
 		return fmt.Errorf("invalid size string: %q", str)
@@ -1283,6 +1317,26 @@ func (s *Size) UnmarshalYAML(u func(interface{}) error) error {
 	default:
 		return fmt.Errorf("unknown size suffix in %q, must be one of: B, K, M, G", str)
 	}
+	return nil
+}
+
+type OptionalInt struct {
+	IsSet bool
+	Value int64
+}
+
+func (s OptionalInt) String() string {
+	return strconv.FormatInt(s.Value, 64)
+}
+
+func (s *OptionalInt) UnmarshalYAML(u func(interface{}) error) error {
+	var value int64
+	err := u(&value)
+	if err != nil {
+		return err
+	}
+	s.Value = value
+	s.IsSet = true
 	return nil
 }
 

@@ -16,7 +16,7 @@ environment:
 backends:
     qemu:
         systems:
-            - ubuntu-16.04:
+            - ubuntu-16.04-64:
                 username: ubuntu
                 password: ubuntu
 

@@ -298,7 +298,6 @@ type Suite struct {
 	Summary     string
 	Systems     []string
 	Backends    []string
-	Condition   string
 
 	Variants    []string
 	Environment *Environment
@@ -389,7 +388,7 @@ func (job *Job) StringFor(context interface{}) string {
 }
 
 func (job *Job) Condition() string {
-	return join(job.Suite.Condition, job.Task.Condition)
+	return join(job.Task.Condition)
 }
 
 func (job *Job) Prepare() string {
@@ -593,7 +592,6 @@ func Load(path string) (*Project, error) {
 		suite.Name = sname + "/"
 		suite.Path = filepath.Join(project.Path, sname)
 		suite.Summary = strings.TrimSpace(suite.Summary)
-		suite.Condition = strings.TrimSpace(suite.Condition)
 		suite.Prepare = strings.TrimSpace(suite.Prepare)
 		suite.Restore = strings.TrimSpace(suite.Restore)
 		suite.Debug = strings.TrimSpace(suite.Debug)

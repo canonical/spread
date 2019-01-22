@@ -396,22 +396,22 @@ be helpful when trying to understand what went wrong.
 
 ## Conditions
 
-Tasks often are executed when some conditions are checked. In order to achieve 
-this, it is possible to define a script which will determine if task has to be 
-executed. The condition script is called before the task preparation and in case
-the result is not possitive the task is skipped.
+A condition is used to determine if the task has to be executed or not.
 
-The condition can be defined at suite or task level, and it is evaluated for 
-indenpendently fo each task.
+The condition is called before the task preparation and in case the result is
+not possitive the task is skipped (prepare, execute and restore).
 
-This is an example to show how to define a condition for a test suite:
+It can be only defined at task level.
 
-suites:
-    examples/:
-        summary: Simple examples
-        condition: |
-            [ -d /path/to/dir ]
+This is an example to show how to define a condition for a task:
 
+```
+summary: Condition example
+condition: |
+    [ -d /path/to/dir ]
+execute: |
+    echo "This is an example"
+```
 
 <a name="functions"/>
 

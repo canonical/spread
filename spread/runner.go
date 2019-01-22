@@ -481,7 +481,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 
 	if verb == checking {
 		if err != nil {
-			logft(start, startTime, "%s %s...", strings.Title(skipping), contextStr)    
+			printft(start, startTime, "%s %s...", strings.Title(skipping), contextStr)
 			return false
 		}
 		return true
@@ -657,7 +657,7 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 				}
 			}
 		} else {
-			r.add(&stats.TaskSkipped, job)
+			r.add(&stats.TaskDone, job)
 		}
 	}
 
@@ -1077,7 +1077,6 @@ func (s *stats) errorCount() int {
 func (s *stats) log() {
 	printf("Successful tasks: %d", len(s.TaskDone))
 	printf("Aborted tasks: %d", len(s.TaskAbort))
-	printf("Skipped tasks: %d", len(s.TaskSkipped))
 
 	logNames(printf, "Failed tasks", s.TaskError, taskName)
 	logNames(printf, "Failed task prepare", s.TaskPrepareError, taskName)

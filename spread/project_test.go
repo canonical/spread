@@ -34,7 +34,7 @@ func (s *FilterSuite) TestFilter(c *C) {
 
 	block := []string{
 		"nothing",
-		"noth...",
+		"north...",
 		"...hing",
 		":backend",
 		"suite",

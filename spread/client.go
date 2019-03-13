@@ -92,7 +92,7 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
 		if err == nil {
 			// once successfully connected, check uptime to
-			// see if the reboot actually happend
+			// see if the reboot actually happened
 			c.sshc.Close()
 			c.sshc = sshc
 			currUptime, err := c.getUptime()

@@ -655,13 +655,11 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 		if !r.run(client, last, restoring, backend, backend.Restore, backend.Debug, &abend) {
 			r.add(&stats.BackendRestoreError, last)
 		}
-		insideBackend = false
 	}
 	if !abend && insideProject {
 		if !r.run(client, last, restoring, r.project, r.project.Restore, r.project.Debug, &abend) {
 			r.add(&stats.ProjectRestoreError, last)
 		}
-		insideProject = false
 	}
 	server := client.Server()
 	client.Close()

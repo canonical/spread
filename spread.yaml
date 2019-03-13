@@ -9,8 +9,9 @@ project: spread
 
 environment:
     GOVERSION: 1.7.3
-    GOPATH: /home/test
-    PATH: $GOPATH/bin:$PATH
+    GOHOME: /home/test
+    GOPATH: $GOHOME
+    PATH: $GOHOME/bin:$PATH
     CACHE_DISABLED: $(HOST:[ "$SEND_CACHE" = 1 ] && echo false || echo tests/cache)
 
 backends:

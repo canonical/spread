@@ -2,7 +2,7 @@ name: spread
 version: 2018.03.20
 summary: Convenient full-system test (task) distribution
 description: |
-    Spread is a plesant way distribute full-system integration tests and
+    Spread is a pleasant way distribute full-system integration tests and
     similar tasks. A few simple and concrete concepts that are fun to play
     with and fix the exact piece missing in the puzzle. It's not Jenkins,
     it's not Travis, it's not a library, not a language, and it's not even

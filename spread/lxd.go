@@ -336,7 +336,7 @@ NextImage:
 		if info.Source.Server != "" && remoteNames[info.Source.Server] != remote {
 			continue
 		}
-		// This is a hack. Unfortunatley exported+imported images lose their remote.
+		// This is a hack. Unfortunately exported+imported images lose their remote.
 		if info.Source.Server == "" && props.Remote != remote {
 			continue
 		}

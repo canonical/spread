@@ -1,0 +1,181 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "j/0+O4eJ99Jrb9un/bwi5npLyOM=",
+			"path": "cloud.google.com/go/compute/metadata",
+			"revision": "2de6e15cf9252ba6c2179d155dd6c991dc013956",
+			"revisionTime": "2018-11-02T17:51:21Z"
+		},
+		{
+			"checksumSHA1": "3ohk4dFYrERZ6WTdKkIwnTA0HSI=",
+			"path": "github.com/kr/pretty",
+			"revision": "73f6ac0b30a98e433b289500d779f50c1a6f0712",
+			"revisionTime": "2018-05-06T08:33:45Z"
+		},
+		{
+			"checksumSHA1": "uulQHQ7IsRKqDudBC8Go9J0gtAc=",
+			"path": "github.com/kr/text",
+			"revision": "7cafcd837844e784b526369c9bce262804aebc60",
+			"revisionTime": "2016-05-04T02:26:26Z"
+		},
+		{
+			"checksumSHA1": "p6TFzuFNUXWl4tfXwvrK4bAXaMQ=",
+			"path": "github.com/niemeyer/pretty",
+			"revision": "d967a9c2b60bfa5f8d6307e7ffb0040234b18ced",
+			"revisionTime": "2016-08-23T13:53:43Z"
+		},
+		{
+			"checksumSHA1": "/pfkYB22L5MtzxrfIHQ0tWylnZw=",
+			"path": "golang.org/x/crypto/acme",
+			"revision": "4d3f4d9ffa16a13f451c3b2999e9c49e9750bf06",
+			"revisionTime": "2018-10-23T16:52:47Z"
+		},
+		{
+			"checksumSHA1": "Yjacru/DE9yXphaefh67NrjNgAk=",
+			"path": "golang.org/x/crypto/acme/autocert",
+			"revision": "4d3f4d9ffa16a13f451c3b2999e9c49e9750bf06",
+			"revisionTime": "2018-10-23T16:52:47Z"
+		},
+		{
+			"checksumSHA1": "NZ5iGipUOW+fRGzNXMqGkGUqPok=",
+			"path": "golang.org/x/crypto/blake2b",
+			"revision": "4d3f4d9ffa16a13f451c3b2999e9c49e9750bf06",
+			"revisionTime": "2018-10-23T16:52:47Z"
+		},
+		{
+			"checksumSHA1": "IQkUIOnvlf0tYloFx9mLaXSvXWQ=",
+			"path": "golang.org/x/crypto/curve25519",
+			"revision": "4d3f4d9ffa16a13f451c3b2999e9c49e9750bf06",
+			"revisionTime": "2018-10-23T16:52:47Z"
+		},
+		{
+			"checksumSHA1": "2LpxYGSf068307b7bhAuVjvzLLc=",
+			"path": "golang.org/x/crypto/ed25519",
+			"revision": "4d3f4d9ffa16a13f451c3b2999e9c49e9750bf06",
+			"revisionTime": "2018-10-23T16:52:47Z"
+		},
+		{
+			"checksumSHA1": "0JTAFXPkankmWcZGQJGScLDiaN8=",
+			"path": "golang.org/x/crypto/ed25519/internal/edwards25519",
+			"revision": "4d3f4d9ffa16a13f451c3b2999e9c49e9750bf06",
+			"revisionTime": "2018-10-23T16:52:47Z"
+		},
+		{
+			"checksumSHA1": "fhxj9uzosD3dQefNF5JuGJzGZwg=",
+			"path": "golang.org/x/crypto/internal/chacha20",
+			"revision": "4d3f4d9ffa16a13f451c3b2999e9c49e9750bf06",
+			"revisionTime": "2018-10-23T16:52:47Z"
+		},
+		{
+			"checksumSHA1": "/U7f2gaH6DnEmLguVLDbipU6kXU=",
+			"path": "golang.org/x/crypto/internal/subtle",
+			"revision": "4d3f4d9ffa16a13f451c3b2999e9c49e9750bf06",
+			"revisionTime": "2018-10-23T16:52:47Z"
+		},
+		{
+			"checksumSHA1": "vKbPb9fpjCdzuoOvajOJnYfHG2g=",
+			"path": "golang.org/x/crypto/poly1305",
+			"revision": "4d3f4d9ffa16a13f451c3b2999e9c49e9750bf06",
+			"revisionTime": "2018-10-23T16:52:47Z"
+		},
+		{
+			"checksumSHA1": "iv+II3fEQN5NIEj+3uHGr/jdVEE=",
+			"path": "golang.org/x/crypto/ssh",
+			"revision": "4d3f4d9ffa16a13f451c3b2999e9c49e9750bf06",
+			"revisionTime": "2018-10-23T16:52:47Z"
+		},
+		{
+			"checksumSHA1": "BGm8lKZmvJbf/YOJLeL1rw2WVjA=",
+			"path": "golang.org/x/crypto/ssh/terminal",
+			"revision": "4d3f4d9ffa16a13f451c3b2999e9c49e9750bf06",
+			"revisionTime": "2018-10-23T16:52:47Z"
+		},
+		{
+			"checksumSHA1": "GtamqiJoL7PGHsN454AoffBFMa8=",
+			"path": "golang.org/x/net/context",
+			"revision": "c10e9556a7bc0e7c942242b606f0acf024ad5d6a",
+			"revisionTime": "2018-11-02T08:55:01Z"
+		},
+		{
+			"checksumSHA1": "WHc3uByvGaMcnSoI21fhzYgbOgg=",
+			"path": "golang.org/x/net/context/ctxhttp",
+			"revision": "c10e9556a7bc0e7c942242b606f0acf024ad5d6a",
+			"revisionTime": "2018-11-02T08:55:01Z"
+		},
+		{
+			"checksumSHA1": "4G6umZJVcrQ/MuQu5zJV7qjxUEM=",
+			"path": "golang.org/x/oauth2",
+			"revision": "ca4130e427c7982e64cb9b5e717ff67bdb725037",
+			"revisionTime": "2018-11-05T16:40:02Z"
+		},
+		{
+			"checksumSHA1": "aizsl78eqx16svvpIAr8noIpvSk=",
+			"path": "golang.org/x/oauth2/google",
+			"revision": "ca4130e427c7982e64cb9b5e717ff67bdb725037",
+			"revisionTime": "2018-11-05T16:40:02Z"
+		},
+		{
+			"checksumSHA1": "6QPQ3ZbVfvvqSF3B++4EQvlrPfY=",
+			"path": "golang.org/x/oauth2/internal",
+			"revision": "ca4130e427c7982e64cb9b5e717ff67bdb725037",
+			"revisionTime": "2018-11-05T16:40:02Z"
+		},
+		{
+			"checksumSHA1": "huVltYnXdRFDJLgp/ZP9IALzG7g=",
+			"path": "golang.org/x/oauth2/jws",
+			"revision": "ca4130e427c7982e64cb9b5e717ff67bdb725037",
+			"revisionTime": "2018-11-05T16:40:02Z"
+		},
+		{
+			"checksumSHA1": "Qyhes/zuLDRC41nI/ko3IyHw8a8=",
+			"path": "golang.org/x/oauth2/jwt",
+			"revision": "ca4130e427c7982e64cb9b5e717ff67bdb725037",
+			"revisionTime": "2018-11-05T16:40:02Z"
+		},
+		{
+			"checksumSHA1": "REkmyB368pIiip76LiqMLspgCRk=",
+			"path": "golang.org/x/sys/cpu",
+			"revision": "9b800f95dbbc54abff0acf7ee32d88ba4e328c89",
+			"revisionTime": "2018-10-31T12:20:39Z"
+		},
+		{
+			"checksumSHA1": "BW0KOqvgOUoyFwEQKWTdoEJrR6c=",
+			"path": "golang.org/x/sys/unix",
+			"revision": "9b800f95dbbc54abff0acf7ee32d88ba4e328c89",
+			"revisionTime": "2018-10-31T12:20:39Z"
+		},
+		{
+			"checksumSHA1": "Y7nctMxT58lRM78VtElPerhcnEs=",
+			"path": "golang.org/x/sys/windows",
+			"revision": "9b800f95dbbc54abff0acf7ee32d88ba4e328c89",
+			"revisionTime": "2018-10-31T12:20:39Z"
+		},
+		{
+			"checksumSHA1": "9gypWnVZJEaH3jMK9KqOp4xgQD4=",
+			"path": "gopkg.in/check.v1",
+			"revision": "788fd78401277ebd861206a03c884797c6ec5541",
+			"revisionTime": "2018-06-28T17:31:08Z"
+		},
+		{
+			"checksumSHA1": "QZz9ZvW99s48zS6yDFjpIiYb73o=",
+			"path": "gopkg.in/niemeyer/ynext.v3",
+			"revision": "22582269a90d307b7c285beb759529b553428413",
+			"revisionTime": "2019-01-30T11:30:03Z"
+		},
+		{
+			"checksumSHA1": "t95/FNK2nGCx3e6IARbO7OrcCuY=",
+			"path": "gopkg.in/tomb.v2",
+			"revision": "d5d1b5820637886def9eef33e03a27a9f166942c",
+			"revisionTime": "2016-12-08T15:16:19Z"
+		},
+		{
+			"checksumSHA1": "ZSWoOPUNRr5+3dhkLK3C4cZAQPk=",
+			"path": "gopkg.in/yaml.v2",
+			"revision": "5420a8b6744d3b0345ab293f6fcba19c978f1183",
+			"revisionTime": "2018-03-28T19:50:20Z"
+		}
+	],
+	"rootPath": "github.com/snapcore/spread"
+}

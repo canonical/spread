@@ -38,7 +38,7 @@ slow, very unstable, hard to make sense of the output, impossible to debug,
 hard to write tests for, hard to run on multiple environments, and parallelism
 was not a thing.
 
-Spread came out as a plesant way to fix that. A few simple and concrete
+Spread came out as a pleasant way to fix that. A few simple and concrete
 concepts that are fun to play with and fix the exact piece missing in the
 puzzle. It's not Jenkins, it's not Travis, it's not a library, not a language,
 and it's not even specific to testing. It's a simple way to express what to run
@@ -117,7 +117,7 @@ execute: |
     exit 1
 ```
 
-This example uses the [LXD backend](#lxd) on the local sytem and thus requires
+This example uses the [LXD backend](#lxd) on the local system and thus requires
 Ubuntu 16.04 or later. If you want to distribute the tasks over to a remote
 system, try the [Linode backend](#linode) with:
 
@@ -316,7 +316,7 @@ add/remove/replace what the previous level defined, again with the ordering:
 A similar group of tasks will often depend on a similar setup of the system.
 Instead of copying & pasting logic, suites can define scripts for tasks under
 them to execute before running, and also scripts that will restore the system
-to its original state so that follow up logic will find a (hopefuly? :)
+to its original state so that follow up logic will find a (hopefully? :)
 unmodified base:
 
 _$PROJECT/spread.yaml_
@@ -801,7 +801,7 @@ That's it. Have fun with your self-contained multi-system task runner.
 The QEMU backend depends on the [QEMU](http://www.qemu.org) emulator
 available from various sources and allows you to run tasks using the
 local system alone even if those tasks depend on low-level features
-not avaliable under LXD.
+not available under LXD.
 
 Setting up the QEMU backend looks similar to:
 
@@ -904,7 +904,7 @@ recommended to prevent automated manipulation of important machines.
 ## Linode backend
 
 The Linode backend is very simple to setup and use as well, and allows
-distributing your tasks over into remote infrastructure runing in
+distributing your tasks over into remote infrastructure running in
 Linode's data centers.
 
 _$PROJECT/spread.yaml_
@@ -1124,7 +1124,7 @@ The `repack` script is run with file descriptors 3 and 4 used as pipes for
 the [specified](#including) project content into and out of the script,
 respectively, in _tar_ format. In other words, the original specified
 project content _may_ be read from file descriptor 3, and the new project
-content _must_ be writen into file descriptor 4.
+content _must_ be written into file descriptor 4.
 
 To illustrate, the following repack script will preserve content unchanged:
 

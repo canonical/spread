@@ -6,9 +6,10 @@ backends:
             - ubuntu-16.04
 
 environment:
-    GOPATH: /gopath
+    GOHOME: /gopath
+    GOPATH: $GOHOME
     GOPKG: github.com/snapcore/spread
-    PATH: $GOPATH/bin:$PATH
+    PATH: $GOHOME/bin:$PATH
     DELTA_REF: 08dbc8b
     DELTA_PREFIX: spread-$DELTA_REF/
 

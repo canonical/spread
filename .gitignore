@@ -4,3 +4,5 @@ tests/cache/*
 parts
 prime
 stage
+vendor/*/
+.coverage

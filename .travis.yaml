@@ -20,6 +20,7 @@ jobs:
       script:
         - set -e
         - ./run-checks --static
+        - ./run-checks --short-unit
     - stage: integration
       name: spread
       dist: xenial

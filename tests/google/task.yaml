@@ -1,22 +1,12 @@
-summary: Test the adhoc backend.
+summary: Test the qemu backend.
 
 prepare: |
     touch /run/spread-reuse.yaml
-    ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    ln -sf /run/spread-reuse.yaml .spread-reuse.yaml
 
 execute: |
-    # Just ensure the lxd container is available for adhoc below.
-    spread -reuse lxd:
+    spread -vv -reuse -resend &> task.out
 
-    export ADHOC_USERNAME=root
-    export ADHOC_PASSWORD=$(cat .spread-reuse.yaml | awk '/password:/ { print $2 }')
-    export ADHOC_ADDRESS=$(cat .spread-reuse.yaml | awk '/address:/ { print $2 }')
-
-    spread -vv -resend adhoc: &> task.out
-
-    grep 'adhoc:ubuntu-16.04:checks/main' task.out
-    grep '^ALLOCATING$' task.out
-    grep '^DISCARDING$' task.out
     grep '^WORKS$' task.out
 
 debug: |

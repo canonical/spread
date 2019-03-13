@@ -2,10 +2,17 @@ project: spread
 
 backends:
     google:
+        type: google
+        key: "$(HOST: echo $SPREAD_GOOGLE_KEY)"
+        location: computeengine/us-east1-b
+        halt-timeout: 2h
         systems:
             - ubuntu-16.04-64
 
 path: /home/test
+
+restore: |
+    rm -rf /home/test
 
 suites:
     checks/:

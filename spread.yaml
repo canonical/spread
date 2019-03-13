@@ -15,11 +15,12 @@ environment:
     CACHE_DISABLED: $(HOST:[ "$SEND_CACHE" = 1 ] && echo false || echo tests/cache)
 
 backends:
-    qemu:
+    google:
+        key: "$(HOST: echo $SPREAD_GOOGLE_KEY)"
+        location: computeengine/us-east1-b
+        halt-timeout: 2h
         systems:
             - ubuntu-16.04-64:
-                username: ubuntu
-                password: ubuntu
 
 exclude:
     - .spread-reuse.yaml

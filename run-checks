@@ -8,21 +8,42 @@ fi
 
 export LANG=C.UTF-8
 export LANGUAGE=en
+
+if command -v goctest >/dev/null; then
+    goctest="goctest"
+else
+    goctest="go test"
+fi
+COVERMODE=${COVERMODE:-atomic}
+
 export GOPATH="${GOPATH:-$(realpath "$(dirname "$0")"/../../../../)}"
 export PATH="$PATH:${GOPATH%%:*}/bin"
 
+short=
 STATIC=
+UNIT=
 SPREAD=
 
 case "${1:-all}" in
+    all)
+        STATIC=1
+        UNIT=1
+        ;;
     --static)
         STATIC=1
+        ;;
+    --unit)
+        UNIT=1
+        ;;
+    --short-unit)
+        UNIT=1
+        short=1
         ;;
     --spread)
         SPREAD=1
         ;;
     *)
-        echo "Wrong flag ${1}. To run a single suite use --static, --spread."
+        echo "Wrong flag ${1}. To run a single suite use --static, --unit, --spread."
         exit 1
 esac
 
@@ -59,6 +80,15 @@ endmsg() {
     fi
 }
 addtrap endmsg
+
+# Append the coverage profile of a package to the project coverage.
+append_coverage() {
+    profile="$1"
+    if [ -f "$profile" ]; then
+        grep -v "^mode:" -- "$profile" >> .coverage/coverage.out || true
+        rm "$profile"
+    fi
+}
 
 if [ "$STATIC" = 1 ]; then
     ./get-deps.sh
@@ -132,6 +162,40 @@ if [ "$STATIC" = 1 ]; then
     fi
 fi
 
+if [ "$UNIT" = 1 ]; then
+    ./get-deps.sh
+
+    echo Building
+    go build -v github.com/snapcore/spread/...
+
+    # tests
+    echo Running tests from "$PWD"
+    if [ "$short" = 1 ]; then
+            # shellcheck disable=SC2046
+            $goctest -short -v $(go list ./... | grep -v '/vendor/' )
+    else
+        # Prepare the coverage output profile.
+        rm -rf .coverage
+        mkdir .coverage
+        echo "mode: $COVERMODE" > .coverage/coverage.out
+
+        if dpkg --compare-versions "$(go version | awk '$3 ~ /^go[0-9]/ {print substr($3, 3)}')" ge 1.10; then
+            # shellcheck disable=SC2046
+            $goctest -v -coverprofile=.coverage/coverage.out -covermode="$COVERMODE" $(go list ./... | grep -v '/vendor/' )
+        else
+            for pkg in $(go list ./... | grep -v '/vendor/' ); do
+                go test -i "$pkg"
+                $goctest -v -coverprofile=.coverage/profile.out -covermode="$COVERMODE" "$pkg"
+                append_coverage .coverage/profile.out
+            done
+        fi
+        # upload to codecov.io if on travis
+        if [ "${TRAVIS_BUILD_NUMBER:-}" ]; then
+            curl -s https://codecov.io/bash | bash /dev/stdin -f .coverage/coverage.out
+        fi
+    fi
+fi
+
 if [ "$SPREAD" = 1 ]; then
     TMP_SPREAD="$(mktemp -d)"
     addtrap "rm -rf \"$TMP_SPREAD\""
@@ -139,10 +203,8 @@ if [ "$SPREAD" = 1 ]; then
     export PATH=$TMP_SPREAD:$PATH
     ( cd "$TMP_SPREAD" && curl -s -O https://niemeyer.s3.amazonaws.com/spread-amd64.tar.gz && tar xzvf spread-amd64.tar.gz )
 
-    spread google: google-upgrade:tests/upgrade/
+    spread
 
-    # cleanup the debian-ubuntu-14.04
-    rm -rf debian-ubuntu-14.04
 fi
 
 UNCLEAN="$(git status -s|grep '^??')" || true

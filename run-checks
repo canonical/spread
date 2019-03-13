@@ -1,0 +1,158 @@
+#!/bin/sh -eu
+
+if [ -n "${TRAVIS_BUILD_NUMBER:-}" ]; then
+    echo travis_fold:start:env
+    printenv | sort
+    echo travis_fold:end:env
+fi
+
+export LANG=C.UTF-8
+export LANGUAGE=en
+export GOPATH="${GOPATH:-$(realpath "$(dirname "$0")"/../../../../)}"
+export PATH="$PATH:${GOPATH%%:*}/bin"
+
+STATIC=
+SPREAD=
+
+case "${1:-all}" in
+    --static)
+        STATIC=1
+        ;;
+    --spread)
+        SPREAD=1
+        ;;
+    *)
+        echo "Wrong flag ${1}. To run a single suite use --static, --spread."
+        exit 1
+esac
+
+CURRENTTRAP="true"
+EXIT_CODE=99
+
+store_exit_code() {
+    EXIT_CODE=$?
+}
+
+exit_with_exit_code() {
+    exit $EXIT_CODE
+}
+
+addtrap() {
+    CURRENTTRAP="$CURRENTTRAP ; $1"
+    # shellcheck disable=SC2064
+    trap "store_exit_code; $CURRENTTRAP ; exit_with_exit_code" EXIT
+}
+
+endmsg() {
+    if [ $EXIT_CODE -eq 0 ]; then
+        p="success.txt"
+        m="All good, what could possibly go wrong."
+    else
+        p="failure.txt"
+        m="Crushing failure and despair."
+    fi
+    echo
+    if [ -t 1 ] && [ -z "$STATIC" ]; then
+        cat "data/$p"
+    else
+        echo "$m"
+    fi
+}
+addtrap endmsg
+
+if [ "$STATIC" = 1 ]; then
+    ./get-deps.sh
+
+    # Run static tests.
+    echo Checking docs
+    ./mdlint.py ./*.md
+
+    echo Checking formatting
+    fmt=""
+    for dir in $(go list -f '{{.Dir}}' ./... | grep -v '/vendor/' ); do
+        s="$(gofmt -s -l "$dir"  | grep -v '/vendor/' || true)"
+        if [ -n "$s" ]; then
+            fmt="$s\\n$fmt"
+        fi
+    done
+
+    if [ -n "$fmt" ]; then
+        echo "Formatting wrong in following files:"
+        echo "$fmt" | sed -e 's/\\n/\n/g'
+        exit 1
+    fi
+
+    # go vet
+    echo Running vet
+    #go list ./... | grep -v '/vendor/' | xargs go vet
+
+    if command -v shellcheck >/dev/null; then
+        echo Checking shell scripts...
+        ( git ls-files -z 2>/dev/null ||
+                find . \( -name .git -o -name vendor \) -prune -o -print0 ) |
+            xargs -0 file -N |
+            awk -F": " '$2~/shell.script/{print $1}' |
+            xargs shellcheck
+        regexp='GOPATH(?!%%:\*)(?!:)[^= ]*/'
+        if  grep -qPr                   --exclude HACKING.md --exclude 'Makefile.*' --exclude-dir .git --exclude-dir vendor "$regexp"; then
+            echo "Using GOPATH as if it were a single entry and not a list:"
+            grep -PHrn -C1 --color=auto --exclude HACKING.md --exclude 'Makefile.*' --exclude-dir .git --exclude-dir vendor "$regexp"
+            echo "Use GOHOME, or {GOPATH%%:*}, instead."
+            exit 1
+        fi
+        unset regexp
+    fi
+
+    echo Checking spelling errors
+    if ! command -v misspell >/dev/null; then
+        go get -u github.com/client9/misspell/cmd/misspell
+    fi
+    for file in *; do
+        if [ "$file" = "vendor" ] || [ "$file" = "po" ]; then
+            continue
+        fi
+        misspell -error -i auther,PROCES,PROCESSS,proces,processs,exportfs "$file"
+    done
+
+    echo Checking for ineffective assignments
+    if ! command -v ineffassign >/dev/null; then
+        go get -u github.com/gordonklaus/ineffassign
+    fi
+    # ineffassign knows about ignoring vendor/ \o/
+    ineffassign .
+
+    echo Checking for naked returns
+    if ! command -v nakedret >/dev/null; then
+        go get -u github.com/alexkohler/nakedret
+    fi
+    got=$(go list ./... | grep -v '/osutil/udev/' | grep -v '/vendor/' | xargs nakedret 2>&1)
+    if [ -n "$got" ]; then
+        echo "$got"
+        exit 1
+    fi
+fi
+
+if [ "$SPREAD" = 1 ]; then
+    TMP_SPREAD="$(mktemp -d)"
+    addtrap "rm -rf \"$TMP_SPREAD\""
+
+    export PATH=$TMP_SPREAD:$PATH
+    ( cd "$TMP_SPREAD" && curl -s -O https://niemeyer.s3.amazonaws.com/spread-amd64.tar.gz && tar xzvf spread-amd64.tar.gz )
+
+    spread google: google-upgrade:tests/upgrade/
+
+    # cleanup the debian-ubuntu-14.04
+    rm -rf debian-ubuntu-14.04
+fi
+
+UNCLEAN="$(git status -s|grep '^??')" || true
+SKIP_UNCLEAN=${SKIP_UNCLEAN=}
+if [ -n "$UNCLEAN" ] && [ -z "$SKIP_UNCLEAN" ]; then
+    cat <<EOF
+
+There are files left in the git tree after the tests:
+
+$UNCLEAN
+EOF
+    exit 1
+fi

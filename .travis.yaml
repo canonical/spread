@@ -1,0 +1,34 @@
+sudo: required
+dist: xenial
+env:
+    global:
+        # SPREAD_GOOGLE_KEY
+        - secure: "NEED-A-NEW-ONE"
+jobs:
+  include:
+    - stage: static
+      go: "1.10"
+      name: Run static code analysis
+      dist: xenial
+      before_install:
+        - sudo apt --quiet -o Dpkg::Progress-Fancy=false update
+      install:
+        - sudo apt --quiet -o Dpkg::Progress-Fancy=false build-dep snapd
+        - ./get-deps.sh
+        - go get gopkg.in/niemeyer/ynext.v3
+        - go get gopkg.in/check.v1
+      script:
+        - set -e
+        - ./run-checks --static
+    - stage: integration
+      name: spread
+      dist: xenial
+      addons:
+        apt:
+          packages:
+          - xdelta3
+      install:
+        # override the default install for language:go
+        - true
+      script:
+        - ./run-checks --spread

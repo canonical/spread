@@ -52,27 +52,27 @@ minor variations without copy & paste.
 
 Each individual job in Spread has a:
 
- * **Project** - There's a single one of those. This is your source code
+* **Project** - There's a single one of those. This is your source code
    repository or whatever the top-level thing is that you want to run tasks for.
 
- * **Backend** - A few lines expressing how to obtain machines for tasks to run
+* **Backend** - A few lines expressing how to obtain machines for tasks to run
    on. Add as many of these as you want, as long as it's one of the supported
    backend types (bonus points for contributing a new backend type - it's rather
    easy).
 
- * **System** - This is the name and version of the operating system that the
+* **System** - This is the name and version of the operating system that the
    task will run on. Each backend specifies a set of systems, and optionally the
    number of machines per system (more parallelism for the impatient).
  
- * **Suite** - A couple more lines and you have a group of tasks which can
+* **Suite** - A couple more lines and you have a group of tasks which can
    share some settings. Defining this and all the above is done in
    `spread.yaml` or `.spread.yaml` in your project base directory.
 
- * **Task** - What to run, effectively. All tasks for a suite live under the same
+* **Task** - What to run, effectively. All tasks for a suite live under the same
    directory. One directory per suite, one directory per task, and `task.yaml`
    inside the latter.
 
- * **Variants** - All of the above is nice, but this is the reason of much
+* **Variants** - All of the above is nice, but this is the reason of much
    rejoice.  Variants are a mechanism that replicates tasks with minor
    variations with no copy & paste and no trouble. See below for details.
 
@@ -195,7 +195,7 @@ suites:
 
 The cascading happens in the following order:
 
- * _Project => Backend => System => Suite => Task_
+* _Project => Backend => System => Suite => Task_
 
 All of these can have an equivalent environment field and their variables will
 be ordered accordingly on executed scripts.
@@ -242,16 +242,16 @@ execute: |
 This task under that suite will spawn _three_ independent jobs, producing the
 following outputs:
 
- * Variant "foo": _Hello sanity!_
- * Variant "bar": _Goodbye lunacy!_
- * Variant "baz": _Hello world!_
+* Variant "foo": _Hello sanity!_
+* Variant "bar": _Goodbye lunacy!_
+* Variant "baz": _Hello world!_
 
 Some key takeaways here:
 
- * Each variant key produces a single job per task.
- * It's okay to declare the same variable with and without a variant suffix.
+* Each variant key produces a single job per task.
+* It's okay to declare the same variable with and without a variant suffix.
    The bare one becomes the default.  
- * The variant key suffix may be comma-separated for multiple definitions at
+* The variant key suffix may be comma-separated for multiple definitions at
    once (`SUBJECT/foo,bar`).
 
 <sup>1</sup> Actually, times two. It's an N-dimensional matrix.
@@ -294,9 +294,9 @@ backend, suite, and task levels. This is also not just about variants either.
 The following fields may be defined with equivalent add/remove or replace
 semantics:
 
- * `backends: [...]` (suite and task)
- * `systems: [...]` (suite and task)
- * `variants: [...]` (project, backend, suite, and task)
+* `backends: [...]` (suite and task)
+* `systems: [...]` (suite and task)
+* `variants: [...]` (project, backend, suite, and task)
 
 So what if you don't want to run a specific task or whole suite on ubuntu-14.04?
 Just add this to the task or suite body:
@@ -307,7 +307,7 @@ systems: [-ubuntu-14.04]
 Cascading also takes place for these settings - each level can
 add/remove/replace what the previous level defined, again with the ordering:
 
- * _Project => Backend => System => Suite => Task_
+* _Project => Backend => System => Suite => Task_
 
 <a name="preparing"/>
 
@@ -398,11 +398,11 @@ be helpful when trying to understand what went wrong.
 
 A few helper functions are available for scripts to use:
 
- * _REBOOT_ - Reboot the system. See [below](#rebooting) for details.
- * _MATCH_ - Run `grep -q -e` on stdin. Without match, print error including content.
- * _ERROR_ - Fail script with provided error message only instead of script trace.
- * _FATAL_ - Similar to ERROR, but prevents retries. Specific to [adhoc backend](#adhoc).
- * _ADDRESS_ - Set allocated system address. Specific to [adhoc backend](#adhoc).
+* _REBOOT_ - Reboot the system. See [below](#rebooting) for details.
+* _MATCH_ - Run `grep -q -e` on stdin. Without match, print error including content.
+* _ERROR_ - Fail script with provided error message only instead of script trace.
+* _FATAL_ - Similar to ERROR, but prevents retries. Specific to [adhoc backend](#adhoc).
+* _ADDRESS_ - Set allocated system address. Specific to [adhoc backend](#adhoc).
 
 
 <a name="rebooting"/>
@@ -660,15 +660,15 @@ correct.
 For example, assuming the two jobs above, these parameters would all match
 at least one of them:
 
-  * _lxd_
-  * _lxd:mysuite/_
-  * _ubuntu-16.04_
-  * _ubuntu-..._
-  * _mysuite/_
-  * _/task-one_
-  * _/task..._
-  * _mysu...one_
-  * _lxd:ubuntu-16.04:variant-a_
+* _lxd_
+* _lxd:mysuite/_
+* _ubuntu-16.04_
+* _ubuntu-..._
+* _mysuite/_
+* _/task-one_
+* _/task..._
+* _mysu...one_
+* _lxd:ubuntu-16.04:variant-a_
 
 The `-list` option is useful to see what jobs would be selected by a given
 filter without actually running them.
@@ -777,10 +777,10 @@ backends:
 
 System names are mapped into LXD images the following way:
 
-  * _ubuntu-16.04 => ubuntu:16.04_
-  * _debian-sid => images:debian/sid/amd64_
-  * _fedora-8 => images:fedora/8/amd64_
-  * _etc_
+* _ubuntu-16.04 => ubuntu:16.04_
+* _debian-sid => images:debian/sid/amd64_
+* _fedora-8 => images:fedora/8/amd64_
+* _etc_
 
 Alternatively they may also be provided explicitly as:
 ```
@@ -931,10 +931,10 @@ The root disk is built out of a [Linode-supported distribution][linode-distros]
 or a [custom image][linode-images] available in the user account. The system
 name is mapped into an image or distribution label the following way:
 
-  * _ubuntu-16.04 => Ubuntu 16.04 LTS_
-  * _debian-8 => Debian 8_
-  * _arch-2015-08 => Arch Linux 2015.08_
-  * _etc_
+* _ubuntu-16.04 => Ubuntu 16.04 LTS_
+* _debian-8 => Debian 8_
+* _arch-2015-08 => Arch Linux 2015.08_
+* _etc_
 
 Images have user-defined labels, so they're also searched for using the Spread
 system name itself.
@@ -1004,8 +1004,8 @@ sub-user to obtain the proper key.
 
 Some links to make your life easier:
 
-  * [Users and permissions](https://manager.linode.com/user)
-  * [API keys](https://manager.linode.com/profile/api)
+* [Users and permissions](https://manager.linode.com/user)
+* [API keys](https://manager.linode.com/profile/api)
 
 
 <a name="adhoc"/>
@@ -1030,9 +1030,9 @@ backends:
 
 The AdHoc scripts have the following custom commands available:
 
-  * _ADDRESS addr[:port]_ - Inform SSH address of machine allocated.
-  * _ERROR message_ - Exit with error message. Operation may be retried.
-  * _FATAL message_ - Exit with fatal message. Operation won't be retried.
+* _ADDRESS addr[:port]_ - Inform SSH address of machine allocated.
+* _ERROR message_ - Exit with error message. Operation may be retried.
+* _FATAL message_ - Exit with fatal message. Operation won't be retried.
   
 A failing script (non-zero exit) is equivalent to calling ERROR, but rather
 than displaying a nice message, the whole script trace and output will
@@ -1040,13 +1040,13 @@ be shown.
 
 The following environment variables are available for the scripts to do their job:
 
-  * _SPREAD_BACKEND_ - Name of current backend.
-  * _SPREAD_SYSTEM_ - Name of the system being allocated.
-  * _SPREAD_PASSWORD_ - Password root will use to connect to the allocated system.
+* _SPREAD_BACKEND_ - Name of current backend.
+* _SPREAD_SYSTEM_ - Name of the system being allocated.
+* _SPREAD_PASSWORD_ - Password root will use to connect to the allocated system.
     Not available if the system has a custom username or password defined.
-  * _SPREAD_SYSTEM_USERNAME_ - Username Spread will connect as for initial system setup.
-  * _SPREAD_SYSTEM_PASSWORD_ - Password Spread will connect as for initial system setup.
-  * _SPREAD_SYSTEM_ADDRESS_ - Address of the allocated system. Only available for discard.
+* _SPREAD_SYSTEM_USERNAME_ - Username Spread will connect as for initial system setup.
+* _SPREAD_SYSTEM_PASSWORD_ - Password Spread will connect as for initial system setup.
+* _SPREAD_SYSTEM_ADDRESS_ - Address of the allocated system. Only available for discard.
 
 The system allocated by the allocate script must return a system that Spread can
 connect to over SSH. The system must be either setup to be accessible as root

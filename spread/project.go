@@ -120,7 +120,7 @@ type System struct {
 	Workers  int
 
 	// Only for Linode and Google so far.
-	Storage  Size
+	Storage Size
 
 	Environment *Environment
 	Variants    []string

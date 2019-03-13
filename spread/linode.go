@@ -1127,7 +1127,6 @@ func (p *linodeProvider) waitJob(s *linodeServer, verb string, jobID int) (*lino
 			}
 		}
 	}
-	panic("unreachable")
 }
 
 func (p *linodeProvider) hasActiveJob(s *linodeServer, action string, flags doFlags) (found bool, err error) {

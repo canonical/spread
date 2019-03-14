@@ -1,6 +1,6 @@
 sudo: required
 dist: xenial
 install:
-    - sudo apt-get update -qq
+    - sudo apt --quiet -o Dpkg::Progress-Fancy=false update
 script:
     - ./run-checks

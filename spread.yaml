@@ -8,7 +8,7 @@
 project: spread
 
 environment:
-    GOVERSION: 1.7.3
+    GOVERSION: 1.10.4
     GOHOME: /home/test
     GOPATH: $GOHOME
     PATH: $GOHOME/bin:$PATH
@@ -20,7 +20,15 @@ backends:
         location: computeengine/us-east1-b
         halt-timeout: 2h
         systems:
-            - ubuntu-16.04-64:
+            - ubuntu-18.04-64:
+                image: ubuntu-1804-64-virt-enabled
+                workers: 1
+
+    qemu:
+        systems:
+            - ubuntu-18.04-64:
+                username: ubuntu
+                password: ubuntu
 
 exclude:
     - .spread-reuse.yaml
@@ -34,18 +42,16 @@ suites:
         summary: Integration tests
 
 prepare: |
-    DEBS="git lxd kvm"
-    if ! dpkg -l $DEBS; then
-        apt-get update
-        apt-get install -y $DEBS
-    fi
+
+    apt update
+    apt install -y git lxd
 
     # Cache is only available if SEND_CACHE=1 is set.
+    mkdir -p tests/cache
 
-    # Cache image with: mkdir tests/cache/lxd-ubuntu-16.04 && lxc export ubuntu:16.04 tests/cache/lxd-ubuntu-16.04
-    if ! lxc image list | grep '16\.04'; then
-        lxc image import tests/cache/lxd-ubuntu-16.04/meta-* tests/cache/lxd-ubuntu-16.04/[a-f0-9]* os=ubuntu version=16.04 architecture=amd64 remote=ubuntu
-    fi
+    # Start lxd instance
+    lxd init --auto
+    lxc launch ubuntu:16.04
 
     # Cache Go deb with: cd tests/cache && godeb download $GOVERSION
     if ! dpkg -l go; then
@@ -62,20 +68,5 @@ prepare: |
         dpkg -i tests/cache/go_$GOVERSION-*.deb
     fi
     go get ./cmd/spread
-
-    # Enable IPv4 in LXD.
-    if [ -z "$(source /etc/default/lxd-bridge && echo $LXD_IPV4_ADDR)" ]; then
-        cat >> /etc/default/lxd-bridge <<END
-    LXD_IPV4_ADDR="10.0.8.1"
-    LXD_IPV4_NETMASK="255.255.255.0"
-    LXD_IPV4_NETWORK="10.0.8.1/24"
-    LXD_IPV4_DHCP_RANGE="10.0.8.2,10.0.8.254"
-    LXD_IPV4_DHCP_MAX="250"
-    LXD_IPV4_NAT="true"
-    END
-        systemctl stop lxd lxd-bridge
-        systemctl start lxd lxd-bridge
-    fi
-
 
 # vim:ts=4:sw=4:et

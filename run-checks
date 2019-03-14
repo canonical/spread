@@ -114,7 +114,7 @@ if [ "$STATIC" = 1 ]; then
 
     # go vet
     echo Running vet
-    #go list ./... | grep -v '/vendor/' | xargs go vet
+    go list ./... | grep -v '/vendor/' | xargs go vet
 
     if command -v shellcheck >/dev/null; then
         echo Checking shell scripts...
@@ -203,7 +203,7 @@ if [ "$SPREAD" = 1 ]; then
     export PATH=$TMP_SPREAD:$PATH
     ( cd "$TMP_SPREAD" && curl -s -O https://niemeyer.s3.amazonaws.com/spread-amd64.tar.gz && tar xzvf spread-amd64.tar.gz )
 
-    spread
+    spread google:
 
 fi
 

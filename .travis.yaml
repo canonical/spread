@@ -6,7 +6,7 @@ env:
         - secure: "NEED-A-NEW-ONE"
 jobs:
   include:
-    - stage: static
+    - stage: quick
       go: "1.10"
       name: Run static code analysis
       dist: xenial

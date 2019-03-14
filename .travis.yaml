@@ -1,0 +1,6 @@
+sudo: required
+dist: xenial
+install:
+    - sudo apt-get update -qq
+script:
+    - ./run-checks

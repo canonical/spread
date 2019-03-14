@@ -10,7 +10,7 @@ execute: |
     test "$(wc -l < task.out)" -eq 0
 
     cat task.err
-    cat task.err | grep "^error: pattern not found, got:$"
+    cat task.err | grep "^grep error: pattern not found, got:$"
     cat task.err | grep "^foo$"
     cat task.err | grep "^bar$"
 

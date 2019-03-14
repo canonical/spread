@@ -42,7 +42,8 @@ execute: |
 
     test ! -e residue/
 
-
-
 debug: |
     find residue/
+
+restore: |
+    rm -f .spread-reuse.yaml /run/spread-reuse.yaml

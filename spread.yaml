@@ -44,7 +44,7 @@ suites:
 prepare: |
 
     apt update
-    apt install -y git lxd
+    apt install -y git lxd qemu-kvm tree
 
     # Cache is only available if SEND_CACHE=1 is set.
     mkdir -p tests/cache

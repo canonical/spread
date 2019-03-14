@@ -11,3 +11,6 @@ execute: |
 
 debug: |
     cat task.out || true
+
+restore: |
+    rm -f .spread-reuse.yaml /run/spread-reuse.yaml

@@ -142,14 +142,14 @@ func run() error {
 	ch := make(chan error, 2)
 
 	if *httpFlag != "" && (*httpsFlag == "" || *acmeFlag == "") {
-		server := *httpServer
+		server := httpServer
 		server.Addr = *httpFlag
 		go func() {
 			ch <- server.ListenAndServe()
 		}()
 	}
 	if *httpsFlag != "" {
-		server := *httpServer
+		server := httpServer
 		server.Addr = *httpsFlag
 		if *acmeFlag != "" {
 			if err := os.MkdirAll(filepath.Join(*dirFlag, "acme"), 0700); err != nil {

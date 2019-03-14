@@ -1,13 +1,21 @@
-summary: Test the qemu backend.
+summary: Test the google backend.
 
 prepare: |
     touch /run/spread-reuse.yaml
     ln -sf /run/spread-reuse.yaml .spread-reuse.yaml
 
 execute: |
+    if [ -z "$SPREAD_GOOGLE_KEY" ]; then
+        echo "Just running this test when $SPREAD_GOOGLE_KEY is defined"
+        exit
+    fi
+
     spread -vv -reuse -resend &> task.out
 
     grep '^WORKS$' task.out
 
 debug: |
     cat task.out || true
+
+restore: |
+    rm -f .spread-reuse.yaml /run/spread-reuse.yaml

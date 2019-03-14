@@ -6,10 +6,14 @@ prepare: |
 
 restore:
     rm -rf residue
+    rm -f .spread-reuse.yaml /run/spread-reuse.yaml
 
 execute: |
     # Works even with different variants producing different data.
     FAIL_CHECK=0 spread -v -reuse -resend -residue=./residue
+
+    # Print the whole fs tree for the test
+    tree
 
     cat residue/lxd:ubuntu-16.04:checks/main:a/one.txt | grep one-a
     cat residue/lxd:ubuntu-16.04:checks/main:a/two.txt | grep two-a,b
@@ -29,6 +33,9 @@ execute: |
         exit 1
     fi
 
+    # Print the whole fs tree for the test
+    tree
+
     cat residue/lxd:ubuntu-16.04:checks/main:a/one.txt | grep one-a
     cat residue/lxd:ubuntu-16.04:checks/main:b/one.txt | grep one-b
 
@@ -40,9 +47,10 @@ execute: |
     # Without -residual, nothing happens.
     FAIL_CHECK=0 spread -v -reuse -resend
 
+    # Print the whole fs tree for the test
+    tree
+
     test ! -e residue/
-
-
 
 debug: |
     find residue/

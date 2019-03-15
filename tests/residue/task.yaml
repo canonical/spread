@@ -1,8 +1,10 @@
 summary: Test downloading of residual task data.
 
 prepare: |
-    touch /run/spread-reuse.yaml
-    ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
 
 restore:
     rm -rf residue
@@ -44,6 +46,3 @@ execute: |
 
 debug: |
     find residue/
-
-restore: |
-    rm -f .spread-reuse.yaml /run/spread-reuse.yaml

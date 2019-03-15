@@ -26,6 +26,9 @@ backends:
 
     qemu:
         systems:
+            - ubuntu-16.04-64:
+                username: ubuntu
+                password: ubuntu
             - ubuntu-18.04-64:
                 username: ubuntu
                 password: ubuntu
@@ -43,15 +46,11 @@ suites:
 
 prepare: |
     apt update
-    apt install -y git lxd qemu-kvm tree
+    apt install -y git lxd tree qemu-kvm
 
     # Cache is only available if SEND_CACHE=1 is set.
     mkdir -p tests/cache
-    
-    # Start lxd instance
-    lxd init --auto
-    lxc launch ubuntu:16.04
-    
+
     # Cache Go deb with: cd tests/cache && godeb download $GOVERSION
     if ! dpkg -l go; then
         if [ ! -f tests/cache/go_$GOVERSION-*.deb ]; then
@@ -67,5 +66,17 @@ prepare: |
         dpkg -i tests/cache/go_$GOVERSION-*.deb
     fi
     go get ./cmd/spread
+
+    if [ -d tests/cache/lxd-ubuntu-16.04 ]; then
+        # Cache is only available if SEND_CACHE=1 is set.
+        # Cache image with: mkdir tests/cache/lxd-ubuntu-16.04 && lxc export ubuntu:16.04 tests/cache/lxd-ubuntu-16.04
+        if ! lxc image list | grep '16\.04'; then
+            lxc image import tests/cache/lxd-ubuntu-16.04/meta-* tests/cache/lxd-ubuntu-16.04/[a-f0-9]* os=ubuntu version=16.04 architecture=amd64 remote=ubuntu
+        fi
+    fi
+
+    # Start lxd instance
+    lxd init --auto
+    lxc launch ubuntu:16.04
 
 # vim:ts=4:sw=4:et

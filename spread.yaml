@@ -46,8 +46,7 @@ suites:
 
 prepare: |
     apt update
-    apt install -y git qemu-kvm snapd
-    snap install lxd tree
+    apt install -y git qemu-kvm lxd tree
 
     # Cache is only available if SEND_CACHE=1 is set.
     mkdir -p tests/cache

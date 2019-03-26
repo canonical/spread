@@ -88,6 +88,8 @@ func Start(project *Project, options *Options) (*Runner, error) {
 			r.providers[bname] = AdHoc(project, backend, options)
 		case "humbox":
 			r.providers[bname] = Humbox(project, backend, options)
+		case "testflinger":
+			r.providers[bname] = TestFlinger(project, backend, options)
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}

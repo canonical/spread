@@ -466,7 +466,7 @@ func SplitVariants(s string) (prefix string, variants []string) {
 
 var (
 	validName   = regexp.MustCompile("^[a-z0-9]+(?:[-._][a-z0-9]+)*$")
-	validSystem = regexp.MustCompile("^[a-z*]+-[a-z0-9*]+(?:[-.][a-z0-9*]+)*$")
+	validSystem = regexp.MustCompile("^[a-z0-9]+-[a-z0-9*]+(?:[-.][a-z0-9*]+)*$")
 	validSuite  = regexp.MustCompile("^(?:[a-z0-9]+(?:[-._][a-z0-9]+)*/)+$")
 	validTask   = regexp.MustCompile("^(?:[a-z0-9]+(?:[-._][a-z0-9]+)*/)+[a-z0-9]+(?:[-._][a-z0-9]+)*$")
 )

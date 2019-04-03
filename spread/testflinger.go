@@ -142,15 +142,15 @@ func (p *tfProvider) Allocate(ctx context.Context, system *System) (Server, erro
 
 	tmpfile, err := ioutil.TempFile(".", tfconfigfile)
 	if err != nil {
-		return nil, fmt.Errorf("Error creating temporal file", err)
+		return nil, fmt.Errorf("Error creating temporal file: %v", err)
 	}
 	defer os.Remove(tmpfile.Name())
 
 	if _, err := tmpfile.Write(d); err != nil {
-		return nil, fmt.Errorf("Error writing temporal file", err)
+		return nil, fmt.Errorf("Error writing temporal file: %v", err)
 	}
 	if err := tmpfile.Close(); err != nil {
-		return nil, fmt.Errorf("Error closing temporal file", err)
+		return nil, fmt.Errorf("Error closing temporal file: %v", err)
 	}
 
 	// First step is to get the job_id running the submit command
@@ -158,7 +158,7 @@ func (p *tfProvider) Allocate(ctx context.Context, system *System) (Server, erro
 
     out, err := exec.Command("/snap/bin/testflinger-cli", "submit", tmpfile.Name()).Output()
     if err != nil {
-        return nil, fmt.Errorf("Error running command: ", err)
+        return nil, fmt.Errorf("Error running command: %v: ", err)
     }
     lines := strings.Split(string(out), "\n")
 
@@ -195,7 +195,7 @@ func (p *tfProvider) Allocate(ctx context.Context, system *System) (Server, erro
     	cmd := exec.Command("/snap/bin/testflinger-cli", "status", jobId)
     	out, err := cmd.Output()
     	if err != nil {
-	        return nil, fmt.Errorf("Error running command", err)
+	        return nil, fmt.Errorf("Error running command: %v", err)
     	}
     	line := strings.Split(string(out), "\n")[0]
     	state := strings.TrimSpace(line)
@@ -229,7 +229,7 @@ func (p *tfProvider) Allocate(ctx context.Context, system *System) (Server, erro
     for {
 	    out, err = exec.Command("/snap/bin/testflinger-cli", "poll", "-o", jobId).Output()
 	    if err != nil {
-	        return nil, fmt.Errorf("Error running command", err)
+	        return nil, fmt.Errorf("Error running command: %v", err)
 	    }
 	    lines = strings.Split(string(out), "\n")		
 

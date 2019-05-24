@@ -31,33 +31,34 @@ type tfServer struct {
 }
 
 type tfServerData struct {
-	Name string
+	Name  string
 	JobId string
 }
 
 type tfFile struct {
-    Queue          string `yaml:"job_queue"`
-    ProvisionDdata *tfProvisioningData `yaml:"provision_data"`
-    TestData       *tfTestData `yaml:"test_data"`
-    ReserveData    *tfReserveData `yaml:"reserve_data"`
+	Queue          string              `yaml:"job_queue"`
+	ProvisionDdata *tfProvisioningData `yaml:"provision_data"`
+	TestData       *tfTestData         `yaml:"test_data"`
+	ReserveData    *tfReserveData      `yaml:"reserve_data"`
 }
 
 var (
-    tfconfigfile = "testflinger.conf."
-    tfuser		 = "ubuntu"
-    tfpassword   = "ubuntu"
+	tfconfigfile = "testflinger.conf."
+	tfuser       = "ubuntu"
+	tfpassword   = "ubuntu"
+	tfpolltime   = 10
 )
 
 type tfReserveData struct {
-    SSHKeys []string `yaml:"ssh_keys"`
+	SSHKeys []string `yaml:"ssh_keys"`
 }
 
 type tfTestData struct {
-    TestCommands []string `yaml:"test_cmds"`
+	TestCommands []string `yaml:"test_cmds"`
 }
 
 type tfProvisioningData struct {
-    Url string
+	Url string
 }
 
 func (s *tfServer) String() string {
@@ -118,27 +119,29 @@ func (p *tfProvider) Allocate(ctx context.Context, system *System) (Server, erro
 	name := tfName(system)
 
 	key := ""
-    if p.backend.Key != "" {
+	if p.backend.Key != "" {
 		key = p.backend.Key
 	}
 
-    file := &tfFile{
-        Queue: name,
-        ProvisionDdata: &tfProvisioningData{
-            Url: image,
-        },
-        TestData: &tfTestData{
-            TestCommands: []string{"ssh $DEVICE_IP cat /proc/cpuinfo", "ssh $DEVICE_IP echo ubuntu:ubuntu | sudo chpasswd", "ssh $DEVICE_IP echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/create-user-ubuntu"},
-        },
-        ReserveData: &tfReserveData{
-            SSHKeys: []string{key},
-        },
-    }
+	file := &tfFile{
+		Queue: name,
+		ProvisionDdata: &tfProvisioningData{
+			Url: image,
+		},
+		TestData: &tfTestData{
+			TestCommands: []string{"ssh $DEVICE_IP cat /proc/cpuinfo",
+				"ssh $DEVICE_IP echo ubuntu:ubuntu | sudo chpasswd",
+				"ssh $DEVICE_IP echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/create-user-ubuntu"},
+		},
+		ReserveData: &tfReserveData{
+			SSHKeys: []string{key},
+		},
+	}
 
-    d, err := yaml.Marshal(file)
-    if err != nil {
-        return nil, fmt.Errorf("error: %v", err)
-    }
+	d, err := yaml.Marshal(file)
+	if err != nil {
+		return nil, fmt.Errorf("error: %v", err)
+	}
 
 	tmpfile, err := ioutil.TempFile(".", tfconfigfile)
 	if err != nil {
@@ -154,62 +157,62 @@ func (p *tfProvider) Allocate(ctx context.Context, system *System) (Server, erro
 	}
 
 	// First step is to get the job_id running the submit command
-    jobId := ""
+	jobId := ""
 
-    out, err := exec.Command("/snap/bin/testflinger-cli", "submit", tmpfile.Name()).Output()
-    if err != nil {
-        return nil, fmt.Errorf("Error running command: %v: ", err)
-    }
-    lines := strings.Split(string(out), "\n")
+	out, err := exec.Command("/snap/bin/testflinger-cli", "submit", tmpfile.Name()).Output()
+	if err != nil {
+		return nil, fmt.Errorf("Error running command: %v: ", err)
+	}
+	lines := strings.Split(string(out), "\n")
 
-    for _, line := range lines {
-        if strings.HasPrefix(line, "job_id:") {
-            parts := strings.Split(line, ":")
-            if len(parts) == 2 {
-                jobId = strings.TrimSpace(parts[1])
-                printf("JobId created for testflinger job: %s", jobId)
-                break
-            } else {
-                return nil, fmt.Errorf("JobId not found")
-            }
-        }
-    }	
+	for _, line := range lines {
+		if strings.HasPrefix(line, "job_id:") {
+			parts := strings.Split(line, ":")
+			if len(parts) == 2 {
+				jobId = strings.TrimSpace(parts[1])
+				printf("JobId created for testflinger job: %s", jobId)
+				break
+			} else {
+				return nil, fmt.Errorf("JobId not found")
+			}
+		}
+	}
 
 	s := &tfServer{
 		p: p,
 		d: tfServerData{
-			Name: name,
+			Name:  name,
 			JobId: jobId,
 		},
 		system: system,
 	}
 
 	// Second step is to wait until the ip device reserved
-	printf("Waiting for testflinger %s to have an address...", name)    
+	printf("Waiting for testflinger %s to have an address...", name)
 
 	timeout := time.After(30 * time.Minute)
 	warn := time.NewTicker(1 * time.Minute)
 	retry := time.NewTicker(15 * time.Second)
 	defer retry.Stop()
-    for {
-    	cmd := exec.Command("/snap/bin/testflinger-cli", "status", jobId)
-    	out, err := cmd.Output()
-    	if err != nil {
-	        return nil, fmt.Errorf("Error running command: %v", err)
-    	}
-    	line := strings.Split(string(out), "\n")[0]
-    	state := strings.TrimSpace(line)
+	for {
+		cmd := exec.Command("/snap/bin/testflinger-cli", "status", jobId)
+		out, err := cmd.Output()
+		if err != nil {
+			return nil, fmt.Errorf("Error running command: %v", err)
+		}
+		line := strings.Split(string(out), "\n")[0]
+		state := strings.TrimSpace(line)
 
-        if state == "reserve" {
-            printf("System already reserved, detecting ip...")
-            break
-        }
+		if state == "reserve" {
+			printf("System already reserved, detecting ip...")
+			break
+		}
 
-        if state == "complete" {
-            return nil, fmt.Errorf("System already in complete state")
-        }
-        
-        select {
+		if state == "complete" {
+			return nil, fmt.Errorf("System already in complete state")
+		}
+
+		select {
 		case <-retry.C:
 		case <-warn.C:
 			printf("Warning, system already on %s state", state)
@@ -218,42 +221,42 @@ func (p *tfProvider) Allocate(ctx context.Context, system *System) (Server, erro
 			return nil, fmt.Errorf("System not reserved")
 		}
 
-    }
+	}
 
-    // wait until the ip is published (poll buffers 10 seconds until it outputs all the data)
-    time.Sleep(12 * time.Second)
+	// wait until the ip is published (poll buffers 10 seconds until it outputs all the data)
+	time.Sleep(tfpolltime * time.Second)
 
 	// third step is to get the user and ip to connect to the device
 	timeout = time.After(2 * time.Minute)
-	retry = time.NewTicker(10 * time.Second)
-    for {
-	    out, err = exec.Command("/snap/bin/testflinger-cli", "poll", "-o", jobId).Output()
-	    if err != nil {
-	        return nil, fmt.Errorf("Error running command: %v", err)
-	    }
-	    lines = strings.Split(string(out), "\n")		
+	retry = time.NewTicker(tfpolltime * time.Second)
+	for {
+		out, err = exec.Command("/snap/bin/testflinger-cli", "poll", "-o", jobId).Output()
+		if err != nil {
+			return nil, fmt.Errorf("Error running command: %v", err)
+		}
+		lines = strings.Split(string(out), "\n")
 
 		for _, line := range lines {
-	        if strings.HasPrefix(line, "You can now connect to") {
-	            parts := strings.Split(line, "@")
-	            if len(parts) == 2 {
-	                s.address = strings.TrimSpace(parts[1])
-	                printf("Allocated device with ip %s", s.address)
+			if strings.HasPrefix(line, "You can now connect to") {
+				parts := strings.Split(line, "@")
+				if len(parts) == 2 {
+					s.address = strings.TrimSpace(parts[1])
+					printf("Allocated device with ip %s", s.address)
 					return s, nil
-	            } else {
-	                s.Discard(ctx)
-	                return nil, fmt.Errorf("ip address not found")
-	            }
-	        }
-	    }
+				} else {
+					s.Discard(ctx)
+					return nil, fmt.Errorf("ip address not found")
+				}
+			}
+		}
 
-        select {
+		select {
 		case <-retry.C:
 		case <-timeout:
 			s.Discard(ctx)
 			return nil, fmt.Errorf("Ip not published")
 		}
-    }
+	}
 
 	return nil, fmt.Errorf("ip address not found")
 }

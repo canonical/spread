@@ -120,7 +120,7 @@ type System struct {
 	Workers  int
 
 	// Only for Linode and Google so far.
-	Storage  Size
+	Storage Size
 
 	Environment *Environment
 	Variants    []string
@@ -764,7 +764,7 @@ func (f *filter) Order(jobs []*Job) []*Job {
 	if len(f.exps) == 0 {
 		return jobs
 	}
-	alljobs :=  []*Job{}
+	alljobs := []*Job{}
 	for _, exp := range f.exps {
 		for _, job := range jobs {
 			if exp.firstSample > 0 {
@@ -874,6 +874,15 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 		return nil, fmt.Errorf("remote project path must be absolute and not /: %s", p.RemotePath)
 	}
 
+	// Just one worker per system when order is set as parameter
+	if options.Order {
+		for _, backend := range p.Backends {
+			for _, system := range backend.Systems {
+				system.Workers = 1
+			}
+		}
+	}
+
 	for _, suite := range p.Suites {
 		senv := envmap{suite, suite.Environment}
 		sevr := strmap{suite, evars(suite.Environment, "+")}
@@ -947,7 +956,6 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 							if task.Samples > 1 {
 								job.Name += "#" + strconv.Itoa(sample)
 							}
-
 
 							sprenv := envmap{stringer("$SPREAD_*"), NewEnvironment(
 								"SPREAD_JOB", job.Name,

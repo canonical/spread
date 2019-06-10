@@ -36,6 +36,7 @@ type Options struct {
 	Seed           int64
 	Repeat         int
 	GarbageCollect bool
+	ShowOutput     bool
 }
 
 type Runner struct {
@@ -472,7 +473,13 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	}
 	client.SetWarnTimeout(job.WarnTimeoutFor(context))
 	client.SetKillTimeout(job.KillTimeoutFor(context))
-	_, err := client.Trace(script, dir, job.Environment)
+
+	var err error
+	if r.options.ShowOutput {
+		_, err = client.ShowOutput(script, dir, job.Environment)
+	} else {
+		_, err = client.Trace(script, dir, job.Environment)
+	}
 	printft(start, endTime, "")
 	if err != nil {
 		// Use a different time so it has a different id on Travis, but keep
@@ -480,12 +487,14 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		start = start.Add(1)
 		printft(start, startTime|endTime|startFold|endFold, "Error %s %s : %v", verb, contextStr, err)
 		if debug != "" {
-			start = time.Now()
-			output, err := client.Trace(debug, dir, job.Environment)
-			if err != nil {
-				printft(start, startTime|endTime|startFold|endFold, "Error debugging %s : %v", contextStr, err)
-			} else if len(output) > 0 {
-				printft(start, startTime|endTime|startFold|endFold, "Debug output for %s : %v", contextStr, outputErr(output, nil))
+			if ! r.options.ShowOutput {
+				start = time.Now()
+				output, err := client.Trace(debug, dir, job.Environment)
+				if err != nil {
+					printft(start, startTime|endTime|startFold|endFold, "Error debugging %s : %v", contextStr, err)
+				} else if len(output) > 0 {
+					printft(start, startTime|endTime|startFold|endFold, "Debug output for %s : %v", contextStr, outputErr(output, nil))
+				}
 			}
 		}
 		if r.options.Debug || r.options.ShellAfter {

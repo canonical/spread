@@ -235,6 +235,7 @@ const (
 	traceOutput outputMode = iota
 	combinedOutput
 	splitOutput
+	showOutput
 	shellOutput
 )
 
@@ -245,6 +246,10 @@ func (c *Client) Run(script string, dir string, env *Environment) error {
 
 func (c *Client) Output(script string, dir string, env *Environment) (output []byte, err error) {
 	return c.run(script, dir, env, splitOutput)
+}
+
+func (c *Client) ShowOutput(script string, dir string, env *Environment) (output []byte, err error) {
+	return c.run(script, dir, env, showOutput)
 }
 
 func (c *Client) CombinedOutput(script string, dir string, env *Environment) (output []byte, err error) {
@@ -268,7 +273,7 @@ func (e *rebootError) Error() string { return "reboot requested" }
 
 const maxReboots = 10
 
-func (c *Client) run(script string, dir string, env *Environment, mode outputMode) (output []byte, err error) {
+func (c *Client) run(script string, dir string, env *Environment, mode outputMode) (output []byte, err error) {	
 	if env == nil {
 		env = NewEnvironment()
 	}
@@ -429,6 +434,9 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		cmd = c.sudo() + "/bin/bash -"
 		session.Stdout = &stdout
 		session.Stderr = &stderr
+	case showOutput:
+		cmd = c.sudo() + "/bin/bash - 2>&1"
+		session.Stdout = os.Stdout
 	case shellOutput:
 		cmd = fmt.Sprintf("{\nf=$(mktemp)\ntrap 'rm '$f EXIT\ncat > $f <<'SCRIPT_END'\n%s\nSCRIPT_END\n%s/bin/bash $f\n}", buf.String(), c.sudo())
 		session.Stdout = os.Stdout
@@ -825,7 +833,7 @@ func (s *localScript) run() (stdout, stderr []byte, err error) {
 	cmd.Dir = s.dir
 	cmd.ExtraFiles = s.extraFiles
 	switch s.mode {
-	case traceOutput, combinedOutput:
+	case traceOutput, combinedOutput, showOutput:
 		cmd.Stdout = &outbuf
 		cmd.Stderr = &outbuf
 	case splitOutput:

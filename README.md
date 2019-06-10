@@ -4,30 +4,31 @@ Spread
 ## Convenient full-system test (task) distribution 
 
 [Why?](#why)  
-[The cascading matrix](#matrix)  
-[Hello world](#hello-world)  
-[Environments](#environments)  
-[Variants](#variants)  
-[Blacklisting and whitelisting](#blacklisting)  
-[Preparing and restoring](#preparing)  
+[The cascading matrix](#matrix)
+[Hello world](#hello-world)
+[Environments](#environments)
+[Variants](#variants)
+[Blacklisting and whitelisting](#blacklisting)
+[Preparing and restoring](#preparing)
 [Functions](#functions)
-[Rebooting](#rebooting)  
-[Timeouts](#timeouts)  
-[Fast iterations with reuse](#reuse)  
-[Debugging](#debugging)  
+[Rebooting](#rebooting)
+[Timeouts](#timeouts)
+[Fast iterations with reuse](#reuse)
+[Debugging](#debugging)
 [Repeating tasks](#repeating)
-[Passwords and usernames](#passwords)  
-[Including, excluding, and renaming files](#including)  
-[Selecting which tasks to run](#selecting)  
-[Disabling unless manually selected](#manual)  
-[Fetching residual artifacts](#residue)  
-[LXD backend](#lxd)  
-[QEMU backend](#qemu)  
-[Google backend](#google)  
-[Linode backend](#linode)  
-[AdHoc backend](#adhoc)  
-[More on parallelism](#parallelism)  
-[Repacking and delta uploads](#repacking)  
+[Showing output for tasks](#showing-output)
+[Passwords and usernames](#passwords)
+[Including, excluding, and renaming files](#including)
+[Selecting which tasks to run](#selecting)
+[Disabling unless manually selected](#manual)
+[Fetching residual artifacts](#residue)
+[LXD backend](#lxd)
+[QEMU backend](#qemu)
+[Google backend](#google)
+[Linode backend](#linode)
+[AdHoc backend](#adhoc)
+[More on parallelism](#parallelism)
+[Repacking and delta uploads](#repacking)
 
 <a name="why"/>
 
@@ -559,6 +560,16 @@ the task fails.
 
 To do that there is an option `-repeat` which receives an integer indicating 
 the number of reexecutions to do, being 0 the default value.
+
+<a name="showing-output"/>
+
+## Showing tasks output
+
+Showing the output of the tasks performed can be done by using the option
+`-show-output`. This option could be really usefull when real time output is
+needed for debugging, tracing, etc.
+This option can be used just when 1 job is used at all. This limitation it
+needed to avoid mixing the output of different jobs in the same output.
 
 
 <a name="passwords">

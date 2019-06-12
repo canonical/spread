@@ -36,6 +36,7 @@ type Options struct {
 	Seed           int64
 	Repeat         int
 	GarbageCollect bool
+	Workers        int
 }
 
 type Runner struct {

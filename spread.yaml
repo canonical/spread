@@ -42,16 +42,14 @@ suites:
         summary: Integration tests
 
 prepare: |
-
-    apt update
-    apt install -y git lxd qemu-kvm tree
+    DEBS="git qemu-kvm lxd tree"
+    if ! dpkg -l $DEBS; then
+        apt update
+        apt install -y $DEBS
+    fi
 
     # Cache is only available if SEND_CACHE=1 is set.
     mkdir -p tests/cache
-
-    # Start lxd instance
-    lxd init --auto
-    lxc launch ubuntu:16.04
 
     # Cache Go deb with: cd tests/cache && godeb download $GOVERSION
     if ! dpkg -l go; then
@@ -68,5 +66,19 @@ prepare: |
         dpkg -i tests/cache/go_$GOVERSION-*.deb
     fi
     go get ./cmd/spread
+
+    # Cache is only available if SEND_CACHE=1 is set, follow the steps:
+    # - Create dest dir: > mkdir tests/cache/lxd-ubuntu-16.04
+    # - Get image id: > lxc image list
+    # - Export image: > lxc image export <IAMGE-ID> tests/cache/lxd-ubuntu-16.04
+    # - Extract metadata: > cd tests/cache/lxd-ubuntu-16.04 && tar -xvf <METADATA-FILE>
+    if [ -d tests/cache/lxd-ubuntu-16.04 ]; then
+        if ! lxc image list | grep '16\.04'; then
+            lxc image import tests/cache/lxd-ubuntu-16.04
+        fi
+    fi
+
+    # Start lxd instance
+    lxd init --auto
 
 # vim:ts=4:sw=4:et

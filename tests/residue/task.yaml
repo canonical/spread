@@ -1,8 +1,10 @@
 summary: Test downloading of residual task data.
 
 prepare: |
-    touch /run/spread-reuse.yaml
-    ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
 
 restore:
     rm -rf residue
@@ -46,9 +48,6 @@ execute: |
 
     # Without -residual, nothing happens.
     FAIL_CHECK=0 spread -v -reuse -resend
-
-    # Print the whole fs tree for the test
-    tree
 
     test ! -e residue/
 

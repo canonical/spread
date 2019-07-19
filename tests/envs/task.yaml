@@ -1,8 +1,10 @@
 summary: Test spread environment handling.
 
 prepare: |
-    touch /run/spread-reuse.yaml
-    ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
 
 execute: |
     spread -vv -reuse -resend &> task.out

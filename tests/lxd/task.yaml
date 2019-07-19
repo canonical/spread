@@ -1,8 +1,10 @@
-summary: Test the qemu backend.
+summary: Test the lxd backend.
 
 prepare: |
-    touch /run/spread-reuse.yaml
-    ln -sf /run/spread-reuse.yaml .spread-reuse.yaml
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
 
 execute: |
     spread -vv -reuse -resend &> task.out

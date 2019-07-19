@@ -1,8 +1,10 @@
 summary: Test the adhoc backend.
 
 prepare: |
-    touch /run/spread-reuse.yaml
-    ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
 
 execute: |
     # Just ensure the lxd container is available for adhoc below.

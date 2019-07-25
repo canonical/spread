@@ -1,13 +1,16 @@
 summary: Test features that delta uploads depend on.
 
 prepare: |
-    touch /run/spread-reuse.yaml
-    ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
 
 execute: |
-    spread -vv -reuse -resend &> task.out
+    # We send the output to /tmp to avoid the file changes during repack
+    spread -vv -reuse -resend &> /tmp/task.out
 
-    cat task.out | grep '^WORKS$'
+    cat /tmp/task.out | grep '^WORKS$'
 
 debug: |
-    cat task.out || true
+    cat /tmp/task.out || true

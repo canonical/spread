@@ -1,0 +1,8 @@
+summary: The automatic task.
+
+execute: |
+    if [ "$SPREAD_REBOOT" = 0 ]; then
+      echo WORKS:task-b1
+      REBOOT
+    fi
+    echo WORKS:task-b2

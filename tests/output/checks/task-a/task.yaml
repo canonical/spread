@@ -1,0 +1,10 @@
+summary: The automatic task.
+
+prepare: |
+    echo WORKS:task-a1
+
+restore: |
+    echo WORKS:task-a2
+
+execute: |
+    echo WORKS:task-a3

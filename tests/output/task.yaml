@@ -1,0 +1,30 @@
+summary: Test the MATCH function.
+
+prepare: |
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
+
+restore: |
+    rm -f exec1.out exec2.out exec3.out
+
+execute: |
+    # Check the task output is shown when -show-output is not used
+    spread -show-output lxd:ubuntu-16.04:checks/task-a &> exec1.out
+    grep 'Executing lxd:ubuntu-16.04:checks/task-a' exec1.out
+    grep 'WORKS:task-a1' exec1.out
+    grep 'WORKS:task-a2' exec1.out
+    grep 'WORKS:task-a3' exec1.out
+
+    # Check the task output is not shown when -show-output is not used
+    spread lxd:ubuntu-16.04:checks/task-a &> exec2.out
+    grep 'Executing lxd:ubuntu-16.04:checks/task-a' exec2.out
+    ! grep 'WORKS:task-a1' exec2.out
+    ! grep 'WORKS:task-a2' exec2.out
+    ! grep 'WORKS:task-a3' exec2.out
+
+    # Check the task output is shown after reboot when -show-output is used
+    spread -show-output lxd:ubuntu-16.04:checks/task-b &> exec3.out
+    grep 'WORKS:task-b1' exec3.out
+    grep 'WORKS:task-b2' exec3.out

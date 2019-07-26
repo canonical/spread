@@ -1,0 +1,14 @@
+project: spread
+
+backends:
+    lxd:
+        systems:
+            - ubuntu-16.04
+
+path: /home/test
+
+suites:
+    checks/: 
+        summary: Verification tasks.
+
+# vim:ts=4:sw=4:et

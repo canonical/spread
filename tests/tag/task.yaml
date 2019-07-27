@@ -1,0 +1,28 @@
+summary: Test the tag option
+
+prepare: |
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
+
+restore: |
+    rm -f exec1.out exec2.out exec3.out
+
+execute: |
+    # Check the tests can be filtered by the tag passed as parameter
+    spread -tag tag-a lxd:ubuntu-16.04:checks/ &> exec1.out
+    grep 'Executing lxd:ubuntu-16.04:checks/test-a' exec1.out
+    grep 'Executing lxd:ubuntu-16.04:checks/test-b' exec1.out
+    grep 'Successful tasks: 2' exec1.out
+
+    # Check the case when there is not task matching the tag
+    spread -tag tag-c lxd:ubuntu-16.04:checks/ &> exec2.out || true
+    grep 'error: nothing matches provider filter' exec2.out
+
+    # Check the case when the tag option is not used
+    spread lxd:ubuntu-16.04:checks/ &> exec3.out
+    grep 'Executing lxd:ubuntu-16.04:checks/test-a' exec3.out
+    grep 'Executing lxd:ubuntu-16.04:checks/test-b' exec3.out
+    grep 'Executing lxd:ubuntu-16.04:checks/test-c' exec3.out
+    grep 'Successful tasks: 3' exec3.out

@@ -349,6 +349,7 @@ type Task struct {
 
 	Priority OptionalInt
 	Manual   bool
+	Tags     []string
 }
 
 func (t *Task) String() string { return t.Name }
@@ -984,6 +985,19 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 		}
 		if !manualTasks && job.Task.Manual {
 			continue
+		}
+
+		// Check the tag in the jon in case a tag is specified in the options
+		if options.Tag != "" {
+			tagMatch := false
+			for tag := range job.Task.Tags {
+				if options.Tag == job.Task.Tags[tag] {
+					tagMatch = true
+				}
+			}
+			if !tagMatch {
+				continue
+			}
 		}
 		jobs = append(jobs, job)
 		backends[job.Backend.Name] = true

@@ -16,6 +16,7 @@ Spread
 [Fast iterations with reuse](#reuse)  
 [Debugging](#debugging)  
 [Repeating tasks](#repeating)
+[Tagging tasks](#tagging)
 [Passwords and usernames](#passwords)  
 [Including, excluding, and renaming files](#including)  
 [Selecting which tasks to run](#selecting)  
@@ -559,6 +560,28 @@ the task fails.
 
 To do that there is an option `-repeat` which receives an integer indicating 
 the number of reexecutions to do, being 0 the default value.
+
+
+<a name="tagging"/>
+
+## Tagging tasks
+
+Tagging tasks is an easy way to define group of tasks. Each task can be
+tagged with a set of tags which should describe it.
+
+The following example shows how a task can be identified to be executed either
+in an offline environment or as part of the smoke test.
+```
+tags: [offline, smoke-test]
+```
+
+To filter the executions by group of tasks which are tagged with the same tag
+there is an option `-tag` which receives a string which is the tag name.
+```
+$ spread -tag smoke-test ...
+```
+
+When a tag is used to filter tests, just the tests with that tag will be executed.
 
 
 <a name="passwords">

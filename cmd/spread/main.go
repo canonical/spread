@@ -35,7 +35,6 @@ var (
 	repeat         = flag.Int("repeat", 0, "Number of times to repeat each task")
 	tag            = flag.String("tag", "", "Filter tests which match with the tag specified")
 	garbageCollect = flag.Bool("gc", false, "Garbage collect backend resources when possible")
-
 )
 
 func main() {

@@ -987,18 +987,11 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 			continue
 		}
 
-		// Check the tag in the jon in case a tag is specified in the options
-		if options.Tag != "" {
-			tagMatch := false
-			for tag := range job.Task.Tags {
-				if options.Tag == job.Task.Tags[tag] {
-					tagMatch = true
-				}
-			}
-			if !tagMatch {
-				continue
-			}
+		// Check the tag in the job in case a tag is specified in the options
+		if options.Tag != "" && !contains(job.Task.Tags, options.Tag) {
+			continue
 		}
+
 		jobs = append(jobs, job)
 		backends[job.Backend.Name] = true
 	}

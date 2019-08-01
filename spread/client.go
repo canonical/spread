@@ -464,14 +464,17 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		debugf("Error output from running script on %s:\n-----\n%s\n-----", c.job, stderr.Bytes())
 	}
 
-	if e, ok := err.(*ssh.ExitError); ok && e.ExitStatus() == 213 {
-		lines := bytes.Split(bytes.TrimSpace(stdout.Bytes()), []byte{'\n'})
-		m := commandExp.FindSubmatch(lines[len(lines)-1])
-		if len(m) > 0 && string(m[1]) == "REBOOT" {
-			return append(previous, stdout.Bytes()...), &rebootError{string(m[2])}
-		}
-		if len(m) > 0 && string(m[1]) == "ERROR" {
-			return nil, fmt.Errorf("%s", m[2])
+	if e, ok := err.(*ssh.ExitError); ok {
+		debugf("Script exit status: %v", e.ExitStatus())
+		if e.ExitStatus() == 213 {
+			lines := bytes.Split(bytes.TrimSpace(stdout.Bytes()), []byte{'\n'})
+			m := commandExp.FindSubmatch(lines[len(lines)-1])
+			if len(m) > 0 && string(m[1]) == "REBOOT" {
+				return append(previous, stdout.Bytes()...), &rebootError{string(m[2])}
+			}
+			if len(m) > 0 && string(m[1]) == "ERROR" {
+				return nil, fmt.Errorf("%s", m[2])
+			}
 		}
 	}
 

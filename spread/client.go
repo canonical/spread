@@ -467,8 +467,31 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	if e, ok := err.(*ssh.ExitError); ok {
 		debugf("Script exit status: %v", e.ExitStatus())
 		if e.ExitStatus() == 213 {
+			// because of bash bug regarding subshell exit status,
+			// the scripts look like this:
+			//
+			// set -x
+			// (  # job level
+			// (  # script level
+			//   ...
+			//   REBOOT
+			// ) || exit $?
+			// )
+			//
+			// with +x enabled, the trace loos like this:
+			// + [[ 0 == 0 ]]
+			// + echo rebooting
+			// rebooting
+			// + REBOOT
+			// <REBOOT>
+			// + exit 213
+			//
+			// the REBOOT or ERROR are logged in second to last line
 			lines := bytes.Split(bytes.TrimSpace(stdout.Bytes()), []byte{'\n'})
-			m := commandExp.FindSubmatch(lines[len(lines)-1])
+			if len(lines) < 2 {
+				return nil, fmt.Errorf("unexpected script output on exit with status 213")
+			}
+			m := commandExp.FindSubmatch(lines[len(lines)-2])
 			if len(m) > 0 && string(m[1]) == "REBOOT" {
 				return append(previous, stdout.Bytes()...), &rebootError{string(m[2])}
 			}

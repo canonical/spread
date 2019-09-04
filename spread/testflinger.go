@@ -224,11 +224,11 @@ func (p *tfProvider) Allocate(ctx context.Context, system *System) (Server, erro
 	}
 
 	// wait until the ip is published (poll buffers 10 seconds until it outputs all the data)
-	time.Sleep(tfpolltime * time.Second)
+	time.Sleep(time.Duration(tfpolltime) * time.Second)
 
 	// third step is to get the user and ip to connect to the device
 	timeout = time.After(2 * time.Minute)
-	retry = time.NewTicker(tfpolltime * time.Second)
+	retry = time.NewTicker(time.Duration(tfpolltime) * time.Second)
 	for {
 		out, err = exec.Command("/snap/bin/testflinger-cli", "poll", "-o", jobId).Output()
 		if err != nil {

@@ -31,6 +31,8 @@ func Google(p *Project, b *Backend, o *Options) Provider {
 		options: o,
 
 		imagesCache: make(map[string]*googleImagesCache),
+
+		apiURL: "https://www.googleapis.com",
 	}
 }
 
@@ -50,6 +52,9 @@ type googleProvider struct {
 	keyErr     error
 
 	imagesCache map[string]*googleImagesCache
+
+	// allow mocking in tests
+	apiURL string
 }
 
 type googleServer struct {
@@ -336,12 +341,12 @@ type googleImagesCache struct {
 
 type googleImageListResult struct {
 	Items []struct {
-		Description	string
-		Status		string
-		Name		string
-		Family		string
+		Description string
+		Status      string
+		Name        string
+		Family      string
 	}
-	NextPageToken	string
+	NextPageToken string
 }
 
 func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
@@ -374,20 +379,21 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 		results = append(results, result)
 
 		if nextPageToken == "" {
-			for _, element := range results {
-				for _, item := range element.Items {
-					cache.images = append(cache.images, googleImage{
-						Project: project,
-						Name:    item.Name,
-						Family:  item.Family,
-						Terms:   toTerms(item.Description),
-					})
-				}
-			}
-			return cache.images, err
+			break
 		}
-
 	}
+
+	for _, element := range results {
+		for _, item := range element.Items {
+			cache.images = append(cache.images, googleImage{
+				Project: project,
+				Name:    item.Name,
+				Family:  item.Family,
+				Terms:   toTerms(item.Description),
+			})
+		}
+	}
+
 	return cache.images, nil
 
 }
@@ -903,7 +909,7 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 
 	<-googleThrottle
 
-	url := "https://www.googleapis.com"
+	url := p.apiURL
 	if flags&noPathPrefix == 0 {
 		url += "/compute/v1/projects/" + p.gproject() + subpath
 	} else {

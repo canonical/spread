@@ -15,6 +15,7 @@ import (
 	"golang.org/x/net/context"
 
 	"golang.org/x/crypto/ssh"
+    "golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/terminal"
 	"net"
 	"regexp"
@@ -33,13 +34,25 @@ type Client struct {
 	killTimeout time.Duration
 }
 
-func Dial(server Server, username, password string) (*Client, error) {
-	config := &ssh.ClientConfig{
-		User:            username,
-		Auth:            []ssh.AuthMethod{ssh.Password(password)},
-		Timeout:         10 * time.Second,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-	}
+func SSHAgent() ssh.AuthMethod {
+    if sshAgent, err := net.Dial("unix", os.Getenv("SSH_AUTH_SOCK")); err == nil {
+        return ssh.PublicKeysCallback(agent.NewClient(sshAgent).Signers)
+    }
+    return nil
+}
+
+func Dial(server Server, username, password string, cert bool) (*Client, error) {
+    auth := ssh.Password(password)
+    if cert {
+        auth = SSHAgent()
+    }
+
+    config := &ssh.ClientConfig{
+        User:            username,
+        Auth:            []ssh.AuthMethod{auth},
+        Timeout:         10 * time.Second,
+        HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+    }
 	addr := server.Address()
 	if !strings.Contains(addr, ":") {
 		addr += ":22"
@@ -1042,7 +1055,7 @@ func waitPortUp(ctx context.Context, what fmt.Stringer, address string) error {
 	return nil
 }
 
-func waitServerUp(ctx context.Context, server Server, username, password string) error {
+func waitServerUp(ctx context.Context, server Server, username, password string, cert bool) error {
 	var timeout = time.After(5 * time.Minute)
 	var relog = time.NewTicker(2 * time.Minute)
 	defer relog.Stop()
@@ -1051,7 +1064,7 @@ func waitServerUp(ctx context.Context, server Server, username, password string)
 
 	for {
 		debugf("Waiting until %s is listening...", server)
-		client, err := Dial(server, username, password)
+		client, err := Dial(server, username, password, cert)
 		if err == nil {
 			client.Close()
 			break

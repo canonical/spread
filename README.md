@@ -566,9 +566,9 @@ the number of reexecutions to do, being 0 the default value.
 ## Passwords and usernames
 
 To keep things simple and convenient, Spread prepares systems to connect over SSH
-as the root user using a single password for all systems. Unless explicitly defined
-via the `-pass` command line option, the password will be random and different on
-each run.
+as the root user using a single password for all systems. Unless explicitly defined either
+via the `-pass` command line option or via setting the cert field for the system.
+The password will be random and different on each run.
 
 Some of the supported backends may be unable to provide an image with the correct
 password in place, or with the correct SSH configuration for root to connect. In
@@ -585,12 +585,18 @@ backends:
             - ubuntu-16.04:
                 username: ubuntu
                 password: ubuntu
+            - ubuntu-core-16-64:
+                username: my-lp-user
+                cert: true
 ```
 
 If the password field is defined without a username, it specifies the password
 for root to connect over SSH.  If both username and password are provided,
 the credentials will be used to connect to the system, and password-less sudo
 must be available for the provided user.
+
+When the cert field is set to true, spread uses the ssh certificates for the current
+user to stablish the connection. In this scenario the password is not considered.
 
 In all cases the end result is the same: a system that executes scripts as root.
 

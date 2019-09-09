@@ -117,6 +117,7 @@ type System struct {
 	Kernel   string
 	Username string
 	Password string
+	Cert     bool
 	Workers  int
 
 	// Only for Linode and Google so far.
@@ -1024,7 +1025,7 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 					return nil, err
 				}
 				system.Password = value
-			}
+		    }
 		}
 	}
 

@@ -366,7 +366,7 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 		return cache.images, cache.err
 	}
 
-	var results []googleImageListResult
+	var results []*googleImageListResult
 	var nextPageToken string
 	for {
 		var result googleImageListResult
@@ -379,7 +379,7 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 		if err != nil {
 			return nil, &FatalError{fmt.Errorf("cannot retrieve Google images for project %q: %v", project, err)}
 		}
-		results = append(results, result)
+		results = append(results, &result)
 
 		if nextPageToken == "" {
 			break

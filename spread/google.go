@@ -371,8 +371,6 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 		var result googleImageListResult
 		err := p.dofl("GET", "/compute/v1/projects/"+project+"/global/images?orderBy=creationTimestamp+desc&pageToken="+nextPageToken, nil, &result, noPathPrefix)
 		nextPageToken = result.NextPageToken
-		if err == googleNotFound {
-		}
 		if err != nil {
 			return nil, &FatalError{fmt.Errorf("cannot retrieve Google images for project %q: %v", project, err)}
 		}

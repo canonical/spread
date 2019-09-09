@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -369,7 +370,11 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 	var nextPageToken string
 	for {
 		var result googleImageListResult
-		err := p.dofl("GET", "/compute/v1/projects/"+project+"/global/images?orderBy=creationTimestamp+desc&pageToken="+nextPageToken, nil, &result, noPathPrefix)
+		v := url.Values{
+			"orderBy":   {"creationTimestamp+desc"},
+			"pageToken": {nextPageToken},
+		}
+		err := p.dofl("GET", "/compute/v1/projects/"+project+"/global/images?"+v.Encode(), nil, &result, noPathPrefix)
 		nextPageToken = result.NextPageToken
 		if err != nil {
 			return nil, &FatalError{fmt.Errorf("cannot retrieve Google images for project %q: %v", project, err)}

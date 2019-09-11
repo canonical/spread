@@ -366,8 +366,8 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 		return cache.images, cache.err
 	}
 
-	var results []*googleImageListResult
 	var nextPageToken string
+	var finalResults googleImageListResult
 	for {
 		var result googleImageListResult
 		v := url.Values{
@@ -375,26 +375,24 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 			"pageToken": {nextPageToken},
 		}
 		err := p.dofl("GET", "/compute/v1/projects/"+project+"/global/images?"+v.Encode(), nil, &result, noPathPrefix)
-		nextPageToken = result.NextPageToken
 		if err != nil {
 			return nil, &FatalError{fmt.Errorf("cannot retrieve Google images for project %q: %v", project, err)}
 		}
-		results = append(results, &result)
+		finalResults.Items = append(finalResults.Items, result.Items...)
 
+		nextPageToken = result.NextPageToken
 		if nextPageToken == "" {
 			break
 		}
 	}
 
-	for _, element := range results {
-		for _, item := range element.Items {
-			cache.images = append(cache.images, googleImage{
-				Project: project,
-				Name:    item.Name,
-				Family:  item.Family,
-				Terms:   toTerms(item.Description),
-			})
-		}
+	for _, item := range finalResults.Items {
+		cache.images = append(cache.images, googleImage{
+			Project: project,
+			Name:    item.Name,
+			Family:  item.Family,
+			Terms:   toTerms(item.Description),
+		})
 	}
 
 	return cache.images, nil

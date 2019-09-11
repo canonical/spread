@@ -54,6 +54,9 @@ func (s *googleSuite) TestPagination(c *C) {
 
 	images, err := g.ProjectImages("snapd")
 	c.Assert(err, IsNil)
+	// XXX: a `c.Check(images, DeepEquals, []spread.googleImage{...}`
+	// would be nice here but "googleImage" is not exported so we can't
+	// access it here. So we test a bit more indirect.
 	c.Check(images, HasLen, 5)
 	i := 0
 	c.Check(images[i].Project, Equals, "snapd")

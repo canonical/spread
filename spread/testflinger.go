@@ -262,6 +262,10 @@ func (p *tfProvider) Allocate(ctx context.Context, system *System) (Server, erro
 }
 
 func tfName(system *System) string {
+	if system.Queue != "" {
+		return system.Queue
+	}
+
 	parts := strings.Split(system.Name, "-")
 	if len(parts) > 1 {
 		return parts[0]

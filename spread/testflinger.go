@@ -129,9 +129,9 @@ func (p *tfProvider) Allocate(ctx context.Context, system *System) (Server, erro
 			Url: image,
 		},
 		TestData: &tfTestData{
-			TestCommands: []string{"ssh $DEVICE_IP cat /proc/cpuinfo",
-				"ssh $DEVICE_IP echo ubuntu:ubuntu | sudo chpasswd",
-				"ssh $DEVICE_IP echo 'ubuntu ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/create-user-ubuntu"},
+			TestCommands: []string{"ssh $DEVICE_IP 'cat /proc/cpuinfo'",
+				"ssh $DEVICE_IP 'echo \"ubuntu:ubuntu\" | sudo chpasswd'",
+				"ssh $DEVICE_IP 'echo \"ubuntu ALL=(ALL) NOPASSWD:ALL\" | sudo tee /etc/sudoers.d/create-user-ubuntu'"},
 		},
 		ReserveData: &tfReserveData{
 			SSHKeys: []string{key},
@@ -161,6 +161,7 @@ func (p *tfProvider) Allocate(ctx context.Context, system *System) (Server, erro
 
 	out, err := exec.Command("/snap/bin/testflinger-cli", "submit", tmpfile.Name()).Output()
 	if err != nil {
+		printf("Output running submit command %s", out)
 		return nil, fmt.Errorf("Error running command: %v: ", err)
 	}
 	lines := strings.Split(string(out), "\n")
@@ -198,6 +199,7 @@ func (p *tfProvider) Allocate(ctx context.Context, system *System) (Server, erro
 		cmd := exec.Command("/snap/bin/testflinger-cli", "status", jobId)
 		out, err := cmd.Output()
 		if err != nil {
+			printf("Output running status command %s", out)
 			return nil, fmt.Errorf("Error running command: %v", err)
 		}
 		line := strings.Split(string(out), "\n")[0]

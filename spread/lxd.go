@@ -25,6 +25,7 @@ const (
 	Ubuntu
 	Debian
 	Fedora
+	Alpine
 )
 
 func LXD(p *Project, b *Backend, o *Options) Provider {
@@ -88,6 +89,9 @@ func (s *lxdServer) Distro() Distro {
 	}
 	if parts[0] == "fedora" {
 		return Fedora
+	}
+	if parts[0] == "alpine" {
+		return Alpine
 	}
 	return Unknown
 }
@@ -262,6 +266,9 @@ func sshInstallCommand(distro Distro) []string {
 	}
 	if distro == Fedora {
 		return []string{"dnf", "--assumeyes", "install", "openssh-server"}
+	}
+	if distro == Alpine {
+		return []string{"apk", "add", "ssh-server"}
 	}
 	// Precondition failure - unknown distro!
 	return []string{}
@@ -562,6 +569,9 @@ func sshReloadCommand(distro Distro) []string {
 	if distro == Ubuntu || distro == Debian {
 		return []string{"systemctl", "restart", "ssh"}
 	}
+	if distro == Alpine {
+		return []string{"service", "sshd", "restart"}
+	}
 	// Precondition failure: unknown distro!
 	return []string{}
 }
@@ -569,7 +579,7 @@ func sshReloadCommand(distro Distro) []string {
 func (p *lxdProvider) tuneSSH(name string, distro Distro) error {
 	cmds := [][]string{
 		{"sed", "-i", `s/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/`, "/etc/ssh/sshd_config"},
-		{"/bin/bash", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", p.options.Password)},
+		{"/bin/sh", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", p.options.Password)},
 		sshReloadCommand(distro),
 	}
 	for _, args := range cmds {

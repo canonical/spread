@@ -268,7 +268,7 @@ func sshInstallCommand(distro Distro) []string {
 		return []string{"dnf", "--assumeyes", "install", "openssh-server"}
 	}
 	if distro == Alpine {
-		return []string{"apk", "add", "ssh-server"}
+		return []string{"apk", "add", "openssh-server"}
 	}
 	// Precondition failure - unknown distro!
 	return []string{}

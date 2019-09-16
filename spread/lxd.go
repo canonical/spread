@@ -138,7 +138,17 @@ func (s *lxdServer) Prepare(ctx context.Context) error {
 			return err
 		}
 	}
+    if s.Distro() == Alpine {
+        // Alpine images do not contain bash, which rather inconveniences spread
+        args = []string{"exec", s.d.Name, "--", "apk", "add", "bash"}
+        output, err = exec.Command("lxc", args...).CombinedOutput()
 
+		if err != nil {
+			printf("Command output: %s", output)
+			s.Discard(ctx)
+			return err
+		}
+    }
 	return nil
 }
 

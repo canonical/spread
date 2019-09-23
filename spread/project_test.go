@@ -1,6 +1,9 @@
 package spread_test
 
 import (
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"sort"
 	"testing"
 
@@ -59,44 +62,20 @@ type ProjectSuite struct{}
 
 var _ = Suite(&ProjectSuite{})
 
-func makeProject() *spread.Project {
-	prj := &spread.Project{
-		Name:       "my-project",
-		RemotePath: "/remote-path",
-		Backends: map[string]*spread.Backend{
-			"backend-1": &spread.Backend{
-				Name:        "my-backend",
-				Environment: spread.NewEnvironment(),
-				Systems: spread.SystemsMap{
-					"system-1": &spread.System{
-						Backend: "backend-1",
-						Name:    "system-1",
-					},
-					"system-2": &spread.System{
-						Backend: "backend-1",
-						Name:    "system-2",
-					},
-				},
-			},
-		},
-		Suites: map[string]*spread.Suite{
-			"my-suite": &spread.Suite{
-				Summary:  "my-suite",
-				Systems:  []string{"system-1", "system-2"},
-				Backends: []string{"backend-1"},
-				Tasks: map[string]*spread.Task{
-					"t1": &spread.Task{
-						Suite: "my-suite",
-						Name:  "t1",
-					},
-					"t2": &spread.Task{
-						Suite: "my-suite",
-						Name:  "t2",
-					},
-				},
-			},
-		},
+func makeMockProject(c *C, content []byte, tasks map[string]string) *spread.Project {
+	root := c.MkDir()
+	mockSpreadYaml := filepath.Join(root, "spread.yaml")
+	err := ioutil.WriteFile(mockSpreadYaml, content, 0644)
+	c.Assert(err, IsNil)
+	for name, taskContent := range tasks {
+		mockTaskYaml := filepath.Join(root, name, "task.yaml")
+		err := os.MkdirAll(filepath.Dir(mockTaskYaml), 0755)
+		c.Assert(err, IsNil)
+		err = ioutil.WriteFile(mockTaskYaml, []byte(taskContent), 0644)
+		c.Assert(err, IsNil)
 	}
+	prj, err := spread.Load(root)
+	c.Assert(err, IsNil)
 	return prj
 }
 
@@ -108,32 +87,45 @@ func (s *ProjectSuite) TestProjectJobsWildcards(c *C) {
 		{
 			// default, all combinations
 			map[string]string{},
-			[]string{"my-backend:system-1:t1", "my-backend:system-1:t2", "my-backend:system-2:t1", "my-backend:system-2:t2"},
+			[]string{"qemu:system-1:tests/t1", "qemu:system-1:tests/t2", "qemu:system-2:tests/t1", "qemu:system-2:tests/t2"},
 		},
 		{
 			// select specific backend
 			map[string]string{"t1": "system-1", "t2": "system-2"},
-			[]string{"my-backend:system-1:t1", "my-backend:system-2:t2"},
+			[]string{"qemu:system-1:tests/t1", "qemu:system-2:tests/t2"},
 		},
 		{
 			// exclude specific
 			map[string]string{"t1": "-system-1", "t2": "system-2"},
-			[]string{"my-backend:system-2:t1", "my-backend:system-2:t2"},
+			[]string{"qemu:system-2:tests/t1", "qemu:system-2:tests/t2"},
 		},
 		{
 			// exclude wildcard
 			map[string]string{"t1": "-system-*", "t2": "system-2"},
-			[]string{"my-backend:system-2:t2"},
+			[]string{"qemu:system-2:tests/t2"},
 		},
 		{
 			// include wildcard
 			map[string]string{"t1": "+system-*", "t2": "system-2"},
-			[]string{"my-backend:system-1:t1", "my-backend:system-2:t1", "my-backend:system-2:t2"},
+			[]string{"qemu:system-1:tests/t1", "qemu:system-2:tests/t1", "qemu:system-2:tests/t2"},
 		},
 	} {
-		proj := makeProject()
+		projectYaml := []byte(`
+project: my-project
+path: /remote-path
+backends:
+  qemu:
+    systems: [system-1, system-2]
+suites:
+  tests/:
+    summary: mock
+`)
+		proj := makeMockProject(c, projectYaml, map[string]string{
+			"tests/t1": "summary: t1",
+			"tests/t2": "summary: t2",
+		})
 		for t, sys := range t.taskSystems {
-			proj.Suites["my-suite"].Tasks[t].Systems = []string{sys}
+			proj.Suites["tests/"].Tasks[t].Systems = []string{sys}
 		}
 		allJobs, err := proj.Jobs(&spread.Options{})
 		c.Check(err, IsNil)

@@ -30,6 +30,10 @@ func (s *adhocServer) String() string {
 	return s.system.String()
 }
 
+func (s *adhocServer) Label() string {
+	return s.system.String()
+}
+
 func (s *adhocServer) Provider() Provider {
 	return s.p
 }
@@ -58,6 +62,10 @@ func (p *adhocProvider) Backend() *Backend {
 	return p.backend
 }
 
+func (p *adhocProvider) GarbageCollect() error {
+	return nil
+}
+
 func (p *adhocProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {
 	s := &adhocServer{
 		p:       p,
@@ -84,7 +92,7 @@ func (p *adhocProvider) Allocate(ctx context.Context, system *System) (Server, e
 	}
 
 	printf("Waiting for %s to make SSH available at %s...", system, addr)
-	if err := waitPortUp(system, s.address); err != nil {
+	if err := waitPortUp(ctx, system, s.address); err != nil {
 		s.Discard(ctx)
 		return nil, fmt.Errorf("cannot connect to %s at %s: %s", s, s.Address(), err)
 	}

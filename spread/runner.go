@@ -15,22 +15,27 @@ import (
 	"time"
 
 	"gopkg.in/tomb.v2"
+	"math"
+	"math/rand"
 )
 
 type Options struct {
-	Password    string
-	Filter      Filter
-	Reuse       bool
-	ReusePid    int
-	Debug       bool
-	Shell       bool
-	ShellBefore bool
-	ShellAfter  bool
-	Abend       bool
-	Restore     bool
-	Resend      bool
-	Discard     bool
-	Residue     string
+	Password       string
+	Filter         Filter
+	Reuse          bool
+	ReusePid       int
+	Debug          bool
+	Shell          bool
+	ShellBefore    bool
+	ShellAfter     bool
+	Abend          bool
+	Restore        bool
+	Resend         bool
+	Discard        bool
+	Residue        string
+	Seed           int64
+	Repeat         int
+	GarbageCollect bool
 }
 
 type Runner struct {
@@ -55,8 +60,6 @@ type Runner struct {
 	sequence map[*Job]int
 	stats    stats
 
-	allocated bool
-
 	suiteWorkers map[[3]string]int
 }
 
@@ -73,6 +76,8 @@ func Start(project *Project, options *Options) (*Runner, error) {
 
 	for bname, backend := range project.Backends {
 		switch backend.Type {
+		case "google":
+			r.providers[bname] = Google(project, backend, options)
 		case "linode":
 			r.providers[bname] = Linode(project, backend, options)
 		case "lxd":
@@ -81,6 +86,8 @@ func Start(project *Project, options *Options) (*Runner, error) {
 			r.providers[bname] = QEMU(project, backend, options)
 		case "adhoc":
 			r.providers[bname] = AdHoc(project, backend, options)
+		case "humbox":
+			r.providers[bname] = Humbox(project, backend, options)
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}
@@ -91,6 +98,14 @@ func Start(project *Project, options *Options) (*Runner, error) {
 		return nil, err
 	}
 	r.pending = pending
+
+	if options.GarbageCollect {
+		for _, p := range r.providers {
+			if err := p.GarbageCollect(); err != nil {
+				printf("Error collecting garbage from %q: %v", p.Backend().Name, err)
+			}
+		}
+	}
 
 	r.reuse, err = OpenReuse(r.reusePath())
 	if err != nil {
@@ -126,6 +141,9 @@ func (r *Runner) Stop() error {
 }
 
 func (r *Runner) loop() (err error) {
+	if r.options.GarbageCollect {
+		return nil
+	}
 	defer func() {
 		r.contentTomb.Kill(nil)
 		r.contentTomb.Wait()
@@ -194,11 +212,24 @@ func (r *Runner) loop() (err error) {
 	msg := fmt.Sprintf("Starting %d worker%s for the following jobs", r.alive, nth(r.alive, "", "", "s"))
 	logNames(debugf, msg, r.pending, taskName)
 
+	seed := r.options.Seed
+	if !r.options.Discard && seed == 0 && len(r.pending) > r.alive {
+		seed = time.Now().Unix()
+		printf("Sequence of jobs produced with -seed=%d", seed)
+	}
+	if !r.options.Discard && !r.options.Reuse && r.options.ReusePid == 0 {
+		printf("If killed, discard servers with: spread -reuse-pid=%d -discard", os.Getpid())
+	}
+
 	for _, backend := range r.project.Backends {
 		for _, system := range backend.Systems {
 			n := workers[system]
 			for i := 0; i < n; i++ {
-				go r.worker(backend, system)
+				// Use a different seed per worker, so that the work-stealing
+				// logic will have a better chance of producing the same
+				// ordering on each of the workers.
+				order := rand.New(rand.NewSource(seed + int64(i))).Perm(len(r.pending))
+				go r.worker(backend, system, order)
 			}
 		}
 	}
@@ -234,7 +265,7 @@ func (r *Runner) prepareContent() (err error) {
 			size = fmt.Sprintf("%.2fMB", float64(r.contentSize)/(1024*1024))
 		}
 		if err == nil {
-			logf("Project content is packed for delivery (%s).", size)
+			printf("Project content is packed for delivery (%s).", size)
 		} else {
 			printf("Error packing project content for delivery: %v", err)
 			file.Close()
@@ -408,16 +439,19 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	if len(script) == 0 {
 		return true
 	}
+	start := time.Now()
 	contextStr := job.StringFor(context)
+	client.SetJob(contextStr)
+	defer client.ResetJob()
 	if verb == executing {
 		r.mu.Lock()
 		if r.sequence[job] == 0 {
 			r.sequence[job] = len(r.sequence) + 1
 		}
-		logf("%s %s (%d/%d)...", strings.Title(verb), contextStr, r.sequence[job], len(r.pending))
+		printft(start, startTime, "%s %s (%d/%d)...", strings.Title(verb), contextStr, r.sequence[job], len(r.pending))
 		r.mu.Unlock()
 	} else {
-		logf("%s %s...", strings.Title(verb), contextStr)
+		printft(start, startTime, "%s %s...", strings.Title(verb), contextStr)
 	}
 	var dir string
 	if context == job.Backend || context == job.Project {
@@ -439,14 +473,19 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	client.SetWarnTimeout(job.WarnTimeoutFor(context))
 	client.SetKillTimeout(job.KillTimeoutFor(context))
 	_, err := client.Trace(script, dir, job.Environment)
+	printft(start, endTime, "")
 	if err != nil {
-		printf("Error %s %s : %v", verb, contextStr, err)
+		// Use a different time so it has a different id on Travis, but keep
+		// the original start time so the error message shows the task time.
+		start = start.Add(1)
+		printft(start, startTime|endTime|startFold|endFold, "Error %s %s : %v", verb, contextStr, err)
 		if debug != "" {
+			start = time.Now()
 			output, err := client.Trace(debug, dir, job.Environment)
 			if err != nil {
-				printf("Error debugging %s : %v", contextStr, err)
+				printft(start, startTime|endTime|startFold|endFold, "Error debugging %s : %v", contextStr, err)
 			} else if len(output) > 0 {
-				printf("Debug output for %s : %v", contextStr, outputErr(output, nil))
+				printft(start, startTime|endTime|startFold|endFold, "Debug output for %s : %v", contextStr, outputErr(output, nil))
 			}
 		}
 		if r.options.Debug || r.options.ShellAfter {
@@ -488,7 +527,7 @@ func suiteWorkersKey(job *Job) [3]string {
 	return [3]string{job.Backend.Name, job.System.Name, job.Suite.Name}
 }
 
-func (r *Runner) worker(backend *Backend, system *System) {
+func (r *Runner) worker(backend *Backend, system *System, order []int) {
 	defer func() { r.done <- true }()
 
 	client := r.client(backend, system)
@@ -520,7 +559,7 @@ func (r *Runner) worker(backend *Backend, system *System) {
 			r.mu.Unlock()
 			break
 		}
-		job = r.job(backend, system, insideSuite)
+		job = r.job(backend, system, insideSuite, last, order)
 		if job == nil {
 			r.mu.Unlock()
 			break
@@ -576,27 +615,33 @@ func (r *Runner) worker(backend *Backend, system *System) {
 		}
 
 		debug := job.Debug()
-		if r.options.Restore {
-			// Do not prepare or execute.
-		} else if !r.options.Restore && !r.run(client, job, preparing, job, job.Prepare(), debug, &abend) {
-			r.add(&stats.TaskPrepareError, job)
-			r.add(&stats.TaskAbort, job)
-			debug = ""
-		} else if !r.options.Restore && r.run(client, job, executing, job, job.Task.Execute, debug, &abend) {
-			r.add(&stats.TaskDone, job)
-		} else if !r.options.Restore {
-			r.add(&stats.TaskError, job)
-			debug = ""
-		}
-		if !abend && !r.options.Restore {
-			if err := r.fetchResidue(client, job); err != nil {
-				printf("Cannot fetch residue of %s: %v", job, err)
-				r.tomb.Killf("cannot fetch residue of %s: %v", job, err)
+		for repeat := r.options.Repeat; repeat >= 0; repeat-- {
+			if r.options.Restore {
+				// Do not prepare or execute, and don't repeat.
+				repeat = -1
+			} else if !r.options.Restore && !r.run(client, job, preparing, job, job.Prepare(), debug, &abend) {
+				r.add(&stats.TaskPrepareError, job)
+				r.add(&stats.TaskAbort, job)
+				debug = ""
+				repeat = -1
+			} else if !r.options.Restore && r.run(client, job, executing, job, job.Task.Execute, debug, &abend) {
+				r.add(&stats.TaskDone, job)
+			} else if !r.options.Restore {
+				r.add(&stats.TaskError, job)
+				debug = ""
+				repeat = -1
 			}
-		}
-		if !abend && !r.run(client, job, restoring, job, job.Restore(), debug, &abend) {
-			r.add(&stats.TaskRestoreError, job)
-			badProject = true
+			if !abend && !r.options.Restore && repeat <= 0 {
+				if err := r.fetchResidue(client, job); err != nil {
+					printf("Cannot fetch residue of %s: %v", job, err)
+					r.tomb.Killf("cannot fetch residue of %s: %v", job, err)
+				}
+			}
+			if !abend && !r.run(client, job, restoring, job, job.Restore(), debug, &abend) {
+				r.add(&stats.TaskRestoreError, job)
+				badProject = true
+				repeat = -1
+			}
 		}
 	}
 
@@ -628,11 +673,26 @@ func (r *Runner) worker(backend *Backend, system *System) {
 	}
 }
 
-func (r *Runner) job(backend *Backend, system *System, suite *Suite) *Job {
+func (r *Runner) job(backend *Backend, system *System, suite *Suite, last *Job, order []int) *Job {
+	if last != nil && last.Task.Samples > 1 {
+		if job := r.minSampleForTask(last); job != nil {
+			return job
+		}
+	}
+
+	// Find the current top priority for this backend and system.
+	var priority int64 = math.MinInt64
+	for _, job := range r.pending {
+		if job != nil && job.Priority > priority && job.Backend == backend && job.System == system {
+			priority = job.Priority
+		}
+	}
+
 	var best = -1
 	var bestWorkers = 1000000
-	for i, job := range r.pending {
-		if job == nil {
+	for _, i := range order {
+		job := r.pending[i]
+		if job == nil || job.Priority < priority {
 			continue
 		}
 		if job.Backend != backend || job.System != system {
@@ -650,6 +710,36 @@ func (r *Runner) job(backend *Backend, system *System, suite *Suite) *Job {
 		}
 	}
 	if best >= 0 {
+		job := r.pending[best]
+		if job.Task.Samples > 1 {
+			// Worst case it will find the same job.
+			return r.minSampleForTask(job)
+		}
+		r.pending[best] = nil
+		return job
+	}
+	return nil
+}
+
+// minSampleForTask finds the job with the lowest sample value sharing
+// the same backend, system, and task as the provided job, then removes
+// it from the pending list and returns it.
+func (r *Runner) minSampleForTask(other *Job) *Job {
+	var best = -1
+	var bestSample = 1000000
+	for i, job := range r.pending {
+		if job == nil {
+			continue
+		}
+		if job.Task != other.Task || job.Backend != other.Backend || job.System != other.System {
+			continue
+		}
+		if job.Sample < bestSample {
+			best = i
+			bestSample = job.Sample
+		}
+	}
+	if best > -1 {
 		job := r.pending[best]
 		r.pending[best] = nil
 		return job
@@ -670,6 +760,9 @@ func (r *Runner) client(backend *Backend, system *System) *Client {
 		client := r.reuseServer(backend, system)
 		reused := client != nil
 		if !reused {
+			if r.options.Reuse && len(r.reuse.ReuseSystems(system)) > 0 {
+				break
+			}
 			client = r.allocateServer(backend, system)
 			if client == nil {
 				break
@@ -734,7 +827,7 @@ func (r *Runner) fetchResidue(client *Client, job *Job) error {
 	tarr, tarw := io.Pipe()
 
 	var stderr bytes.Buffer
-	cmd := exec.Command("tar", "xz")
+	cmd := exec.Command("tar", "xJ")
 	cmd.Dir = localDir
 	cmd.Stdin = tarr
 	cmd.Stderr = &stderr
@@ -820,13 +913,6 @@ Allocate:
 		printf("Error adding %s to reuse file: %v", server, err)
 	}
 
-	r.mu.Lock()
-	if !r.allocated && !r.options.Reuse && r.options.ReusePid == 0 {
-		printf("If killed, discard servers with: spread -reuse-pid=%d -discard", os.Getpid())
-	}
-	r.allocated = true
-	r.mu.Unlock()
-
 	printf("Connecting to %s...", server)
 
 	timeout = time.After(1 * time.Minute)
@@ -906,8 +992,7 @@ func (r *Runner) reuseServer(backend *Backend, system *System) *Client {
 
 		server, err := provider.Reuse(r.tomb.Context(nil), rsystem, system)
 		if err != nil {
-			printf("Discarding %s at %s, cannot reuse: %v", system, rsystem.Address, err)
-			r.discardServer(server)
+			printf("Cannot reuse %s at %s: %v", system, rsystem.Address, err)
 			continue
 		}
 
@@ -925,8 +1010,12 @@ func (r *Runner) reuseServer(backend *Backend, system *System) *Client {
 		}
 		client, err := Dial(server, username, password)
 		if err != nil {
-			printf("Discarding %s, cannot connect: %v", server, err)
-			r.discardServer(server)
+			if r.options.Reuse {
+				printf("Cannot reuse %s at %s: %v", system, rsystem.Address, err)
+			} else {
+				printf("Discarding %s: %v", server, err)
+				r.discardServer(server)
+			}
 			continue
 		}
 

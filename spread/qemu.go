@@ -36,6 +36,10 @@ func (s *qemuServer) String() string {
 	return s.system.String()
 }
 
+func (s *qemuServer) Label() string {
+	return s.system.String()
+}
+
 func (s *qemuServer) Provider() Provider {
 	return s.p
 }
@@ -70,6 +74,10 @@ func (s *qemuServer) Discard(ctx context.Context) error {
 
 func (p *qemuProvider) Backend() *Backend {
 	return p.backend
+}
+
+func (p *qemuProvider) GarbageCollect() error {
+	return nil
 }
 
 func (p *qemuProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {
@@ -127,9 +135,9 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 	}
 
 	printf("Waiting for %s to make SSH available...", system)
-	if err := waitPortUp(system, s.address); err != nil {
+	if err := waitPortUp(ctx, system, s.address); err != nil {
 		s.Discard(ctx)
-		return nil, fmt.Errorf("cannot connect to %s: %s", s, err)
+		return nil, err
 	}
 	printf("Allocated %s.", s)
 	return s, nil

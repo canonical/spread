@@ -1,0 +1,8 @@
+summary: Ensure reboot works with bash4.13
+
+priority: 100
+
+execute: |
+    test "$SPREAD_REBOOT" == 0
+    
+    

@@ -1011,7 +1011,7 @@ func outputErr(output []byte, err error) error {
 	return err
 }
 
-func waitPortUp(ctx context.Context, what fmt.Stringer, address string) error {
+func waitPortUp(ctx context.Context, what fmt.Stringer, address string, cmd *exec.Cmd) error {
 	if !strings.Contains(address, ":") {
 		address += ":22"
 	}
@@ -1029,6 +1029,14 @@ func waitPortUp(ctx context.Context, what fmt.Stringer, address string) error {
 			conn.Close()
 			break
 		}
+		if cmd != nil {
+			var wstatus syscall.WaitStatus
+			wpid, err := syscall.Wait4(cmd.Process.Pid, &wstatus, syscall.WNOHANG, nil)
+			if err != nil || wpid != 0 {
+				return fmt.Errorf("process exited unexpectedly while waiting for address %s (wstatus=%v)", address, wstatus)
+			}
+		}
+
 		select {
 		case <-retry.C:
 		case <-relog.C:

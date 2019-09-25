@@ -32,7 +32,7 @@ type Options struct {
 	Restore        bool
 	Resend         bool
 	Discard        bool
-	Residue        string
+	Artifacts      string
 	Seed           int64
 	Repeat         int
 	GarbageCollect bool
@@ -632,9 +632,9 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 				repeat = -1
 			}
 			if !abend && !r.options.Restore && repeat <= 0 {
-				if err := r.fetchResidue(client, job); err != nil {
-					printf("Cannot fetch residue of %s: %v", job, err)
-					r.tomb.Killf("cannot fetch residue of %s: %v", job, err)
+				if err := r.fetchArtifacts(client, job); err != nil {
+					printf("Cannot fetch artifacts of %s: %v", job, err)
+					r.tomb.Killf("cannot fetch artifacts of %s: %v", job, err)
 				}
 			}
 			if !abend && !r.run(client, job, restoring, job, job.Restore(), debug, &abend) {
@@ -814,12 +814,12 @@ func (r *Runner) client(backend *Backend, system *System) *Client {
 	return nil
 }
 
-func (r *Runner) fetchResidue(client *Client, job *Job) error {
-	if r.options.Residue == "" || len(job.Task.Residue) == 0 {
+func (r *Runner) fetchArtifacts(client *Client, job *Job) error {
+	if r.options.Artifacts == "" || len(job.Task.Artifacts) == 0 {
 		return nil
 	}
 
-	localDir := filepath.Join(r.options.Residue, job.Name)
+	localDir := filepath.Join(r.options.Artifacts, job.Name)
 	if err := os.MkdirAll(localDir, 0755); err != nil {
 		return fmt.Errorf("cannot create residue directory: %v", err)
 	}
@@ -839,7 +839,7 @@ func (r *Runner) fetchResidue(client *Client, job *Job) error {
 	printf("Fetching residue of %s...", job)
 
 	remoteDir := filepath.Join(r.project.RemotePath, job.Task.Name)
-	err = client.RecvTar(remoteDir, job.Task.Residue, tarw)
+	err = client.RecvTar(remoteDir, job.Task.Artifacts, tarw)
 	tarw.Close()
 	terr := cmd.Wait()
 

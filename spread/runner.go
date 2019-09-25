@@ -821,7 +821,7 @@ func (r *Runner) fetchArtifacts(client *Client, job *Job) error {
 
 	localDir := filepath.Join(r.options.Artifacts, job.Name)
 	if err := os.MkdirAll(localDir, 0755); err != nil {
-		return fmt.Errorf("cannot create residue directory: %v", err)
+		return fmt.Errorf("cannot create artifacts directory: %v", err)
 	}
 
 	tarr, tarw := io.Pipe()
@@ -836,7 +836,7 @@ func (r *Runner) fetchArtifacts(client *Client, job *Job) error {
 		return fmt.Errorf("cannot start unpacking tar: %v", err)
 	}
 
-	printf("Fetching residue of %s...", job)
+	printf("Fetching artifacts of %s...", job)
 
 	remoteDir := filepath.Join(r.project.RemotePath, job.Task.Name)
 	err = client.RecvTar(remoteDir, job.Task.Artifacts, tarw)

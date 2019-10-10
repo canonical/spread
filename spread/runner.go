@@ -277,7 +277,11 @@ func (r *Runner) prepareContent() (err error) {
 		return fmt.Errorf("cannot remove temporary content file: %v", err)
 	}
 
-	args := []string{"c", "--exclude=.spread-reuse.*"}
+	args := []string{
+		"-c",
+		"--exclude=.spread-reuse.*",
+		"--exclude-vcs-ignores",
+	}
 	if r.project.Repack == "" {
 		args[0] = "cz"
 	}

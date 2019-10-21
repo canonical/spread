@@ -1,0 +1,12 @@
+summary: Check that .spread-reuse is not sent 
+prepare: |
+    touch .spread-reuse.test
+    touch file
+    mkdir dir
+    touch dir/file
+execute: |
+    spread -v
+restore: |
+    rm -f .spread-reuse.test
+    rm -f file dir/file
+    rmdir dir

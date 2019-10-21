@@ -1,0 +1,10 @@
+project: spread
+backends:
+    lxd:
+        systems:
+            - ubuntu-16.04
+path: /home/test
+# include: [.] is defined implicitly here
+suites:
+    checks/:
+        summary: Verification tasks.

@@ -1,0 +1,7 @@
+summary: Ensure that .spread-reuse files are not sent 
+execute: |
+    # This file is implicitly excluded
+    test ! -e "$SPREAD_PATH/.spread-reuse.test"
+    # Those files are no longer included
+    test ! -f "$SPREAD_PATH/file"
+    test ! -f "$SPREAD_PATH/dir/file"

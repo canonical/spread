@@ -289,10 +289,7 @@ func (r *Runner) prepareContent() (err error) {
 	}
 	include := r.project.Include
 	if len(include) == 0 {
-		include, err = filterDir(r.project.Path)
-		if err != nil {
-			return fmt.Errorf("cannot list project directory: %v", err)
-		}
+		include = []string{"."}
 	}
 	args = append(args, include...)
 
@@ -1097,23 +1094,4 @@ func logNames(f func(format string, args ...interface{}), prefix string, jobs []
 	sort.Strings(names)
 	const dash = "\n    - "
 	f("%s: %d%s%s", prefix, len(names), dash, strings.Join(names, dash))
-}
-
-func filterDir(path string) (names []string, err error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	names, err = f.Readdirnames(0)
-	if err != nil {
-		return nil, err
-	}
-	var filtered []string
-	for _, name := range names {
-		if !strings.HasPrefix(name, ".spread-reuse.") {
-			filtered = append(filtered, name)
-		}
-	}
-	return filtered, nil
 }

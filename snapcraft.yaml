@@ -1,6 +1,7 @@
 name: spread
 version: 2018.08.21
 summary: Convenient full-system test (task) distribution
+base: core18
 description: |
     Spread is a plesant way distribute full-system integration tests and
     similar tasks. A few simple and concrete concepts that are fun to play
@@ -10,7 +11,7 @@ description: |
     where, what to do before and after it runs, and how to duplicate jobs
     with minor variations without copy & paste.
 
-confinement: strict
+confinement: classic
 grade: stable
 
 apps:
@@ -23,3 +24,5 @@ parts:
         plugin: go
         go-packages:
             - github.com/snapcore/spread/cmd/spread
+        build-packages:
+            - gcc

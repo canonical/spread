@@ -236,6 +236,7 @@ const (
 	combinedOutput
 	splitOutput
 	showOutput
+	showOutputAndTime
 	shellOutput
 )
 
@@ -250,6 +251,10 @@ func (c *Client) Output(script string, dir string, env *Environment) (output []b
 
 func (c *Client) ShowOutput(script string, dir string, env *Environment) (output []byte, err error) {
 	return c.run(script, dir, env, showOutput)
+}
+
+func (c *Client) ShowOutputAndTime(script string, dir string, env *Environment) (output []byte, err error) {
+	return c.run(script, dir, env, showOutputAndTime)
 }
 
 func (c *Client) CombinedOutput(script string, dir string, env *Environment) (output []byte, err error) {
@@ -437,6 +442,10 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	case showOutput:
 		cmd = c.sudo() + "/bin/bash - 2>&1"
 		session.Stdout = os.Stdout
+	case showOutputAndTime:
+		adddate := "awk '{cmd=\"(date +'%T.%3N')\"; cmd | getline d; print d,$0; close(cmd)}'"
+		cmd = c.sudo() + "/bin/bash - 2>&1 | " + adddate
+		session.Stdout = os.Stdout
 	case shellOutput:
 		cmd = fmt.Sprintf("{\nf=$(mktemp)\ntrap 'rm '$f EXIT\ncat > $f <<'SCRIPT_END'\n%s\nSCRIPT_END\n%s/bin/bash $f\n}", buf.String(), c.sudo())
 		session.Stdout = os.Stdout
@@ -486,7 +495,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		if len(m) > 0 && string(m[1]) == "REBOOT" {
 			return append(previous, stdout.Bytes()...), &rebootError{string(m[2])}
 		}
-		if mode == showOutput {
+		if mode == showOutput || mode == showOutputAndTime {
 			return append(previous, stdout.Bytes()...), &rebootError{"Reboot"}
 		}
 	}
@@ -841,7 +850,7 @@ func (s *localScript) run() (stdout, stderr []byte, err error) {
 	cmd.Dir = s.dir
 	cmd.ExtraFiles = s.extraFiles
 	switch s.mode {
-	case traceOutput, combinedOutput, showOutput:
+	case traceOutput, combinedOutput, showOutput, showOutputAndTime:
 		cmd.Stdout = &outbuf
 		cmd.Stderr = &outbuf
 	case splitOutput:

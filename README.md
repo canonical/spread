@@ -570,6 +570,8 @@ Showing the output of the tasks performed can be done by using the option
 needed for debugging, tracing, etc.
 This option can be used just when 1 job is used at all. This limitation it
 needed to avoid mixing the output of different jobs in the same output.
+Is it possible to add the time for each line shown as part of the output by
+using `-show-time`.
 
 
 <a name="passwords">

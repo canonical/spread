@@ -972,13 +972,6 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 	all := jobs
 	jobs = make([]*Job, 0, len(all))
 
-	// It is allowed showing the output when 1 job is used at all
-	if options.ShowOutput {
-		if len(all) > 1 {
-			return nil, fmt.Errorf("Just 1 worker can be used at all when show-output is required")	
-		}
-	}
-
 	backends := make(map[string]bool)
 	for _, job := range all {
 		if !manualBackends && job.Backend.Manual {

@@ -208,6 +208,17 @@ func (r *Runner) loop() (err error) {
 		}
 	}
 
+	// It is allowed showing the output when 1 worker is used at all
+	if r.options.ShowOutput {
+		total := 0
+		for _, w := range workers {
+		    total += w
+		}
+		if total > 1 {
+			return fmt.Errorf("Just 1 worker can be used at all when show-output is required")	
+		}
+	}
+
 	r.done = make(chan bool, r.alive)
 
 	msg := fmt.Sprintf("Starting %d worker%s for the following jobs", r.alive, nth(r.alive, "", "", "s"))

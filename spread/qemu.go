@@ -118,6 +118,10 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
 	}
+	if biosPath := os.Getenv("SPREAD_QEMU_BIOS"); biosPath != "" {
+		cmd.Args = append([]string{cmd.Args[0], "-bios", biosPath}, cmd.Args[1:]...)
+	}
+
 	printf("Serial and monitor for %s available at ports %d and %d.", system, port+100, port+200)
 
 	err := cmd.Start()

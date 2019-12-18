@@ -827,6 +827,10 @@ see the `-pass` command line option).
 The QEMU backend is run with the `-nographic` option by default. This
 may be changed with `export SPREAD_QEMU_GUI=1`.
 
+The bios that qemu uses can be changed via the SPREAD_QEMU_BIOS
+environment variable. To switch to an UEFI bios on Ubuntu
+`export SPREAD_QEMU_BIOS=/usr/share/OVMF/OVMF_CODE.ms.fd` can be used.
+
 Note that at the moment QEMU is run via the `kvm` script, which enables
 the KVM performance optimizations for the local architecture. This will
 not work for other architectures, though. This problem may be easily

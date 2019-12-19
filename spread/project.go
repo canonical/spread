@@ -119,6 +119,10 @@ type System struct {
 	Password string
 	Workers  int
 
+	// Flags for the system like "virtio", "uefi" or similar to enable
+	// backend specific features.
+	Flags []string
+
 	// Only for Linode and Google so far.
 	Storage Size
 

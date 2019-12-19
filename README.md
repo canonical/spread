@@ -813,6 +813,7 @@ backends:
             - ubuntu-16.04:
                 username: ubuntu
                 password: ubuntu
+                flags: [virtio]
 ```
 
 For this example to work, a QEMU image must be made available under
@@ -825,7 +826,9 @@ running session as usual for every other backend (random by default,
 see the `-pass` command line option).
 
 The QEMU backend is run with the `-nographic` option by default. This
-may be changed with `export SPREAD_QEMU_GUI=1`.
+may be changed with `export SPREAD_QEMU_GUI=1` and is useful for
+interactive debugging. The backend also supports the "virtio" flag
+for each system that enables virtio on the used image.
 
 Note that at the moment QEMU is run via the `kvm` script, which enables
 the KVM performance optimizations for the local architecture. This will

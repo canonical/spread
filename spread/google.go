@@ -256,14 +256,11 @@ Outer:
 func (p *googleProvider) getLastCreatedImage(images []googleImage) (image googleImage) {
 	var lastImageCreated googleImage
 	lastImageCreated = images[0]
-	printf("Initial time %v", lastImageCreated)
 	for i := range images[1:] {
-		printf("Parsing time %v", images[i])
 		if lastImageCreated.CreationTimestamp.Before(images[i].CreationTimestamp) {
 			lastImageCreated = images[i]
 		}
 	}
-	printf("Final time %v", lastImageCreated)
 	return lastImageCreated
 }
 

@@ -221,10 +221,11 @@ var googleImageProjects = map[string]string{
 }
 
 type googleImage struct {
-	Project string
-	Name    string
-	Family  string
-	Terms   []string
+	Project 			string
+	Name    			string
+	Family  			string
+	Terms   			[]string
+	CreationTimestamp 	time.Time
 }
 
 var termExp = regexp.MustCompile("[a-z]+|[0-9](?:[0-9.]*[0-9])?")
@@ -252,8 +253,23 @@ Outer:
 	return true
 }
 
+func (p *googleProvider) getLastCreatedImage(images []googleImage) (image googleImage) {
+	var lastImageCreated googleImage
+	lastImageCreated = images[0]
+	printf("Initial time %v", lastImageCreated)
+	for i := range images[1:] {
+		printf("Parsing time %v", images[i])
+		if lastImageCreated.CreationTimestamp.Before(images[i].CreationTimestamp) {
+			lastImageCreated = images[i]
+		}
+	}
+	printf("Final time %v", lastImageCreated)
+	return lastImageCreated
+}
+
+
 func (p *googleProvider) image(system *System) (image *googleImage, family bool, err error) {
-	var lookupOrder []googleImage
+	var lookupOrder, matchingImages []googleImage
 
 	if i := strings.Index(system.Image, "/"); i >= 0 {
 		// If a project was provided, respect it exactly.
@@ -306,8 +322,12 @@ func (p *googleProvider) image(system *System) (image *googleImage, family bool,
 			image := &images[i]
 			if image.Family == lookup.Family {
 				debugf("Family match: %#v matches %#v", lookup, image)
-				return image, true, nil
+				matchingImages = append(matchingImages, *image)
 			}
+		}
+		if len(matchingImages) > 0 {
+			image := p.getLastCreatedImage(matchingImages)
+			return &image, true, nil
 		}
 
 		// Otherwise use term matching.
@@ -315,8 +335,12 @@ func (p *googleProvider) image(system *System) (image *googleImage, family bool,
 			image := &images[i]
 			if containsTerms(image.Terms, lookup.Terms) {
 				debugf("Terms match: %#v matches %#v", lookup, image)
-				return image, image.Family != "", nil
+				matchingImages = append(matchingImages, *image)
 			}
+		}
+		if len(matchingImages) > 0 {
+			image := p.getLastCreatedImage(matchingImages)
+			return &image, image.Family != "", nil
 		}
 	}
 
@@ -352,14 +376,15 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 
 	var result struct {
 		Items []struct {
-			Description string
-			Status      string
-			Name        string
-			Family      string
+			Description 		string
+			Status      		string
+			Name        		string
+			Family      		string
+			CreationTimestamp 	string
 		}
 	}
 
-	err := p.dofl("GET", "/compute/v1/projects/"+project+"/global/images?orderBy=creationTimestamp+desc", nil, &result, noPathPrefix)
+	err := p.dofl("GET", "/compute/v1/projects/"+project+"/global/images?maxResults=500", nil, &result, noPathPrefix)
 	if err == googleNotFound {
 	}
 	if err != nil {
@@ -367,13 +392,20 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 	}
 
 	for _, item := range result.Items {
+		parsedCreationTimestamp, err := time.Parse(time.RFC3339, string(item.CreationTimestamp))
+		if err != nil {
+			return nil, fmt.Errorf("cannot parse the remote system creation timestamp: %q", item.CreationTimestamp)
+		}
 		cache.images = append(cache.images, googleImage{
-			Project: project,
-			Name:    item.Name,
-			Family:  item.Family,
-			Terms:   toTerms(item.Description),
+			Project: 			project,
+			Name:    			item.Name,
+			Family:  			item.Family,
+			Terms:   			toTerms(item.Description),
+			CreationTimestamp: 	parsedCreationTimestamp,
 		})
 	}
+
+
 
 	return cache.images, err
 }

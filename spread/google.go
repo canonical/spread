@@ -253,7 +253,7 @@ Outer:
 	return true
 }
 
-func (p *googleProvider) getLastCreatedImage(images []googleImage) (image googleImage) {
+func (p *googleProvider) newestCreatedImage(images []googleImage) (image googleImage) {
 	var lastImageCreated googleImage
 	lastImageCreated = images[0]
 	for i := range images[1:] {
@@ -323,7 +323,7 @@ func (p *googleProvider) image(system *System) (image *googleImage, family bool,
 			}
 		}
 		if len(matchingImages) > 0 {
-			image := p.getLastCreatedImage(matchingImages)
+			image := p.newestCreatedImage(matchingImages)
 			return &image, true, nil
 		}
 
@@ -336,7 +336,7 @@ func (p *googleProvider) image(system *System) (image *googleImage, family bool,
 			}
 		}
 		if len(matchingImages) > 0 {
-			image := p.getLastCreatedImage(matchingImages)
+			image := p.newestCreatedImage(matchingImages)
 			return &image, image.Family != "", nil
 		}
 	}
@@ -401,8 +401,6 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 			CreationTimestamp: 	parsedCreationTimestamp,
 		})
 	}
-
-
 
 	return cache.images, err
 }

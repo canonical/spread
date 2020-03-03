@@ -86,19 +86,16 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 	waitConfig.Timeout = 5 * time.Second
 	uptimeChanged := 3 * time.Second
 
-	// close old session
-	if c.sshc != nil {
-		c.sshc.Close()
-	}
 	for {
 		// Try to connect to the rebooting system, note that
 		// waitConfig is not well honored by golang, it is
 		// set to 5sec above but in reality it takes ~60sec
 		// before the code times out.
-		sshc, err := sshDial("tcp", c.addr, &waitConfig)
+		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
 		if err == nil {
 			// once successfully connected, check uptime to
 			// see if the reboot actually happend
+			c.sshc.Close()
 			c.sshc = sshc
 			currUptime, err := c.getUptime()
 			if err == nil {
@@ -366,7 +363,12 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	}
 	buf.WriteString(rc(false, "REBOOT() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<REBOOT>' || echo \"<REBOOT $1>\"; exit 213; }\n"))
 	buf.WriteString(rc(false, "ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n"))
-	buf.WriteString(rc(true, "MATCH() { { set +xu; } 2> /dev/null; [ ${#@} -gt 0 ] || { echo \"error: missing regexp argument\"; return 1; }; local stdin=\"$(cat)\"; echo \"$stdin\" | grep -q -E \"$@\" || { echo \"error: pattern not found, got:\n$stdin\">&2; return 1; }; }\n"))
+	// We are not using pipes here, see:
+	//  https://github.com/snapcore/spread/pull/64
+	// We also run it in a subshell, see
+	//  https://github.com/snapcore/spread/pull/67
+	buf.WriteString(rc(true, "MATCH() ( { set +xu; } 2> /dev/null; [ ${#@} -gt 0 ] || { echo \"error: missing regexp argument\"; return 1; }; local stdin=\"$(cat)\"; grep -q -E \"$@\" <<< \"$stdin\" || { res=$?; echo \"grep error: pattern not found, got:\n$stdin\">&2; if [ $res != 1 ]; then echo \"unexpected grep exit status: $res\"; fi; return 1; }; )\n"))
+	buf.WriteString(rc(true, "NOMATCH() ( { set +xu; } 2> /dev/null; [ ${#@} -gt 0 ] || { echo \"error: missing regexp argument\"; return 1; }; local stdin=\"$(cat)\"; if echo \"$stdin\" | grep -q -E \"$@\"; then echo \"NOMATCH pattern='$@' found in:\n$stdin\">&2; return 1; fi; )\n"))
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
 	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\n")
@@ -796,6 +798,7 @@ func (s *localScript) run() (stdout, stderr []byte, err error) {
 	buf.WriteString("FATAL() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<FATAL>' || echo \"<FATAL $@>\"; exit 213; }\n")
 	buf.WriteString("ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n")
 	buf.WriteString("MATCH() { { set +xu; } 2> /dev/null; local stdin=$(cat); echo $stdin | grep -q -E \"$@\" || { echo \"error: pattern not found on stdin:\\n$stdin\">&2; return 1; }; }\n")
+	buf.WriteString("NOMATCH() { { set +xu; } 2> /dev/null; local stdin=$(cat); if echo $stdin | grep -q -E \"$@\"; then echo \"NOMATCH pattern='$@' found in:\n$stdin\">&2; return 1; fi }\n")
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
 	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\n")

@@ -119,6 +119,9 @@ type System struct {
 	Password string
 	Workers  int
 
+	// Only for Linode and Google so far.
+	Storage Size
+
 	Environment *Environment
 	Variants    []string
 
@@ -336,7 +339,7 @@ type Task struct {
 	Execute string
 	Debug   string
 
-	Residue []string
+	Artifacts []string
 
 	Name string `yaml:"-"`
 	Path string `yaml:"-"`
@@ -541,6 +544,9 @@ func Load(path string) (*Project, error) {
 			if system.Workers == 0 {
 				system.Workers = 1
 			}
+			if system.Storage == 0 {
+				system.Storage = backend.Storage
+			}
 			if err := checkEnv(system, &system.Environment); err != nil {
 				return nil, err
 			}
@@ -656,9 +662,9 @@ func Load(path string) (*Project, error) {
 				return nil, err
 			}
 
-			for _, fname := range task.Residue {
+			for _, fname := range task.Artifacts {
 				if filepath.IsAbs(fname) || fname != filepath.Clean(fname) || strings.HasPrefix(fname, "../") {
-					return nil, fmt.Errorf("%s has improper residue path: %s", task.Name, fname)
+					return nil, fmt.Errorf("%s has improper artifact path: %s", task.Name, fname)
 				}
 			}
 
@@ -1287,6 +1293,10 @@ func (s *Size) UnmarshalYAML(u func(interface{}) error) error {
 	_ = u(&str)
 	if len(str) == 0 {
 		*s = 0
+		return nil
+	}
+	if str == "preserve-size" {
+		*s = -1
 		return nil
 	}
 	n, err := strconv.Atoi(str[:len(str)-1])

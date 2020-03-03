@@ -387,11 +387,6 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 		plan = p.backend.Plan
 	}
 
-	storage := 10
-	if p.backend.Storage > 0 {
-		storage = int(p.backend.Storage / gb)
-	}
-
 	image, family, err := p.image(system)
 	if err != nil {
 		return nil, err
@@ -428,6 +423,16 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 		})
 	}
 
+	diskParams := googleParams{
+		"sourceImage": sourceImage,
+	}
+
+	if system.Storage == 0 {
+		diskParams["diskSizeGb"] = 10
+	} else if system.Storage > 0 {
+		diskParams["diskSizeGb"] = int(system.Storage / gb)
+	}
+
 	params := googleParams{
 		"name":        name,
 		"machineType": "zones/" + p.gzone() + "/machineTypes/" + plan,
@@ -439,13 +444,10 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 			"network": "global/networks/default",
 		}},
 		"disks": []googleParams{{
-			"autoDelete": "true",
-			"boot":       "true",
-			"type":       "PERSISTENT",
-			"initializeParams": googleParams{
-				"sourceImage": sourceImage,
-				"diskSizeGb":  storage,
-			},
+			"autoDelete":       "true",
+			"boot":             "true",
+			"type":             "PERSISTENT",
+			"initializeParams": diskParams,
 		}},
 		"metadata": googleParams{
 			"items": metadata,
@@ -887,14 +889,15 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 
 	<-googleThrottle
 
-	url := "https://www.googleapis.com/"
+	url := "https://www.googleapis.com"
 	if flags&noPathPrefix == 0 {
 		url += "/compute/v1/projects/" + p.gproject() + subpath
 	} else {
 		url += subpath
 	}
 
-	// Repeat on 500s. Comes from Linode logic, not observed on Google so far.
+	// Repeat on 500s. Note that Google's 500s may come in late, as a marshaled error
+	// under a different code. See the INTERNAL handling at the end below.
 	var resp *http.Response
 	var req *http.Request
 	var delays = rand.Perm(10)
@@ -941,6 +944,9 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 			if eresult.Error.Status == "INTERNAL" && eresult.Error.Code == 500 {
 				// Google has broken down like this before:
 				// https://paste.ubuntu.com/p/HMvvxNMq9G/
+				if i == 0 {
+					printf("Google internal error on %s. Retrying a few times...", subpath)
+				}
 				continue
 			}
 			if rerr := eresult.err(); rerr != nil {

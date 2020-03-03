@@ -14,11 +14,11 @@ import (
 
 func Test(t *testing.T) { TestingT(t) }
 
-type FilterSuite struct{}
+type filterSuite struct{}
 
-var _ = Suite(&FilterSuite{})
+var _ = Suite(&filterSuite{})
 
-func (s *FilterSuite) TestFilter(c *C) {
+func (s *filterSuite) TestFilter(c *C) {
 	job := &spread.Job{Name: "backend:image:suite/test:variant"}
 
 	pass := []string{
@@ -58,9 +58,9 @@ func (s *FilterSuite) TestFilter(c *C) {
 	}
 }
 
-type ProjectSuite struct{}
+type projectSuite struct{}
 
-var _ = Suite(&ProjectSuite{})
+var _ = Suite(&projectSuite{})
 
 func makeMockProject(c *C, content []byte, tasks map[string]string) *spread.Project {
 	root := c.MkDir()
@@ -79,7 +79,7 @@ func makeMockProject(c *C, content []byte, tasks map[string]string) *spread.Proj
 	return prj
 }
 
-func (s *ProjectSuite) TestProjectJobsWildcards(c *C) {
+func (s *projectSuite) TestProjectJobsWildcards(c *C) {
 	for _, t := range []struct {
 		taskSystems map[string]string
 		jobs        []string

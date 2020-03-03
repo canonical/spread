@@ -22,6 +22,8 @@ import (
 	"syscall"
 )
 
+var sshDial = ssh.Dial
+
 type Client struct {
 	server Server
 	sshc   *ssh.Client
@@ -44,7 +46,7 @@ func Dial(server Server, username, password string) (*Client, error) {
 	if !strings.Contains(addr, ":") {
 		addr += ":22"
 	}
-	sshc, err := ssh.Dial("tcp", addr, config)
+	sshc, err := sshDial("tcp", addr, config)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect to %s: %v", server, err)
 	}

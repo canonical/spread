@@ -8,7 +8,9 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +33,8 @@ func Google(p *Project, b *Backend, o *Options) Provider {
 		options: o,
 
 		imagesCache: make(map[string]*googleImagesCache),
+
+		apiURL: "https://www.googleapis.com",
 	}
 }
 
@@ -50,6 +54,9 @@ type googleProvider struct {
 	keyErr     error
 
 	imagesCache map[string]*googleImagesCache
+
+	// allow mocking in tests
+	apiURL string
 }
 
 type googleServer struct {
@@ -878,10 +885,11 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 	}
 
 	var data []byte
+	var paramsData []byte
 	var err error
 
 	if params != nil {
-		data, err = json.Marshal(params)
+		paramsData, err = json.Marshal(params)
 		if err != nil {
 			return fmt.Errorf("cannot marshal Google request parameters: %s", err)
 		}
@@ -889,11 +897,25 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 
 	<-googleThrottle
 
-	url := "https://www.googleapis.com"
+	rawurl := p.apiURL
 	if flags&noPathPrefix == 0 {
-		url += "/compute/v1/projects/" + p.gproject() + subpath
+		rawurl += "/compute/v1/projects/" + p.gproject() + subpath
 	} else {
-		url += subpath
+		rawurl += subpath
+	}
+
+	// Generic pagination support for GCE:
+	// The GCE rest API has a similar structure for all "List" results.
+	// There will be a struct { []Items, nextPageToken string }. This
+	// code will ensure that any results.Items slice gets all items
+	// even if they come from different pages.
+	// See https://www.googleapis.com/discovery/v1/apis/compute/v1/rest
+	var resultItemsSlice reflect.Value
+	if result != nil {
+		v := reflect.Indirect(reflect.ValueOf(result))
+		if v.Kind() == reflect.Struct {
+			resultItemsSlice = v.FieldByName("Items")
+		}
 	}
 
 	// Repeat on 500s. Note that Google's 500s may come in late, as a marshaled error
@@ -901,8 +923,13 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 	var resp *http.Response
 	var req *http.Request
 	var delays = rand.Perm(10)
-	for i := 0; i < 10; i++ {
-		req, err = http.NewRequest(method, url, bytes.NewBuffer(data))
+
+	var allGoogleListItems reflect.Value
+	if resultItemsSlice.IsValid() {
+		allGoogleListItems = reflect.Indirect(reflect.New(resultItemsSlice.Type()))
+	}
+	for retry := 0; retry < 10; {
+		req, err = http.NewRequest(method, rawurl, bytes.NewBuffer(paramsData))
 		debugf("Google request URL: %s", req.URL)
 		if err != nil {
 			return &FatalError{fmt.Errorf("cannot create HTTP request: %v", err)}
@@ -910,7 +937,8 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 		req.Header.Set("Content-Type", "application/json")
 		resp, err = p.client.Do(req)
 		if err == nil && 500 <= resp.StatusCode && resp.StatusCode < 600 {
-			time.Sleep(time.Duration(delays[i]) * 250 * time.Millisecond)
+			time.Sleep(time.Duration(delays[retry]) * 250 * time.Millisecond)
+			retry++
 			continue
 		}
 
@@ -931,11 +959,26 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 			}
 		}
 
+		// check if we have a "*List" type result and automatically
+		// deal with pagination if this is the case.
+		var googleGenericList struct {
+			Items         []interface{}
+			NextPageToken string
+		}
+		if err := json.Unmarshal(data, &googleGenericList); err != nil && allGoogleListItems.IsValid() {
+			return fmt.Errorf("expected a List like data type but it could not be unmarshalled: %v", err)
+		}
+
 		if result != nil {
 			// Unmarshal even on errors, so the call site has a chance to inspect the data on errors.
 			err = json.Unmarshal(data, result)
 			if err != nil && resp.StatusCode == 404 {
 				return googleNotFound
+			}
+
+			// append to generic itemResults list
+			if allGoogleListItems.IsValid() {
+				allGoogleListItems = reflect.AppendSlice(allGoogleListItems, resultItemsSlice)
 			}
 		}
 
@@ -944,7 +987,7 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 			if eresult.Error.Status == "INTERNAL" && eresult.Error.Code == 500 {
 				// Google has broken down like this before:
 				// https://paste.ubuntu.com/p/HMvvxNMq9G/
-				if i == 0 {
+				if retry == 0 {
 					printf("Google internal error on %s. Retrying a few times...", subpath)
 				}
 				continue
@@ -953,7 +996,27 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 				return rerr
 			}
 		}
+
+		// go to the next page if needed
+		if googleGenericList.NextPageToken != "" {
+			purl, err := url.Parse(rawurl)
+			if err != nil {
+				// should never happen
+				return err
+			}
+			q := purl.Query()
+			q.Set("pageToken", googleGenericList.NextPageToken)
+			purl.RawQuery = q.Encode()
+			rawurl = purl.String()
+			continue
+		}
+
 		break
+	}
+
+	// update results with all items data we got from the various pages
+	if allGoogleListItems.IsValid() {
+		resultItemsSlice.Set(allGoogleListItems)
 	}
 
 	if err != nil {

@@ -400,6 +400,7 @@ A few helper functions are available for scripts to use:
 
  * _REBOOT_ - Reboot the system. See [below](#rebooting) for details.
  * _MATCH_ - Run `grep -q -e` on stdin. Without match, print error including content.
+ * _NOMATCH_ - Assert no match on stdin.  If match found, print error including content.
  * _ERROR_ - Fail script with provided error message only instead of script trace.
  * _FATAL_ - Similar to ERROR, but prevents retries. Specific to [adhoc backend](#adhoc).
  * _ADDRESS_ - Set allocated system address. Specific to [adhoc backend](#adhoc).

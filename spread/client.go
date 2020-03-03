@@ -22,6 +22,8 @@ import (
 	"syscall"
 )
 
+var sshDial = ssh.Dial
+
 type Client struct {
 	server Server
 	sshc   *ssh.Client
@@ -44,7 +46,7 @@ func Dial(server Server, username, password string) (*Client, error) {
 	if !strings.Contains(addr, ":") {
 		addr += ":22"
 	}
-	sshc, err := ssh.Dial("tcp", addr, config)
+	sshc, err := sshDial("tcp", addr, config)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect to %s: %v", server, err)
 	}
@@ -366,6 +368,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	// We also run it in a subshell, see
 	//  https://github.com/snapcore/spread/pull/67
 	buf.WriteString(rc(true, "MATCH() ( { set +xu; } 2> /dev/null; [ ${#@} -gt 0 ] || { echo \"error: missing regexp argument\"; return 1; }; local stdin=\"$(cat)\"; grep -q -E \"$@\" <<< \"$stdin\" || { res=$?; echo \"grep error: pattern not found, got:\n$stdin\">&2; if [ $res != 1 ]; then echo \"unexpected grep exit status: $res\"; fi; return 1; }; )\n"))
+	buf.WriteString(rc(true, "NOMATCH() ( { set +xu; } 2> /dev/null; [ ${#@} -gt 0 ] || { echo \"error: missing regexp argument\"; return 1; }; local stdin=\"$(cat)\"; if echo \"$stdin\" | grep -q -E \"$@\"; then echo \"NOMATCH pattern='$@' found in:\n$stdin\">&2; return 1; fi; )\n"))
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
 	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\n")
@@ -795,6 +798,7 @@ func (s *localScript) run() (stdout, stderr []byte, err error) {
 	buf.WriteString("FATAL() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<FATAL>' || echo \"<FATAL $@>\"; exit 213; }\n")
 	buf.WriteString("ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n")
 	buf.WriteString("MATCH() { { set +xu; } 2> /dev/null; local stdin=$(cat); echo $stdin | grep -q -E \"$@\" || { echo \"error: pattern not found on stdin:\\n$stdin\">&2; return 1; }; }\n")
+	buf.WriteString("NOMATCH() { { set +xu; } 2> /dev/null; local stdin=$(cat); if echo $stdin | grep -q -E \"$@\"; then echo \"NOMATCH pattern='$@' found in:\n$stdin\">&2; return 1; fi }\n")
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
 	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\n")

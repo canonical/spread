@@ -436,6 +436,7 @@ const (
 
 func (r *Runner) run(client *Client, job *Job, verb string, context interface{}, script, debug string, abend *bool) bool {
 	script = strings.TrimSpace(script)
+	server := client.Server()
 	if len(script) == 0 {
 		return true
 	}
@@ -448,10 +449,10 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		if r.sequence[job] == 0 {
 			r.sequence[job] = len(r.sequence) + 1
 		}
-		printft(start, startTime, "%s %s (%d/%d)...", strings.Title(verb), contextStr, r.sequence[job], len(r.pending))
+		printft(start, startTime, "%s %s (%s) (%d/%d)...", strings.Title(verb), contextStr, server.Label(), r.sequence[job], len(r.pending))
 		r.mu.Unlock()
 	} else {
-		printft(start, startTime, "%s %s...", strings.Title(verb), contextStr)
+		printft(start, startTime, "%s %s (%s)...", strings.Title(verb), contextStr, server.Label())
 	}
 	var dir string
 	if context == job.Backend || context == job.Project {
@@ -478,14 +479,14 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		// Use a different time so it has a different id on Travis, but keep
 		// the original start time so the error message shows the task time.
 		start = start.Add(1)
-		printft(start, startTime|endTime|startFold|endFold, "Error %s %s : %v", verb, contextStr, err)
+		printft(start, startTime|endTime|startFold|endFold, "Error %s %s (%s) : %v", verb, contextStr, server.Label(), err)
 		if debug != "" {
 			start = time.Now()
 			output, err := client.Trace(debug, dir, job.Environment)
 			if err != nil {
-				printft(start, startTime|endTime|startFold|endFold, "Error debugging %s : %v", contextStr, err)
+				printft(start, startTime|endTime|startFold|endFold, "Error debugging %s (%s) : %v", contextStr, server.Label(), err)
 			} else if len(output) > 0 {
-				printft(start, startTime|endTime|startFold|endFold, "Debug output for %s : %v", contextStr, outputErr(output, nil))
+				printft(start, startTime|endTime|startFold|endFold, "Debug output for %s (%s) : %v", contextStr, server.Label(), outputErr(output, nil))
 			}
 		}
 		if r.options.Debug || r.options.ShellAfter {

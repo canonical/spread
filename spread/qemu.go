@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"syscall"
 
 	"golang.org/x/net/context"
 )
@@ -124,6 +125,15 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 	if err != nil {
 		return nil, &FatalError{fmt.Errorf("cannot launch qemu %s: %v", system, err)}
 	}
+	ctx, cancelFn := context.WithCancel(ctx)
+	go func() {
+		var wstatus syscall.WaitStatus
+		wpid, err := syscall.Wait4(cmd.Process.Pid, &wstatus, syscall.WNOHANG, nil)
+		if err != nil || wpid != 0 {
+			print("qemu exited unexpectedly: %v", wstatus)
+			cancelFn()
+		}
+	}()
 
 	s := &qemuServer{
 		p: p,
@@ -135,7 +145,7 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 	}
 
 	printf("Waiting for %s to make SSH available...", system)
-	if err := waitPortUp(ctx, system, s.address, cmd); err != nil {
+	if err := waitPortUp(ctx, system, s.address); err != nil {
 		s.Discard(ctx)
 		return nil, err
 	}

@@ -38,3 +38,11 @@ func MockSshDial(f func(network, addr string, config *ssh.ClientConfig) (*ssh.Cl
 		sshDial = oldSshDial
 	}
 }
+
+func MockQemuBinary(new string) (restore func()) {
+	old := qemuBinary
+	qemuBinary = new
+	return func() {
+		qemuBinary = old
+	}
+}

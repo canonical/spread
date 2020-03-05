@@ -1033,7 +1033,6 @@ func waitPortUp(ctx context.Context, what fmt.Stringer, address string) error {
 			conn.Close()
 			break
 		}
-
 		select {
 		case <-retry.C:
 		case <-relog.C:

@@ -123,7 +123,7 @@ type System struct {
 	Storage Size
 
 	// Only for Google so far.
-	SecureBoot	bool
+	SecureBoot bool `yaml:"secure-boot"`
 
 	Environment *Environment
 	Variants    []string

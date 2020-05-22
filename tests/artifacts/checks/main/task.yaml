@@ -1,6 +1,6 @@
 summary: Ensure it works.
 
-residue:
+artifacts:
     - one.txt
     - two.txt
 

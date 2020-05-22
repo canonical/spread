@@ -1,5 +1,5 @@
 name: spread
-version: 2018.03.20
+version: 2018.08.21
 summary: Convenient full-system test (task) distribution
 description: |
     Spread is a plesant way distribute full-system integration tests and

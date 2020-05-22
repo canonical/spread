@@ -16,7 +16,7 @@ Spread
 [Fast iterations with reuse](#reuse)
 [Debugging](#debugging)
 [Repeating tasks](#repeating)
-[Showing output for tasks](#showing-output)
+[Verbosity](#verbosity)
 [Passwords and usernames](#passwords)
 [Including, excluding, and renaming files](#including)
 [Selecting which tasks to run](#selecting)
@@ -562,17 +562,23 @@ the task fails.
 To do that there is an option `-repeat` which receives an integer indicating 
 the number of reexecutions to do, being 0 the default value.
 
-<a name="showing-output"/>
 
-## Showing tasks output
+<a name="verbosity"/>
 
-Showing the output of the tasks performed can be done by using the option
-`-show-output`. This option could be really usefull when real time output is
-needed for debugging, tracing, etc.
+## Verbosity
+
+The option `-v` displayes basic information about the current spread execution
+and its progress.
+
+The output of the tasks performed can be displayed by using the option
+`-vv`. By using this option spread shows the real time output while it executes the
+tasks that sometimes it is needed for debugging, tracing, etc.
 This option can be used just when 1 job is used at all. This limitation it
 needed to avoid mixing the output of different jobs in the same output.
-Is it possible to add the time for each line shown as part of the output by
-using `-show-time`.
+
+To see debug information about all the communication done by spread the option
+`-vvv` may be used. This option displays all the low level messages done by spread
+interacting with the backends and systems.
 
 
 <a name="passwords">

@@ -17,7 +17,8 @@ import (
 
 var (
 	verbose        = flag.Bool("v", false, "Show detailed progress information")
-	vverbose       = flag.Bool("vv", false, "Show debugging messages as well")
+	vverbose       = flag.Bool("vv", false, "Show the scripts output during the execution as well")
+	vvverbose      = flag.Bool("vvv", false, "Show debugging messages as well")
 	list           = flag.Bool("list", false, "Just show list of jobs that would run")
 	pass           = flag.String("pass", "", "Server password to use, defaults to random")
 	reuse          = flag.Bool("reuse", false, "Keep servers running for reuse")
@@ -34,8 +35,6 @@ var (
 	seed           = flag.Int64("seed", 0, "Seed for job order permutation")
 	repeat         = flag.Int("repeat", 0, "Number of times to repeat each task")
 	garbageCollect = flag.Bool("gc", false, "Garbage collect backend resources when possible")
-	showOutput     = flag.Bool("show-output", false, "Display the scripts output during the execution")
-	showTime       = flag.Bool("show-time", false, "Display the time with milliseconds with the scripts output")
 )
 
 func main() {
@@ -51,7 +50,7 @@ func run() error {
 
 	spread.Logger = log.New(os.Stdout, "", 0)
 	spread.Verbose = *verbose
-	spread.Debug = *vverbose
+	spread.Debug = *vvverbose
 
 	var other bool
 	for _, b := range []bool{*debug, *shell, *shellBefore || *shellAfter, *abend, *restore} {
@@ -60,10 +59,6 @@ func run() error {
 
 		}
 		other = other || b
-	}
-
-	if *showTime && ! *showOutput {
-		return fmt.Errorf("show-time option can be used just when show-output is used")
 	}
 
 	password := *pass
@@ -102,8 +97,7 @@ func run() error {
 		Seed:           *seed,
 		Repeat:         *repeat,
 		GarbageCollect: *garbageCollect,
-		ShowOutput:     *showOutput,
-		ShowTime:       *showTime,
+		ShowOutput:     *vverbose,
 	}
 
 	project, err := spread.Load(".")

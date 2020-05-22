@@ -37,7 +37,6 @@ type Options struct {
 	Repeat         int
 	GarbageCollect bool
 	ShowOutput     bool
-	ShowTime       bool
 }
 
 type Runner struct {
@@ -488,9 +487,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	client.SetKillTimeout(job.KillTimeoutFor(context))
 
 	var err error
-	if r.options.ShowOutput && r.options.ShowTime {
-		_, err = client.ShowOutputAndTime(script, dir, job.Environment)
-	} else if r.options.ShowOutput {
+	if r.options.ShowOutput {
 		_, err = client.ShowOutput(script, dir, job.Environment)
 	} else {
 		_, err = client.Trace(script, dir, job.Environment)
@@ -506,8 +503,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 				start = time.Now()
 				output, err := client.Trace(debug, dir, job.Environment)
 				if err != nil {
-					printft(start, startTime|endTime|startFold|endFold, "Error debugging %s : %v", contextStr, err)
-				printft(start, startTime|endTime|startFold|endFold, "Error debugging %s (%s) : %v", contextStr, server.Label(), err)
+					printft(start, startTime|endTime|startFold|endFold, "Error debugging %s (%s) : %v", contextStr, server.Label(), err)
 				} else if len(output) > 0 {
 					printft(start, startTime|endTime|startFold|endFold, "Debug output for %s (%s) : %v", contextStr, server.Label(), outputErr(output, nil))
 				}

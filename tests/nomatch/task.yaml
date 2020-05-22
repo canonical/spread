@@ -7,7 +7,7 @@ prepare: |
     fi
 
 execute: |
-    spread -vv -reuse -resend &> task.out
+    spread -vvv -reuse -resend &> task.out
 
     cat task.out | grep '^WORKS$'
 

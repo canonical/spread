@@ -8,7 +8,7 @@ prepare: |
 
 execute: |
     # We send the output to /tmp to avoid the file changes during repack
-    spread -vv -reuse -resend &> /tmp/task.out
+    spread -vvv -reuse -resend &> /tmp/task.out
 
     cat /tmp/task.out | grep '^WORKS$'
 

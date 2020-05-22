@@ -856,10 +856,10 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 
 	// In case the number of workers set in the options is bigger than 0,
 	// update all the systems with the numbers set in the options
-	if options.Workers > 0 {
+	if options.SingleWorker {
 		for _, backend := range p.Backends {
 			for _, system := range backend.Systems {
-				system.Workers = options.Workers
+				system.Workers = 1
 			}
 		}
 	}

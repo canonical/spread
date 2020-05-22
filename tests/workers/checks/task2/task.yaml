@@ -1,4 +1,0 @@
-summary: The automatic task.
-
-execute: |
-    echo "works"

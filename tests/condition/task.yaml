@@ -1,0 +1,22 @@
+summary: Test the run condition feature
+
+prepare: |
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
+
+execute: |
+    # Check when the condition matches
+    MY_TEST_VAR=true spread -reuse -resend &> task1.out
+    grep 'Successful tasks: 1' task1.out
+    grep -v 'Skipping' task1.out
+
+    # Check when the condition doesn't match
+    MY_TEST_VAR=false spread -reuse -resend &> task1.out
+    grep 'Successful tasks: 1' task1.out
+    grep 'Skipping' task1.out
+
+debug: |
+    cat task1.out || true
+    cat task2.out || true

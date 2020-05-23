@@ -1,0 +1,7 @@
+summary: Ensure it works.
+
+condition: |
+    [ "$MY_TEST_VAR" = "true" ]
+
+execute: |
+    echo WORKS

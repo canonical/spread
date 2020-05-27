@@ -1,0 +1,48 @@
+name: Test spread
+
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
+
+
+jobs:
+  run-tests:
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt install -y git qemu-kvm lxd tree
+
+      - name: Setup go version
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.10.4
+
+      - name: Set environment
+        run: |
+          echo '::set-env name=GOHOME::${{ github.workspace }}'
+          echo '::set-env name=GOPATH::${{ github.workspace }}'
+
+      - name: Checkout project
+        uses: actions/checkout@v2
+        with:
+          path: src/github.com/snapcore/spread
+
+      - name: Build spread
+        run: |
+          cd ${{ github.workspace }}/src/github.com/snapcore/spread
+          go get ./cmd/spread
+          
+      - name: run tests
+        env:
+          SPREAD_GOOGLE_AUTH_JSON: ${{ secrets.SPREAD_GOOGLE_KEY }}
+        run: |
+          cd ${{ github.workspace }}/src/github.com/snapcore/spread
+          mkdir -p bin
+          cp -f "$GOHOME/bin/spread" ./bin/spread
+          "$GOHOME/bin/spread" google:ubuntu-18.04-64:tests/

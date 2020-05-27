@@ -1,0 +1,34 @@
+name: Test spread
+
+on:
+  push:
+    branches:
+    - master
+  pull_request:
+    branches:
+    - master
+
+
+jobs:
+  cla-check:
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt install -y git qemu-kvm lxd tree
+
+      - name: Checkout project
+        uses: actions/checkout@v1
+
+      - name: Setup go version
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.10.4
+
+      - name: Build spread
+        run: |
+          go get ./cmd/spread
+          
+      - name: run tests
+        run: |

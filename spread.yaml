@@ -49,34 +49,8 @@ prepare: |
         apt install -y $DEBS
     fi
 
-    # Cache is only available if SEND_CACHE=1 is set.
-    mkdir -p tests/cache
-
-    # Cache Go deb with: cd tests/cache && godeb download $GOVERSION
-    if ! dpkg -l go; then
-        if [ ! -f tests/cache/go_$GOVERSION-*.deb ]; then
-            (
-                cd tests/cache
-                if [ ! -f godeb ]; then
-                    wget https://godeb.s3.amazonaws.com/godeb-amd64.tar.gz
-                    tar xzvf godeb-amd64.tar.gz
-                fi
-                ./godeb download $GOVERSION
-            )
-        fi
-        dpkg -i tests/cache/go_$GOVERSION-*.deb
-    fi
-    go get ./cmd/spread
-
-    # Cache is only available if SEND_CACHE=1 is set, follow the steps:
-    # - Create dest dir: > mkdir tests/cache/lxd-ubuntu-16.04
-    # - Get image id: > lxc image list
-    # - Export image: > lxc image export <IAMGE-ID> tests/cache/lxd-ubuntu-16.04
-    # - Extract metadata: > cd tests/cache/lxd-ubuntu-16.04 && tar -xvf <METADATA-FILE>
-    if [ -d tests/cache/lxd-ubuntu-16.04 ]; then
-        if ! lxc image list | grep '16\.04'; then
-            lxc image import tests/cache/lxd-ubuntu-16.04
-        fi
+    if ! lxc image list | grep '16\.04'; then
+        lxc image import tests/cache/lxd-ubuntu-16.04
     fi
 
     # Start lxd instance

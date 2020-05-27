@@ -28,7 +28,8 @@ jobs:
 
       - name: Build spread
         run: |
-          go get ./cmd/spread
+          go build cmd/spread/main.go
           
       - name: run tests
         run: |
+          ./main google:ubuntu-18.04-64:tests/

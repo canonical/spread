@@ -123,7 +123,7 @@ type System struct {
 	Storage Size
 
 	// Only for Google so far.
-	SecureBoot	bool
+	SecureBoot bool
 
 	Environment *Environment
 	Variants    []string
@@ -974,7 +974,6 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 
 	all := jobs
 	jobs = make([]*Job, 0, len(all))
-
 	backends := make(map[string]bool)
 	for _, job := range all {
 		if !manualBackends && job.Backend.Manual {

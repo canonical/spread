@@ -212,10 +212,10 @@ func (r *Runner) loop() (err error) {
 	if r.options.ShowOutput {
 		total := 0
 		for _, w := range workers {
-		    total += w
+			total += w
 		}
 		if total > 1 {
-			return fmt.Errorf("Just 1 worker can be used at all when show-output is required")	
+			return fmt.Errorf("Just 1 worker can be used at all when show-output is required")
 		}
 	}
 
@@ -499,7 +499,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		start = start.Add(1)
 		printft(start, startTime|endTime|startFold|endFold, "Error %s %s (%s) : %v", verb, contextStr, server.Label(), err)
 		if debug != "" {
-			if ! r.options.ShowOutput {
+			if !r.options.ShowOutput {
 				start = time.Now()
 				output, err := client.Trace(debug, dir, job.Environment)
 				if err != nil {

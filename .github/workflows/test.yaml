@@ -16,7 +16,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt install -y git qemu-kvm lxd tree
+          sudo apt install -y xdelta3
 
       - name: Setup go version
         uses: actions/setup-go@v1

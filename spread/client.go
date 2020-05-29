@@ -275,7 +275,7 @@ func (e *rebootError) Error() string { return "reboot requested" }
 
 const maxReboots = 10
 
-func (c *Client) run(script string, dir string, env *Environment, mode outputMode) (output []byte, err error) {	
+func (c *Client) run(script string, dir string, env *Environment, mode outputMode) (output []byte, err error) {
 	if env == nil {
 		env = NewEnvironment()
 	}
@@ -366,7 +366,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		buf.WriteString("unset SUDO_UID\n")
 		buf.WriteString("unset SUDO_GID\n")
 	}
-	buf.WriteString(rc(false, "REBOOT() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<REBOOT>' || echo \"<REBOOT $1>\"; exit 214; }\n"))
+	buf.WriteString(rc(false, "REBOOT() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<REBOOT>' || echo \"<REBOOT $1>\"; exit 213; }\n"))
 	buf.WriteString(rc(false, "ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n"))
 	// We are not using pipes here, see:
 	//  https://github.com/snapcore/spread/pull/64
@@ -481,11 +481,6 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		if len(m) > 0 && string(m[1]) == "ERROR" {
 			return nil, fmt.Errorf("%s", m[2])
 		}
-	}
-
-	if e, ok := err.(*ssh.ExitError); ok && e.ExitStatus() == 214 {
-		lines := bytes.Split(bytes.TrimSpace(stdout.Bytes()), []byte{'\n'})
-		m := commandExp.FindSubmatch(lines[len(lines)-1])
 		if len(m) > 0 && string(m[1]) == "REBOOT" {
 			return append(previous, stdout.Bytes()...), &rebootError{string(m[2])}
 		}

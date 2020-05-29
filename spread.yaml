@@ -11,43 +11,11 @@ environment:
     GOVERSION: 1.10.4
     GOHOME: /home/test
     GOPATH: $GOHOME
-    PROJECT_PATH: $GOHOME/src/github.com/snapcore/spread
     PATH: $GOHOME/bin:$PATH
     CACHE_DISABLED: $(HOST:[ "$SEND_CACHE" = 1 ] && echo false || echo tests/cache)
 
 backends:
     google:
-        key: "$(HOST: echo $SPREAD_GOOGLE_AUTH_JSON)"
-        location: computeengine/us-east1-b
-        halt-timeout: 2h
-        systems:
-            - ubuntu-14.04-64:
-                workers: 1
-            - ubuntu-16.04-32:
-                workers: 1
-            - ubuntu-16.04-64:
-                workers: 1
-            - ubuntu-18.04-64:
-                workers: 1
-            - ubuntu-20.04-64:
-                workers: 1
-            - debian-9-64:
-                workers: 1
-            - fedora-31-64:
-                workers: 1
-            - opensuse-15.1-64:
-                workers: 1
-            - arch-linux-64:
-                workers: 1
-            - amazon-linux-2-64:
-                workers: 1
-                storage: preserve-size
-            - centos-7-64:
-                workers: 1
-                storage: preserve-size
-
-    google-nested:
-        type: google
         key: "$(HOST: echo $SPREAD_GOOGLE_AUTH_JSON)"
         location: computeengine/us-east1-b
         halt-timeout: 2h
@@ -70,57 +38,51 @@ exclude:
 path: /home/test/src/github.com/snapcore/spread
 
 suites:
-    tests/main/:
+    tests/: 
         summary: Integration tests
-        backends: [google-nested, qemu]
-        prepare: |
-            DEBS="git qemu-kvm lxd tree"
-            if ! dpkg -l $DEBS; then
-                apt update
-                apt install -y $DEBS
-            fi
-            # Cache is only available if SEND_CACHE=1 is set.
-            mkdir -p tests/cache
 
-            # Either use pregenerated spread if exists or build it
-            if [ -x "$PROJECT_PATH/bin/spread" ]; then
-                mkdir -p "$GOHOME/bin"
-                cp -f "$PROJECT_PATH/bin/spread" "$GOHOME/bin/spread"
-            else
-                # Cache Go deb with: cd tests/cache && godeb download $GOVERSION
-                if ! dpkg -l go; then
-                    if [ ! -f tests/cache/go_$GOVERSION-*.deb ]; then
-                        (
-                            cd tests/cache
-                            if [ ! -f godeb ]; then
-                                wget https://godeb.s3.amazonaws.com/godeb-amd64.tar.gz
-                                tar xzvf godeb-amd64.tar.gz
-                            fi
-                            ./godeb download $GOVERSION
-                        )
+prepare: |
+    DEBS="git qemu-kvm lxd tree"
+    if ! dpkg -l $DEBS; then
+        apt update
+        apt install -y $DEBS
+    fi
+    # Cache is only available if SEND_CACHE=1 is set.
+    mkdir -p tests/cache
+
+    # Either use pregenerated spread if exists or build it
+    if [ -x ./bin/spread ]; then
+        mkdir -p "$GOHOME/bin"
+        mv -f ./bin/spread "$GOHOME/bin/spread"
+    else
+        # Cache Go deb with: cd tests/cache && godeb download $GOVERSION
+        if ! dpkg -l go; then
+            if [ ! -f tests/cache/go_$GOVERSION-*.deb ]; then
+                (
+                    cd tests/cache
+                    if [ ! -f godeb ]; then
+                        wget https://godeb.s3.amazonaws.com/godeb-amd64.tar.gz
+                        tar xzvf godeb-amd64.tar.gz
                     fi
-                    dpkg -i tests/cache/go_$GOVERSION-*.deb
-                fi
-                go get ./cmd/spread
+                    ./godeb download $GOVERSION
+                )
             fi
+            dpkg -i tests/cache/go_$GOVERSION-*.deb
+        fi
+        go get ./cmd/spread
+    fi
 
-            # Cache is only available if SEND_CACHE=1 is set, follow the steps:
-            # - Create dest dir: > mkdir tests/cache/lxd-ubuntu-16.04
-            # - Get image id: > lxc image list
-            # - Export image: > lxc image export <IAMGE-ID> tests/cache/lxd-ubuntu-16.04
-            # - Extract metadata: > cd tests/cache/lxd-ubuntu-16.04 && tar -xvf <METADATA-FILE>
-            if [ -d tests/cache/lxd-ubuntu-16.04 ]; then
-                if ! lxc image list | grep '16\.04'; then
-                    lxc image import tests/cache/lxd-ubuntu-16.04
-                fi
-            fi
-            # Start lxd instance
-            lxd init --auto
-
-    tests/google/:
-        summary: Check the google backend
-        backends: [google]
-        
-
+    # Cache is only available if SEND_CACHE=1 is set, follow the steps:
+    # - Create dest dir: > mkdir tests/cache/lxd-ubuntu-16.04
+    # - Get image id: > lxc image list
+    # - Export image: > lxc image export <IAMGE-ID> tests/cache/lxd-ubuntu-16.04
+    # - Extract metadata: > cd tests/cache/lxd-ubuntu-16.04 && tar -xvf <METADATA-FILE>
+    if [ -d tests/cache/lxd-ubuntu-16.04 ]; then
+        if ! lxc image list | grep '16\.04'; then
+            lxc image import tests/cache/lxd-ubuntu-16.04
+        fi
+    fi
+    # Start lxd instance
+    lxd init --auto
 
 # vim:ts=4:sw=4:et

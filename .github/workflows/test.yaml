@@ -45,4 +45,4 @@ jobs:
           cd ${{ github.workspace }}/src/github.com/snapcore/spread
           mkdir -p bin
           cp -f "$GOHOME/bin/spread" ./bin/spread
-          "$GOHOME/bin/spread" google-nested:ubuntu-18.04-64:tests/main/ google:tests/google/
+          "$GOHOME/bin/spread" google:ubuntu-18.04-64:tests/

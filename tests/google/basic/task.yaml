@@ -1,5 +1,0 @@
-summary: Test the connection can be stablished
-
-execute: |
-    echo "Connection stablished"
-

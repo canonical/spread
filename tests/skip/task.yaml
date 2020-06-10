@@ -8,14 +8,11 @@ prepare: |
 
 execute: |
     # Check when the skip condition matches
-    spread -reuse -resend &> task1.out
+    spread -reuse -resend &> task1.out || true
     grep 'Successful tasks: 1' task1.out
     grep 'Failed tasks: 1' task1.out
     grep 'Skipped tasks: 1' task1.out
     grep 'Skipping' task1.out
 
-
-
 debug: |
     cat task1.out || true
-    cat task2.out || true

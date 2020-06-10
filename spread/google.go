@@ -433,15 +433,8 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 		diskParams["diskSizeGb"] = int(system.Storage / gb)
 	}
 
-	secureBootParams := googleParams{}
-	if system.SecureBoot {
-		secureBootParams = googleParams{
 			"enableSecureBoot":          true,
 			"enableVtpm":                true,
-			"enableIntegrityMonitoring": true,
-		}
-	}
-
 	params := googleParams{
 		"name":        name,
 		"machineType": "zones/" + p.gzone() + "/machineTypes/" + plan,
@@ -465,7 +458,14 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 		"tags": googleParams{
 			"items": []string{"spread"},
 		},
-		"shieldedInstanceConfig": secureBootParams,
+	}
+
+	if system.SecureBoot {
+		params["shieldedInstanceConfig"] = googleParams{
+			"enableSecureBoot":          true,
+			"enableVtpm":                true,
+			"enableIntegrityMonitoring": true,
+		}
 	}
 
 	var op googleOperation

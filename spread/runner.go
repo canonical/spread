@@ -432,8 +432,8 @@ const (
 	preparing = "preparing"
 	executing = "executing"
 	restoring = "restoring"
-	checking = "checking"
-	skipping = "skipping"
+	checking  = "checking"
+	skipping  = "skipping"
 )
 
 func (r *Runner) run(client *Client, job *Job, verb string, context interface{}, script, debug string, abend *bool) bool {
@@ -628,9 +628,9 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 		}
 
 		debug := job.Debug()
-		if r.run(client, job, checking, job, job.Condition(), debug, &abend) {
-		    for repeat := r.options.Repeat; repeat >= 0; repeat-- {
-			    if r.options.Restore {
+		if !r.run(client, job, checking, job, job.Skip(), debug, &abend) {
+			for repeat := r.options.Repeat; repeat >= 0; repeat-- {
+				if r.options.Restore {
 					// Do not prepare or execute, and don't repeat.
 					repeat = -1
 				} else if !r.options.Restore && !r.run(client, job, preparing, job, job.Prepare(), debug, &abend) {
@@ -645,10 +645,10 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 					debug = ""
 					repeat = -1
 				}
-			if !abend && !r.options.Restore && repeat <= 0 {
-				if err := r.fetchArtifacts(client, job); err != nil {
-					printf("Cannot fetch artifacts of %s: %v", job, err)
-					r.tomb.Killf("cannot fetch artifacts of %s: %v", job, err)
+				if !abend && !r.options.Restore && repeat <= 0 {
+					if err := r.fetchArtifacts(client, job); err != nil {
+						printf("Cannot fetch artifacts of %s: %v", job, err)
+						r.tomb.Killf("cannot fetch artifacts of %s: %v", job, err)
 					}
 				}
 				if !abend && !r.run(client, job, restoring, job, job.Restore(), debug, &abend) {
@@ -658,7 +658,7 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 				}
 			}
 		} else {
-			r.add(&stats.TaskDone, job)
+			r.add(&stats.TaskSkipped, job)
 		}
 	}
 

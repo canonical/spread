@@ -1,4 +1,4 @@
-summary: Test the run condition feature
+summary: Test the skip condition feature
 
 prepare: |
     if [ ! -f .spread-reuse.yaml ]; then
@@ -7,15 +7,15 @@ prepare: |
     fi
 
 execute: |
-    # Check when the condition matches
+    # Check when the skip condition matches
     MY_TEST_VAR=true spread -reuse -resend &> task1.out
-    grep 'Successful tasks: 1' task1.out
-    grep -v 'Skipping' task1.out
-
-    # Check when the condition doesn't match
-    MY_TEST_VAR=false spread -reuse -resend &> task1.out
-    grep 'Successful tasks: 1' task1.out
+    grep 'Skippped tasks: 1' task1.out
     grep 'Skipping' task1.out
+
+    # Check when the skip condition doesn't match
+    MY_TEST_VAR=false spread -reuse -resend &> task1.out
+    grep 'Failed tasks: 1' task1.out
+    grep -v 'Skipping' task1.out
 
 debug: |
     cat task1.out || true

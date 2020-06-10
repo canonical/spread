@@ -1,7 +1,7 @@
 summary: Ensure it works.
 
-condition: |
+skip: |
     [ "$MY_TEST_VAR" = "true" ]
 
 execute: |
-    echo WORKS
+    exit 1

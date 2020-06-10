@@ -123,7 +123,7 @@ type System struct {
 	Storage Size
 
 	// Only for Google so far.
-	SecureBoot	bool
+	SecureBoot bool
 
 	Environment *Environment
 	Variants    []string
@@ -298,9 +298,9 @@ func (e *Environment) Replace(oldkey, newkey, value string) {
 }
 
 type Suite struct {
-	Summary     string
-	Systems     []string
-	Backends    []string
+	Summary  string
+	Systems  []string
+	Backends []string
 
 	Variants    []string
 	Environment *Environment
@@ -328,11 +328,11 @@ func (s *Suite) String() string { return "suite " + s.Name }
 type Task struct {
 	Suite string `yaml:"-"`
 
-	Summary    string
-	Details    string
-	Systems    []string
-	Backends   []string
-	Condition  string
+	Summary  string
+	Details  string
+	Systems  []string
+	Backends []string
+	Skip     string
 
 	Variants    []string
 	Environment *Environment
@@ -390,16 +390,16 @@ func (job *Job) StringFor(context interface{}) string {
 	panic(fmt.Errorf("job %s asked to stringify unrelated value: %v", job, context))
 }
 
-func (job *Job) Condition() string {
-	return join(job.Task.Condition)
-}
-
 func (job *Job) Prepare() string {
 	return join(job.Project.PrepareEach, job.Backend.PrepareEach, job.Suite.PrepareEach, job.Task.Prepare)
 }
 
 func (job *Job) Restore() string {
 	return join(job.Task.Restore, job.Suite.RestoreEach, job.Backend.RestoreEach, job.Project.RestoreEach)
+}
+
+func (job *Job) Skip() string {
+	return join(job.Task.Skip)
 }
 
 func (job *Job) Debug() string {
@@ -650,7 +650,7 @@ func Load(path string) (*Project, error) {
 			task.Name = suite.Name + tname
 			task.Path = filepath.Dir(tfilename)
 			task.Summary = strings.TrimSpace(task.Summary)
-			task.Condition = strings.TrimSpace(task.Condition)
+			task.Skip = strings.TrimSpace(task.Skip)
 			task.Prepare = strings.TrimSpace(task.Prepare)
 			task.Restore = strings.TrimSpace(task.Restore)
 			task.Debug = strings.TrimSpace(task.Debug)

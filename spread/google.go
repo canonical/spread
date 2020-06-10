@@ -436,8 +436,8 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 	secureBootParams := googleParams{}
 	if system.SecureBoot {
 		secureBootParams = googleParams{
-			"enableSecureBoot": true,
-			"enableVtpm": true,
+			"enableSecureBoot":          true,
+			"enableVtpm":                true,
 			"enableIntegrityMonitoring": true,
 		}
 	}

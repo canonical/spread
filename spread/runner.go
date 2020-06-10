@@ -453,8 +453,6 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		}
 		printft(start, startTime, "%s %s (%s) (%d/%d)...", strings.Title(verb), contextStr, server.Label(), r.sequence[job], len(r.pending))
 		r.mu.Unlock()
-	} else if verb == checking {
-		printft(start, startTime, "%s %s (%s)...", strings.Title(verb), contextStr, server.Label())
 	} else {
 		printft(start, startTime, "%s %s (%s)...", strings.Title(verb), contextStr, server.Label())
 	}
@@ -479,6 +477,10 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	client.SetKillTimeout(job.KillTimeoutFor(context))
 	_, err := client.Trace(script, dir, job.Environment)
 	printft(start, endTime, "")
+
+	if err == nil && verb == checking {
+		printft(start, startTime, "%s %s (%s)...", strings.Title(skipping), contextStr, server.Label())
+	}
 
 	if err != nil {
 		// Use a different time so it has a different id on Travis, but keep
@@ -650,8 +652,7 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 					repeat = -1
 				}
 			}
-		} else {+
-			printft(start, startTime, "%s %s...", strings.Title(skipping), contextStr)
+		} else {
 			r.add(&stats.TaskSkipped, job)
 		}
 	}

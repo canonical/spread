@@ -399,7 +399,7 @@ func (job *Job) Restore() string {
 }
 
 func (job *Job) Skip() string {
-	return join(job.Task.Skip)
+	return job.Task.Skip
 }
 
 func (job *Job) Debug() string {

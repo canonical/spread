@@ -478,8 +478,12 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	_, err := client.Trace(script, dir, job.Environment)
 	printft(start, endTime, "")
 
-	if err == nil && verb == checking {
-		printft(start, startTime, "%s %s (%s)...", strings.Title(skipping), contextStr, server.Label())
+	if verb == checking {
+		if err != nil {
+			return true
+		} else {
+			printft(start, startTime, "%s %s (%s)...", strings.Title(skipping), contextStr, server.Label())
+		}
 	}
 
 	if err != nil {
@@ -623,7 +627,7 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 		}
 
 		debug := job.Debug()
-		if !r.run(client, job, checking, job, job.Skip(), debug, &abend) {
+		if job.Skip() == "" || !r.run(client, job, checking, job, job.Skip(), debug, &abend) {
 			for repeat := r.options.Repeat; repeat >= 0; repeat-- {
 				if r.options.Restore {
 					// Do not prepare or execute, and don't repeat.

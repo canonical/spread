@@ -9,7 +9,7 @@ prepare: |
 execute: |
     # Check when the skip condition matches
     MY_TEST_VAR=true spread -reuse -resend &> task1.out
-    grep 'Skippped tasks: 1' task1.out
+    grep 'Skipped tasks: 1' task1.out
     grep 'Skipping' task1.out
 
     # Check when the skip condition doesn't match

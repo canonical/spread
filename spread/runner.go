@@ -482,9 +482,9 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 
 	if verb == checking {
 		if err != nil {
-			printft(start, startTime, "%s %s...", strings.Title(skipping), contextStr)
 			return false
 		}
+		printft(start, startTime, "%s %s...", strings.Title(skipping), contextStr)
 		return true
 	}
 	if err != nil {
@@ -1079,6 +1079,7 @@ func (s *stats) log() {
 	printf("Successful tasks: %d", len(s.TaskDone))
 	printf("Aborted tasks: %d", len(s.TaskAbort))
 
+	logNames(printf, "Skipped tasks", s.TaskSkipped, taskName)
 	logNames(printf, "Failed tasks", s.TaskError, taskName)
 	logNames(printf, "Failed task prepare", s.TaskPrepareError, taskName)
 	logNames(printf, "Failed task restore", s.TaskRestoreError, taskName)

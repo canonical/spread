@@ -480,9 +480,10 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 
 	if verb == checking {
 		if err != nil {
-			return true
+			return false
 		} else {
 			printft(start, startTime, "%s %s (%s)...", strings.Title(skipping), contextStr, server.Label())
+			return true
 		}
 	}
 

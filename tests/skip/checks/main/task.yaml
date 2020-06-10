@@ -1,7 +1,18 @@
 summary: Ensure it works.
 
+environment:
+    skip/T1: true
+    exec/T1: true
+    skip/T2: false
+    exec/T2: true
+    skip/T3: false
+    exec/T3: false
+
+details: |
+    Test
+
 skip: |
-    [ "$MY_TEST_VAR" = "true" ]
+    [ "$skip" = "true" ]
 
 execute: |
-    exit 1
+    [ "$exec" = "true" ]

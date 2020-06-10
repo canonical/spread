@@ -433,8 +433,6 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 		diskParams["diskSizeGb"] = int(system.Storage / gb)
 	}
 
-			"enableSecureBoot":          true,
-			"enableVtpm":                true,
 	params := googleParams{
 		"name":        name,
 		"machineType": "zones/" + p.gzone() + "/machineTypes/" + plan,

@@ -454,7 +454,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		printft(start, startTime, "%s %s (%s) (%d/%d)...", strings.Title(verb), contextStr, server.Label(), r.sequence[job], len(r.pending))
 		r.mu.Unlock()
 	} else if verb == checking {
-		debugft(start, startTime, "%s %s...", strings.Title(verb), contextStr)
+		printft(start, startTime, "%s %s (%s)...", strings.Title(verb), contextStr, server.Label())
 	} else {
 		printft(start, startTime, "%s %s (%s)...", strings.Title(verb), contextStr, server.Label())
 	}
@@ -480,13 +480,6 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	_, err := client.Trace(script, dir, job.Environment)
 	printft(start, endTime, "")
 
-	if verb == checking {
-		if err != nil {
-			return false
-		}
-		printft(start, startTime, "%s %s...", strings.Title(skipping), contextStr)
-		return true
-	}
 	if err != nil {
 		// Use a different time so it has a different id on Travis, but keep
 		// the original start time so the error message shows the task time.
@@ -657,7 +650,8 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 					repeat = -1
 				}
 			}
-		} else {
+		} else {+
+			printft(start, startTime, "%s %s...", strings.Title(skipping), contextStr)
 			r.add(&stats.TaskSkipped, job)
 		}
 	}

@@ -11,7 +11,9 @@ environment:
 details: |
     Test
 
-skip: |
+skip:
+  reason: This is the skip reason
+  check: |
     [ "$skip" = "true" ]
 
 execute: |

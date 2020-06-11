@@ -332,7 +332,7 @@ type Task struct {
 	Details  string
 	Systems  []string
 	Backends []string
-	Skip     string
+	Skip     Skip
 
 	Variants    []string
 	Environment *Environment
@@ -356,6 +356,11 @@ type Task struct {
 }
 
 func (t *Task) String() string { return t.Name }
+
+type Skip struct {
+	Reason string
+	Check  string
+}
 
 type Job struct {
 	Name    string
@@ -396,10 +401,6 @@ func (job *Job) Prepare() string {
 
 func (job *Job) Restore() string {
 	return join(job.Task.Restore, job.Suite.RestoreEach, job.Backend.RestoreEach, job.Project.RestoreEach)
-}
-
-func (job *Job) Skip() string {
-	return job.Task.Skip
 }
 
 func (job *Job) Debug() string {
@@ -650,9 +651,10 @@ func Load(path string) (*Project, error) {
 			task.Name = suite.Name + tname
 			task.Path = filepath.Dir(tfilename)
 			task.Summary = strings.TrimSpace(task.Summary)
-			task.Skip = strings.TrimSpace(task.Skip)
 			task.Prepare = strings.TrimSpace(task.Prepare)
 			task.Restore = strings.TrimSpace(task.Restore)
+			task.Skip.Reason = strings.TrimSpace(task.Skip.Reason)
+			task.Skip.Check = strings.TrimSpace(task.Skip.Check)
 			task.Debug = strings.TrimSpace(task.Debug)
 			if !validTask.MatchString(task.Name) {
 				return nil, fmt.Errorf("invalid task name: %q", task.Name)
@@ -662,6 +664,14 @@ func Load(path string) (*Project, error) {
 			}
 			if task.Samples == 0 {
 				task.Samples = 1
+			}
+
+			if task.Skip.Check != "" && task.Skip.Reason == "" {
+				return nil, fmt.Errorf("%s has skip raeson cannot be empty", task)
+			}
+
+			if task.Skip.Reason != "" && task.Skip.Check == "" {
+				return nil, fmt.Errorf("%s has skip check cannot be empty", task)
 			}
 
 			if err := checkEnv(task, &task.Environment); err != nil {

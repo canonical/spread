@@ -628,7 +628,7 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 		}
 
 		debug := job.Debug()
-		if job.Skip() == "" || !r.run(client, job, checking, job, job.Skip(), debug, &abend) {
+		if job.Task.Skip.Check == "" || !r.run(client, job, checking, job, job.Task.Skip.Check, debug, &abend) {
 			for repeat := r.options.Repeat; repeat >= 0; repeat-- {
 				if r.options.Restore {
 					// Do not prepare or execute, and don't repeat.
@@ -1079,7 +1079,7 @@ func (s *stats) log() {
 	printf("Successful tasks: %d", len(s.TaskDone))
 	printf("Aborted tasks: %d", len(s.TaskAbort))
 
-	logNames(printf, "Skipped tasks", s.TaskSkipped, taskName)
+	logNames(printf, "Skipped tasks", s.TaskSkipped, skipRaeson)
 	logNames(printf, "Failed tasks", s.TaskError, taskName)
 	logNames(printf, "Failed task prepare", s.TaskPrepareError, taskName)
 	logNames(printf, "Failed task restore", s.TaskRestoreError, taskName)
@@ -1100,6 +1100,10 @@ func taskName(job *Job) string {
 		return job.Task.Name
 	}
 	return job.Task.Name + ":" + job.Variant
+}
+
+func skipRaeson(job *Job) string {
+	return job.Task.Name + " - " + job.Task.Skip.Reason
 }
 
 func logNames(f func(format string, args ...interface{}), prefix string, jobs []*Job, name func(job *Job) string) {

@@ -1,0 +1,34 @@
+summary: Test the NOMATCH function.
+
+execute: |
+    if echo -e "error: oops, something went wrong" | NOMATCH error > task.out 2> task.err; then
+        echo "NOMATCH should have failed single-line test."
+        exit 1
+    fi
+
+    if echo -e "foo\nerror\nbar\n" | NOMATCH error > task.out 2> task.err; then
+        echo "NOMATCH should have failed multi-line test."
+        exit 1
+    fi
+
+    cat task.out
+    test "$(wc -l < task.out)" -eq 0
+
+    cat task.err
+    cat task.err | grep "^NOMATCH pattern='error' found in:$"
+    cat task.err | grep "^foo$"
+    cat task.err | grep "^error$"
+    cat task.err | grep "^bar$"
+
+    echo -e "foo\nbar\n" | NOMATCH error &> task.out
+
+    cat task.out
+    test "$(wc -l < task.out)" -eq 0
+
+    echo "Ensure it's using the extended regexp syntax."
+    echo -e "foo" | NOMATCH "(error|warning)"
+
+    echo "Ensure input can be multiline."
+    echo -e "foo\nxxERRORxx\nbaz\n" | NOMATCH '^ERROR$'
+
+    echo WORKS

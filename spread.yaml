@@ -16,7 +16,7 @@ environment:
 
 backends:
     google:
-        key: "$(HOST: echo $SPREAD_GOOGLE_KEY)"
+        key: "$(HOST: echo $SPREAD_GOOGLE_AUTH_JSON)"
         location: computeengine/us-east1-b
         halt-timeout: 2h
         systems:

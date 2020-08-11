@@ -458,6 +458,14 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 		},
 	}
 
+	if system.SecureBoot {
+		params["shieldedInstanceConfig"] = googleParams{
+			"enableSecureBoot":          true,
+			"enableVtpm":                true,
+			"enableIntegrityMonitoring": true,
+		}
+	}
+
 	var op googleOperation
 	err = p.doz("POST", "/instances", params, &op)
 	if err != nil {

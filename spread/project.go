@@ -120,7 +120,10 @@ type System struct {
 	Workers  int
 
 	// Only for Linode and Google so far.
-	Storage  Size
+	Storage Size
+
+	// Only for Google so far.
+	SecureBoot bool `yaml:"secure-boot"`
 
 	Environment *Environment
 	Variants    []string
@@ -339,7 +342,7 @@ type Task struct {
 	Execute string
 	Debug   string
 
-	Residue []string
+	Artifacts []string
 
 	Name string `yaml:"-"`
 	Path string `yaml:"-"`
@@ -662,9 +665,9 @@ func Load(path string) (*Project, error) {
 				return nil, err
 			}
 
-			for _, fname := range task.Residue {
+			for _, fname := range task.Artifacts {
 				if filepath.IsAbs(fname) || fname != filepath.Clean(fname) || strings.HasPrefix(fname, "../") {
-					return nil, fmt.Errorf("%s has improper residue path: %s", task.Name, fname)
+					return nil, fmt.Errorf("%s has improper artifact path: %s", task.Name, fname)
 				}
 			}
 

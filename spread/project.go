@@ -1028,7 +1028,7 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 					return nil, err
 				}
 				system.Password = value
-		    }
+			}
 		}
 	}
 

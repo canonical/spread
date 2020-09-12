@@ -587,8 +587,8 @@ backends:
                 username: ubuntu
                 password: ubuntu
             - ubuntu-core-16-64:
-                username: my-lp-user
-                cert: true
+                username: ubuntu
+                ssh-rsa-key: ~/.ssh/id_rsa
 ```
 
 If the password field is defined without a username, it specifies the password
@@ -596,8 +596,8 @@ for root to connect over SSH.  If both username and password are provided,
 the credentials will be used to connect to the system, and password-less sudo
 must be available for the provided user.
 
-When the cert field is set to true, spread uses the ssh certificates for the current
-user to stablish the connection. In this scenario the password is not considered.
+When the ssh-rsa-key field is set, spread uses the ssh key to stablish the
+connection. In this scenario the password is not considered.
 
 In all cases the end result is the same: a system that executes scripts as root.
 

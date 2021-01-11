@@ -3,6 +3,7 @@ package spread
 import (
 	"bytes"
 	"fmt"
+	"io"
 	stdlog "log"
 	"os"
 	"strings"
@@ -64,7 +65,9 @@ func timePrefix() string {
 var termMu sync.Mutex
 var logMu sync.Mutex
 var logCache bytes.Buffer
-var logSaved stdlog.Logger
+
+// State saved around termLock / termUnlock
+var logSavedWriter io.Writer
 
 func writeLog(lines ...string) {
 	logMu.Lock()
@@ -132,18 +135,23 @@ func writeLogt(start time.Time, flags logFlags, format string, args ...interface
 func termLock() {
 	termMu.Lock()
 	logMu.Lock()
-	logSaved = *Logger
+	logSavedWriter = Logger.Writer()
 	Logger.SetOutput(&logCache)
 	logMu.Unlock()
 }
 
 func termUnlock() {
 	logMu.Lock()
-	*Logger = logSaved
+	logSavedFlags := Logger.Flags()
+	logSavedPrefix := Logger.Prefix()
+	Logger.SetOutput(logSavedWriter)
 	Logger.SetFlags(0)
 	Logger.SetPrefix("")
 	Logger.Output(0, logCache.String())
-	*Logger = logSaved
+	Logger.SetOutput(logSavedWriter)
+	Logger.SetPrefix(logSavedPrefix)
+	Logger.SetFlags(logSavedFlags)
+	logSavedWriter = nil
 	logCache.Truncate(0)
 	logMu.Unlock()
 	termMu.Unlock()

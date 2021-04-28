@@ -41,7 +41,7 @@ jobs:
           
       - name: run tests
         env:
-          SPREAD_GOOGLE_AUTH_JSON: ${{ secrets.SPREAD_GOOGLE_KEY }}
+          SPREAD_GOOGLE_KEY: ${{ secrets.SPREAD_GOOGLE_KEY }}
         run: |
           cd ${{ github.workspace }}/src/github.com/snapcore/spread
           mkdir -p bin

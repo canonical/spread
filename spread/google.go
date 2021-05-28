@@ -433,9 +433,15 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 		diskParams["diskSizeGb"] = int(system.Storage / gb)
 	}
 
+	minCpuPlatform := "AUTOMATIC"
+	if system.MinCpuPlatform != "" {
+		minCpuPlatform = system.MinCpuPlatform
+	}
+
 	params := googleParams{
 		"name":        name,
 		"machineType": "zones/" + p.gzone() + "/machineTypes/" + plan,
+		"minCpuPlatform": minCpuPlatform,
 		"networkInterfaces": []googleParams{{
 			"accessConfigs": []googleParams{{
 				"type": "ONE_TO_ONE_NAT",

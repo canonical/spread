@@ -123,7 +123,9 @@ type System struct {
 	Storage Size
 
 	// Only for Google so far.
-	SecureBoot     bool   `yaml:"secure-boot"`
+	SecureBoot bool `yaml:"secure-boot"`
+	// Select the minimum CPU platform on Google GCE, e.g. "Intel Skylake"
+	// See https://cloud.google.com/compute/docs/instances/specify-min-cpu-platform#availablezones
 	MinCpuPlatform string `yaml:"min-cpu-platform"`
 
 	Environment *Environment

@@ -383,8 +383,8 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 
 	name := googleName()
 	plan := googleDefaultPlan
-	if p.backend.Plan != "" {
-		plan = p.backend.Plan
+	if system.Plan != "" {
+		plan = system.Plan
 	}
 
 	image, family, err := p.image(system)

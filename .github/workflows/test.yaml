@@ -11,7 +11,7 @@ on:
 
 jobs:
   run-tests:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     steps:
       - name: Install dependencies
         run: |
@@ -22,7 +22,7 @@ jobs:
         uses: actions/setup-go@v2
         with:
           # Using the lastest available go version for bionic
-          go-version: 1.10.4
+          go-version: 1.13.8
 
       - name: Set environment
         run: |
@@ -46,4 +46,4 @@ jobs:
           cd ${{ github.workspace }}/src/github.com/snapcore/spread
           mkdir -p bin
           cp -f "$GOHOME/bin/spread" ./bin/spread
-          "$GOHOME/bin/spread" google:ubuntu-18.04-64:tests/
+          "$GOHOME/bin/spread" google:ubuntu-20.04-64:tests/

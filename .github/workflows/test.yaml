@@ -26,8 +26,8 @@ jobs:
 
       - name: Set environment
         run: |
-          echo '::set-env name=GOHOME::${{ github.workspace }}'
-          echo '::set-env name=GOPATH::${{ github.workspace }}'
+          echo "GOHOME=${{ github.workspace }}" >> "$GITHUB_ENV"
+          echo "GOPATH=${{ github.workspace }}" >> "$GITHUB_ENV"
 
       - name: Checkout project
         uses: actions/checkout@v2
@@ -41,7 +41,7 @@ jobs:
           
       - name: run tests
         env:
-          SPREAD_GOOGLE_AUTH_JSON: ${{ secrets.SPREAD_GOOGLE_KEY }}
+          SPREAD_GOOGLE_KEY: ${{ secrets.SPREAD_GOOGLE_KEY }}
         run: |
           cd ${{ github.workspace }}/src/github.com/snapcore/spread
           mkdir -p bin

@@ -8,7 +8,7 @@
 project: spread
 
 environment:
-    GOVERSION: 1.10.4
+    GOVERSION: 1.13.8
     GOHOME: /home/test
     GOPATH: $GOHOME
     PATH: $GOHOME/bin:$PATH
@@ -86,4 +86,3 @@ prepare: |
     lxd init --auto
 
 # vim:ts=4:sw=4:et
-

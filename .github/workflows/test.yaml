@@ -21,7 +21,7 @@ jobs:
       - name: Setup go version
         uses: actions/setup-go@v2
         with:
-          # Using the lastest available go version for bionic
+          # Using the lastest available go version for focal
           go-version: 1.13.8
 
       - name: Set environment
@@ -46,4 +46,4 @@ jobs:
           cd ${{ github.workspace }}/src/github.com/snapcore/spread
           mkdir -p bin
           cp -f "$GOHOME/bin/spread" ./bin/spread
-          "$GOHOME/bin/spread" google:ubuntu-20.04-64:tests/
+          "$GOHOME/bin/spread" google:

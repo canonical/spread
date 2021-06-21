@@ -118,6 +118,14 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
 	}
+	switch system.Bios {
+	case "legacy", "":
+		// nothing to do, that is the qemu default
+	case "uefi":
+		cmd.Args = append([]string{cmd.Args[0], "-bios", "/usr/share/OVMF/OVMF_CODE.fd"}, cmd.Args[1:]...)
+	default:
+		return nil, fmt.Errorf(`cannot set bios to %q, only {uefi,legacy} are supported`)
+	}
 	printf("Serial and monitor for %s available at ports %d and %d.", system, port+100, port+200)
 
 	err := cmd.Start()

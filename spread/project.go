@@ -125,6 +125,9 @@ type System struct {
 	// Only for Google so far.
 	SecureBoot bool `yaml:"secure-boot"`
 
+	// Supported are {"legacy","uefi",""}, only for qemu so far.
+	Bios string
+
 	Environment *Environment
 	Variants    []string
 

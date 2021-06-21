@@ -10,6 +10,8 @@ import (
 	"golang.org/x/net/context"
 )
 
+var qemuBinary = "qemu-system-x86_64"
+
 func QEMU(p *Project, b *Backend, o *Options) Provider {
 	return &qemuProvider{p, b, o}
 }
@@ -114,7 +116,7 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 	serial := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+100)
 	monitor := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+200)
 	fwd := fmt.Sprintf("user,hostfwd=tcp:127.0.0.1:%d-:22", port)
-	cmd := exec.Command("qemu-system-x86_64", "-enable-kvm", "-snapshot", "-m", strconv.Itoa(mem), "-net", "nic", "-net", fwd, "-serial", serial, "-monitor", monitor, path)
+	cmd := exec.Command(qemuBinary, "-enable-kvm", "-snapshot", "-m", strconv.Itoa(mem), "-net", "nic", "-net", fwd, "-serial", serial, "-monitor", monitor, path)
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
 	}
@@ -124,7 +126,7 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 	case "uefi":
 		cmd.Args = append([]string{cmd.Args[0], "-bios", "/usr/share/OVMF/OVMF_CODE.fd"}, cmd.Args[1:]...)
 	default:
-		return nil, fmt.Errorf(`cannot set bios to %q, only {uefi,legacy} are supported`)
+		return nil, fmt.Errorf(`cannot set bios to %q, only {uefi,legacy} are supported`, system.Bios)
 	}
 	printf("Serial and monitor for %s available at ports %d and %d.", system, port+100, port+200)
 

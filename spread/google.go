@@ -860,10 +860,6 @@ func (p *googleProvider) dozfl(method, subpath string, params interface{}, resul
 	return p.dofl(method, "/zones/"+p.gzone()+subpath, params, result, flags)
 }
 
-func (p *googleProvider) do(method, subpath string, params interface{}, result interface{}) error {
-	return p.dofl(method, subpath, params, result, 0)
-}
-
 func (p *googleProvider) dofl(method, subpath string, params interface{}, result interface{}, flags doFlags) error {
 	if flags&noCheckKey == 0 {
 		if err := p.checkKey(); err != nil {

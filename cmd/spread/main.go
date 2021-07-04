@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/niemeyer/pretty"
 	"github.com/snapcore/spread/spread"
 )
 
@@ -131,12 +130,6 @@ func run() error {
 	}()
 
 	return runner.Wait()
-}
-
-func printf(format string, v ...interface{}) {
-	if spread.Logger != nil {
-		spread.Logger.Output(2, pretty.Sprintf(format, v...))
-	}
 }
 
 func parseReuseEntry(entry string) (backend string, addrs []string) {

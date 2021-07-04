@@ -194,34 +194,3 @@ func travisFoldEnd(start time.Time) string {
 	}
 	return ""
 }
-
-func travisFold(output []byte) []byte {
-	if !onTravis {
-		return output
-	}
-	display := 10
-	min := display
-	max := display + 3
-	mark := 0
-	for i := len(output) - 1; i >= 0; i-- {
-		if output[i] != '\n' {
-			continue
-		}
-
-		min--
-		max--
-
-		if min == 0 {
-			mark = i + 1
-			continue
-		}
-		if max == 0 {
-			id := time.Now()
-			var buf bytes.Buffer
-			fmt.Fprintf(&buf, "%s(... %d folded lines ...)\n%s%s%s",
-				travisFoldStart(id), bytes.Count(output, []byte{'\n'})-display, output[:mark-1], travisFoldEnd(id), output[mark:])
-			return buf.Bytes()
-		}
-	}
-	return output
-}

@@ -82,12 +82,6 @@ func printft(start time.Time, flags logFlags, format string, args ...interface{}
 	}
 }
 
-func logft(start time.Time, flags logFlags, format string, args ...interface{}) {
-	if (Verbose || Debug) && Logger != nil {
-		writeLogt(start, flags, format, args...)
-	}
-}
-
 func debugft(start time.Time, flags logFlags, format string, args ...interface{}) {
 	if Debug && Logger != nil {
 		writeLogt(start, flags, format, args...)

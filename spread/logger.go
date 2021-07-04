@@ -82,12 +82,6 @@ func printft(start time.Time, flags logFlags, format string, args ...interface{}
 	}
 }
 
-func debugft(start time.Time, flags logFlags, format string, args ...interface{}) {
-	if Debug && Logger != nil {
-		writeLogt(start, flags, format, args...)
-	}
-}
-
 func writeLogt(start time.Time, flags logFlags, format string, args ...interface{}) {
 	var lines []string
 	var content = strings.TrimSpace(pretty.Sprintf(format, args...))

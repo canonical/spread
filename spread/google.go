@@ -39,8 +39,6 @@ type googleProvider struct {
 	backend *Backend
 	options *Options
 
-	googleZone    string
-
 	client *http.Client
 
 	mu sync.Mutex

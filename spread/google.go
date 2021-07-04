@@ -66,12 +66,6 @@ type googleServerData struct {
 	Labels map[string]string `yaml:"-"`
 }
 
-func (d *googleServerData) cleanup() {
-	if i := strings.LastIndex(d.Plan, "/"); i >= 0 {
-		d.Plan = d.Plan[i+1:]
-	}
-}
-
 func (s *googleServer) String() string {
 	if s.system == nil {
 		return s.d.Name

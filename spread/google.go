@@ -39,7 +39,6 @@ type googleProvider struct {
 	backend *Backend
 	options *Options
 
-	googleProject string
 	googleZone    string
 
 	client *http.Client

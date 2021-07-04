@@ -8,7 +8,6 @@ import (
 	mrand "math/rand"
 	"os"
 	"os/signal"
-	"strings"
 	"time"
 
 	"github.com/snapcore/spread/spread"
@@ -130,11 +129,4 @@ func run() error {
 	}()
 
 	return runner.Wait()
-}
-
-func parseReuseEntry(entry string) (backend string, addrs []string) {
-	if i := strings.Index(entry, ":"); i > 0 {
-		return entry[:i], strings.Split(entry[i+1:], ",")
-	}
-	return "", nil
 }

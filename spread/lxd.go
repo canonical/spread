@@ -236,11 +236,6 @@ type lxdImageInfo struct {
 
 var errNoImage = fmt.Errorf("image not found")
 
-var lxdRemoteServer = map[string]string{
-	"ubuntu": "https://cloud-images.ubuntu.com/releases",
-	"images": "https://images.linuxcontainers.org",
-}
-
 func (p *lxdProvider) lxdRemoteNames() (map[string]string, error) {
 	var stderr bytes.Buffer
 	cmd := exec.Command("lxc", "remote", "list")

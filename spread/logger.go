@@ -21,12 +21,6 @@ var Verbose bool
 // Debug defines whether to also deliver debug messages to the log. Implies Verbose if set.
 var Debug bool
 
-func print(args ...interface{}) {
-	if Logger != nil {
-		writeLog(timePrefix() + pretty.Sprint(args...))
-	}
-}
-
 func printf(format string, args ...interface{}) {
 	if Logger != nil {
 		writeLog(timePrefix() + pretty.Sprintf(format, args...))

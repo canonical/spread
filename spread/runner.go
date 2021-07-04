@@ -234,17 +234,14 @@ func (r *Runner) loop() (err error) {
 		}
 	}
 
-	for {
-		select {
-		case <-r.done:
-			r.alive--
-			if r.alive > 0 {
-				debugf("Worker terminated. %d still alive.", r.alive)
-				continue
-			}
-			debugf("Worker terminated.")
-			return nil
+	for range r.done {
+		r.alive--
+		if r.alive > 0 {
+			debugf("Worker terminated. %d still alive.", r.alive)
+			continue
 		}
+		debugf("Worker terminated.")
+		return nil
 	}
 }
 

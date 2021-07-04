@@ -222,7 +222,6 @@ func (p *humboxProvider) checkKey() error {
 }
 
 const (
-	humboxMissingAccount = "MISSING-ACCOUNT"
 	humboxMissingAddress = "MISSING-ADDRESS"
 )
 

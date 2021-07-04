@@ -27,12 +27,6 @@ func printf(format string, args ...interface{}) {
 	}
 }
 
-func log(args ...interface{}) {
-	if (Verbose || Debug) && Logger != nil {
-		writeLog(timePrefix() + pretty.Sprint(args...))
-	}
-}
-
 func logf(format string, args ...interface{}) {
 	if (Verbose || Debug) && Logger != nil {
 		writeLog(timePrefix() + pretty.Sprintf(format, args...))

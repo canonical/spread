@@ -311,10 +311,8 @@ func (r *Runner) prepareContent() (err error) {
 
 		go func() {
 			// TODO Kill that when the function quits.
-			select {
-			case <-r.contentTomb.Dying():
-				cmd.Process.Kill()
-			}
+			<-r.contentTomb.Dying()
+			cmd.Process.Kill()
 		}()
 
 		err = cmd.Wait()
@@ -397,10 +395,8 @@ func (r *Runner) prepareContent() (err error) {
 
 		go func() {
 			// TODO Kill that when the function quits.
-			select {
-			case <-r.contentTomb.Dying():
-				cmd.Process.Kill()
-			}
+			<-r.contentTomb.Dying()
+			cmd.Process.Kill()
 		}()
 
 		wg.Wait()

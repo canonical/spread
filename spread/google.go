@@ -943,7 +943,7 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 			// Unmarshal even on errors, so the call site has a chance to inspect the data on errors.
 			err = json.Unmarshal(data, result)
 			if err != nil && resp.StatusCode == 404 {
-				return googleNotFound
+				return errGoogleNotFound
 			}
 		}
 
@@ -972,7 +972,7 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 	return nil
 }
 
-var googleNotFound = fmt.Errorf("not found")
+var errGoogleNotFound = fmt.Errorf("not found")
 
 func ungzip(data []byte, err error) ([]byte, error) {
 	if err != nil || len(data) < 2 || data[0] != 0x1f || data[1] != 0x8b {

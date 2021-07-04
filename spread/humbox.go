@@ -221,10 +221,6 @@ func (p *humboxProvider) checkKey() error {
 	return err
 }
 
-const (
-	humboxMissingAddress = "MISSING-ADDRESS"
-)
-
 type humboxResult struct {
 	Error string
 }

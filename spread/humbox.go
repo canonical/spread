@@ -323,7 +323,7 @@ func (p *humboxProvider) dofl(method, subpath string, params interface{}, result
 		// Unmarshal even on errors, so the call site has a chance to inspect the data on errors.
 		err = json.Unmarshal(data, result)
 		if err != nil && resp.StatusCode == 404 {
-			return humboxNotFound
+			return errHumboxNotFound
 		}
 	}
 
@@ -342,4 +342,4 @@ func (p *humboxProvider) dofl(method, subpath string, params interface{}, result
 	return nil
 }
 
-var humboxNotFound = fmt.Errorf("not found")
+var errHumboxNotFound = fmt.Errorf("not found")

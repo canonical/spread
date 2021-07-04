@@ -3,6 +3,7 @@ package spread
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -848,7 +849,7 @@ func (r *Runner) fetchArtifacts(client *Client, job *Job) error {
 }
 
 func (r *Runner) discardServer(server Server) {
-	if err := server.Discard(r.tomb.Context(nil)); err != nil {
+	if err := server.Discard(r.tomb.Context(context.TODO())); err != nil {
 		printf("Error discarding %s: %v", server, err)
 	}
 	if err := r.reuse.Remove(server); err != nil {
@@ -882,7 +883,7 @@ func (r *Runner) allocateServer(backend *Backend, system *System) *Client {
 Allocate:
 	for {
 		lerr := err
-		server, err = r.providers[backend.Name].Allocate(r.tomb.Context(nil), system)
+		server, err = r.providers[backend.Name].Allocate(r.tomb.Context(context.TODO()), system)
 		if err == nil {
 			break
 		}
@@ -991,7 +992,7 @@ func (r *Runner) reuseServer(backend *Backend, system *System) *Client {
 			continue
 		}
 
-		server, err := provider.Reuse(r.tomb.Context(nil), rsystem, system)
+		server, err := provider.Reuse(r.tomb.Context(context.TODO()), rsystem, system)
 		if err != nil {
 			printf("Cannot reuse %s at %s: %v", system, rsystem.Address, err)
 			continue

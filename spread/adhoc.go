@@ -3,7 +3,6 @@ package spread
 import (
 	"bytes"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"golang.org/x/net/context"
@@ -99,8 +98,6 @@ func (p *adhocProvider) Allocate(ctx context.Context, system *System) (Server, e
 	printf("Allocated %s.", s)
 	return s, nil
 }
-
-var resultExp = regexp.MustCompile("(?m)^([A-Z_]+)=(.*)$")
 
 func (p *adhocProvider) run(script string, system *System, address string) (result map[string]string, err error) {
 	env := NewEnvironment(

@@ -124,7 +124,9 @@ type System struct {
 
 	// Only for Google so far.
 	SecureBoot bool `yaml:"secure-boot"`
-	Plan       string
+
+	// Specify a backend specific plan, e.g. `e2-standard-2`
+	Plan string
 
 	Environment *Environment
 	Variants    []string

@@ -1,6 +1,9 @@
 package spread_test
 
 import (
+	"io/ioutil"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/snapcore/spread/spread"
@@ -52,4 +55,39 @@ func (s *FilterSuite) TestFilter(c *C) {
 		c.Assert(err, IsNil)
 		c.Assert(f.Pass(job), Equals, false, Commentf("Filter: %q", s))
 	}
+}
+
+type projectSuite struct{}
+
+var _ = Suite(&projectSuite{})
+
+func (s *projectSuite) TestLoad(c *C) {
+	spreadYaml := []byte(`project: mock-prj
+path: /some/path
+backends:
+ google:
+  key: some-key
+  plan: global-plan
+  systems:
+   - system-1:
+   - system-2:
+      plan: plan-for-2
+   - system-3:
+suites:
+ tests/:
+  summary: mock tests
+`)
+	tmpdir := c.MkDir()
+	err := ioutil.WriteFile(filepath.Join(tmpdir, "spread.yaml"), spreadYaml, 0644)
+	c.Assert(err, IsNil)
+	err = os.MkdirAll(filepath.Join(tmpdir, "tests"), 0755)
+	c.Assert(err, IsNil)
+
+	prj, err := spread.Load(tmpdir)
+	c.Assert(err, IsNil)
+	backend := prj.Backends["google"]
+	c.Check(backend.Name, Equals, "google")
+	c.Check(backend.Systems["system-1"].Plan, Equals, "global-plan")
+	c.Check(backend.Systems["system-2"].Plan, Equals, "plan-for-2")
+	c.Check(backend.Systems["system-3"].Plan, Equals, "global-plan")
 }

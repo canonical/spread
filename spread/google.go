@@ -434,13 +434,13 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 	}
 
 	minCpuPlatform := "AUTOMATIC"
-	if system.MinCpuPlatform != "" {
-		minCpuPlatform = system.MinCpuPlatform
+	if system.CpuFamily != "" {
+		minCpuPlatform = system.CpuFamily
 	}
 
 	params := googleParams{
-		"name":        name,
-		"machineType": "zones/" + p.gzone() + "/machineTypes/" + plan,
+		"name":           name,
+		"machineType":    "zones/" + p.gzone() + "/machineTypes/" + plan,
 		"minCpuPlatform": minCpuPlatform,
 		"networkInterfaces": []googleParams{{
 			"accessConfigs": []googleParams{{

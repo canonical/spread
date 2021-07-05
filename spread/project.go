@@ -124,9 +124,11 @@ type System struct {
 
 	// Only for Google so far.
 	SecureBoot bool `yaml:"secure-boot"`
-	// Select the minimum CPU platform on Google GCE, e.g. "Intel Skylake"
-	// See https://cloud.google.com/compute/docs/instances/specify-min-cpu-platform#availablezones
-	MinCpuPlatform string `yaml:"min-cpu-platform"`
+
+	// Request a specific CPU family, e.g. "Intel Skylake". This follows
+	// the GCE naming today:
+	// https://cloud.google.com/compute/docs/instances/specify-min-cpu-platform#availablezones
+	CpuFamily string `yaml:"cpu-family"`
 
 	Environment *Environment
 	Variants    []string

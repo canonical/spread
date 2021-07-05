@@ -6,6 +6,7 @@ import (
 	"github.com/snapcore/spread/spread"
 
 	. "gopkg.in/check.v1"
+	"gopkg.in/yaml.v2"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -52,4 +53,26 @@ func (s *FilterSuite) TestFilter(c *C) {
 		c.Assert(err, IsNil)
 		c.Assert(f.Pass(job), Equals, false, Commentf("Filter: %q", s))
 	}
+}
+
+type projectSuite struct{}
+
+var _ = Suite(&projectSuite{})
+
+func (s *projectSuite) TestOptionalInt(c *C) {
+	optInts := struct {
+		Priority spread.OptionalInt `yaml:"priority"`
+		NotSet   spread.OptionalInt `yaml:"not-set"`
+	}{}
+	inp := []byte("priority: 100")
+
+	err := yaml.Unmarshal(inp, &optInts)
+	c.Assert(err, IsNil)
+	c.Check(optInts.Priority.IsSet, Equals, true)
+	c.Check(optInts.Priority.Value, Equals, int64(100))
+	c.Check(optInts.Priority.String(), Equals, "100")
+
+	c.Check(optInts.NotSet.IsSet, Equals, false)
+	c.Check(optInts.NotSet.Value, Equals, int64(0))
+	c.Check(optInts.NotSet.String(), Equals, "0")
 }

@@ -99,6 +99,16 @@ func systemPath(system *System) string {
 	return os.ExpandEnv("$HOME/.spread/qemu/" + system.Image + ".img")
 }
 
+func ovmfPath() string {
+	// this will work on ubuntu/debian/fedora
+	ovmfPath := "/usr/share/OVMF/OVMF_CODE.fd"
+	// allow packaging to override default
+	if p, err := os.Readlink("/usr/share/spread/qemu-efi-firmware"); err == nil {
+		ovmfPath = p
+	}
+	return ovmfPath
+}
+
 func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, error) {
 	// FIXME Find an available port more reliably.
 	port := 59301 + rand.Intn(99)
@@ -124,7 +134,7 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 	case "legacy", "":
 		// nothing to do, that is the qemu default
 	case "uefi":
-		cmd.Args = append([]string{cmd.Args[0], "-bios", "/usr/share/OVMF/OVMF_CODE.fd"}, cmd.Args[1:]...)
+		cmd.Args = append([]string{cmd.Args[0], "-bios", ovmfPath()}, cmd.Args[1:]...)
 	default:
 		return nil, fmt.Errorf(`cannot set bios to %q, only {uefi,legacy} are supported`, system.Bios)
 	}

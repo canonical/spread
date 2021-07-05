@@ -109,24 +109,19 @@ func ovmfPath() string {
 	return ovmfPath
 }
 
-func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, error) {
-	// FIXME Find an available port more reliably.
-	port := 59301 + rand.Intn(99)
-
-	path := systemPath(system)
-	if info, err := os.Stat(path); err != nil || info.IsDir() {
-		return nil, &FatalError{fmt.Errorf("cannot find qemu image at %s", path)}
-	}
-
-	mem := 1500
-	if p.backend.Memory > 0 {
-		mem = int(p.backend.Memory / mb)
-	}
-
+func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
 	serial := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+100)
 	monitor := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+200)
 	fwd := fmt.Sprintf("user,hostfwd=tcp:127.0.0.1:%d-:22", port)
-	cmd := exec.Command(qemuBinary, "-enable-kvm", "-snapshot", "-m", strconv.Itoa(mem), "-net", "nic", "-net", fwd, "-serial", serial, "-monitor", monitor, path)
+	cmd := exec.Command(qemuBinary,
+		"-enable-kvm",
+		"-snapshot",
+		"-m", strconv.Itoa(mem),
+		"-net", "nic",
+		"-net", fwd,
+		"-serial", serial,
+		"-monitor", monitor,
+		path)
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
 	}
@@ -138,9 +133,28 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 	default:
 		return nil, fmt.Errorf(`cannot set bios to %q, only {uefi,legacy} are supported`, system.Bios)
 	}
+	return cmd, nil
+}
+
+func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, error) {
+	// FIXME Find an available port more reliably.
+	port := 59301 + rand.Intn(99)
+	mem := 1500
+	if p.backend.Memory > 0 {
+		mem = int(p.backend.Memory / mb)
+	}
+	path := systemPath(system)
+	if info, err := os.Stat(path); err != nil || info.IsDir() {
+		return nil, &FatalError{fmt.Errorf("cannot find qemu image at %s", path)}
+	}
+
+	cmd, err := qemuCmd(system, path, mem, port)
+	if err != nil {
+		return nil, err
+	}
 	printf("Serial and monitor for %s available at ports %d and %d.", system, port+100, port+200)
 
-	err := cmd.Start()
+	err = cmd.Start()
 	if err != nil {
 		return nil, &FatalError{fmt.Errorf("cannot launch qemu %s: %v", system, err)}
 	}

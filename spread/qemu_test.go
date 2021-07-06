@@ -64,9 +64,13 @@ func (s *qemuSuite) TestQemuCmdWithEfi(c *C) {
 	tests := []struct {
 		BiosSetting       string
 		UseBiosQemuOption bool
+		expectedErr       string
 	}{
-		{"uefi", true},
-		{"legacy", false},
+		// empty string means legacy
+		{"", false, ""},
+		{"legacy", false, ""},
+		{"uefi", true, ""},
+		{"invalid", false, `cannot set bios to "invalid", only {uefi,legacy} are supported`},
 	}
 
 	for _, tc := range tests {
@@ -77,7 +81,12 @@ func (s *qemuSuite) TestQemuCmdWithEfi(c *C) {
 			Bios:    tc.BiosSetting,
 		}
 		cmd, err := spread.QemuCmd(ms, "/path/to/image", 512, 9999)
-		c.Assert(err, IsNil)
+		if tc.expectedErr == "" {
+			c.Assert(err, IsNil)
+		} else {
+			c.Check(err, ErrorMatches, tc.expectedErr)
+			continue
+		}
 
 		// XXX: reuse testutil.Contains from snapd?
 		s := strings.Join(cmd.Args, ":")

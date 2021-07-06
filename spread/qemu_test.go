@@ -11,7 +11,9 @@ import (
 	. "gopkg.in/check.v1"
 )
 
-type qemuSuite struct{}
+type qemuSuite struct {
+	cleanups []func()
+}
 
 func makeMockQemuImg(c *C, mockSystemName string) (restore func()) {
 	tmpdir := c.MkDir()
@@ -31,6 +33,27 @@ func makeMockQemuImg(c *C, mockSystemName string) (restore func()) {
 }
 
 var _ = Suite(&qemuSuite{})
+
+func (s *qemuSuite) SetUpTest(c *C) {
+	restore := spread.MockOvmfPackageSymlink("/invalid/path")
+	s.AddCleanup(restore)
+
+	// SPREAD_QEMU_OVMF_PATH must not be unset for the tests
+	if ovmfEnv, isSet := os.LookupEnv("SPREAD_QEMU_OVMF_PATH"); isSet {
+		os.Unsetenv("SPREAD_QEMU_OVMF_PATH")
+		defer os.Setenv("SPREAD_QEMU_OVMF_PATH", ovmfEnv)
+	}
+}
+
+func (s *qemuSuite) TearDownTest(c *C) {
+	for _, f := range s.cleanups {
+		f()
+	}
+}
+
+func (s *qemuSuite) AddCleanup(f func()) {
+	s.cleanups = append(s.cleanups, f)
+}
 
 func (s *qemuSuite) TestQemuCmdWithEfi(c *C) {
 	imageName := "ubuntu-20.06-64"

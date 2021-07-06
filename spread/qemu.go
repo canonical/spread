@@ -10,7 +10,11 @@ import (
 	"golang.org/x/net/context"
 )
 
-var qemuBinary = "qemu-system-x86_64"
+var (
+	ovmfDefaultPath = "/usr/share/OVMF/OVMF_CODE.fd"
+	// can be used by distro packaging to point to the right OVMF
+	optionalOvmfPackageSymlink = "/usr/share/spread/qemu-efi-firmware"
+)
 
 func QEMU(p *Project, b *Backend, o *Options) Provider {
 	return &qemuProvider{p, b, o}
@@ -101,19 +105,22 @@ func systemPath(system *System) string {
 
 func ovmfPath() string {
 	// this will work on ubuntu/debian/fedora
-	ovmfPath := "/usr/share/OVMF/OVMF_CODE.fd"
 	// allow packaging to override default
-	if p, err := os.Readlink("/usr/share/spread/qemu-efi-firmware"); err == nil {
-		ovmfPath = p
+	if _, err := os.Readlink(optionalOvmfPackageSymlink); err == nil {
+		return optionalOvmfPackageSymlink
 	}
-	return ovmfPath
+	// can be used by e.g. the snap
+	if p := os.Getenv("SPREAD_QEMU_OVMF_PATH"); p != "" {
+		return p
+	}
+	return ovmfDefaultPath
 }
 
 func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
 	serial := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+100)
 	monitor := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+200)
 	fwd := fmt.Sprintf("user,hostfwd=tcp:127.0.0.1:%d-:22", port)
-	cmd := exec.Command(qemuBinary,
+	cmd := exec.Command("qemu-system-x86_64",
 		"-enable-kvm",
 		"-snapshot",
 		"-m", strconv.Itoa(mem),

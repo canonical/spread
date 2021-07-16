@@ -230,12 +230,7 @@ type googleImage struct {
 var termExp = regexp.MustCompile("[a-z]+|[0-9](?:[0-9.]*[0-9])?")
 
 func toTerms(s string) []string {
-	var terms []string
-	s = strings.ToLower(s)
-	for _, term := range termExp.FindAllString(strings.ToLower(s), -1) {
-		terms = append(terms, term)
-	}
-	return terms
+	return termExp.FindAllString(strings.ToLower(s), -1)
 }
 
 func containsTerms(superset, subset []string) bool {

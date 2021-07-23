@@ -37,12 +37,4 @@ func MockSshDial(f func(network, addr string, config *ssh.ClientConfig) (*ssh.Cl
 	}
 }
 
-func MockOvmfPackageSymlink(new string) (restore func()) {
-	old := optionalOvmfPackageSymlink
-	optionalOvmfPackageSymlink = new
-	return func() {
-		optionalOvmfPackageSymlink = old
-	}
-}
-
 var QemuCmd = qemuCmd

@@ -5,16 +5,13 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 
 	"golang.org/x/net/context"
 )
 
-var (
-	ovmfDefaultPath = "/usr/share/OVMF/OVMF_CODE.fd"
-	// can be used by distro packaging to point to the right OVMF
-	optionalOvmfPackageSymlink = "/usr/share/spread/qemu-efi-firmware"
-)
+var ovmfDefaultPath = "/usr/share/OVMF/OVMF_CODE.fd"
 
 func QEMU(p *Project, b *Backend, o *Options) Provider {
 	return &qemuProvider{p, b, o}
@@ -103,17 +100,22 @@ func systemPath(system *System) string {
 	return os.ExpandEnv("$HOME/.spread/qemu/" + system.Image + ".img")
 }
 
-func ovmfPath() string {
-	// this will work on ubuntu/debian/fedora
-	// allow packaging to override default
-	if _, err := os.Readlink(optionalOvmfPackageSymlink); err == nil {
-		return optionalOvmfPackageSymlink
+func biosPath(biosName string) (string, error) {
+	bios := os.ExpandEnv("$HOME/.spread/qemu/bios/" + biosName + ".img")
+	if info, err := os.Stat(biosName); err == nil && info.Mode().IsRegular() {
+		return bios, nil
 	}
-	// can be used by e.g. the snap
-	if p := os.Getenv("SPREAD_QEMU_OVMF_PATH"); p != "" {
-		return p
+
+	if p := os.Getenv("SPREAD_QEMU_FALLBACK_BIOS_PATH"); p != "" {
+		return os.ExpandEnv(filepath.Join(p, biosName+".img")), nil
 	}
-	return ovmfDefaultPath
+
+	switch biosName {
+	case "uefi":
+		return ovmfDefaultPath, nil
+	}
+
+	return "", fmt.Errorf("cannot find bios path for %q", biosName)
 }
 
 func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
@@ -132,13 +134,18 @@ func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
 	}
+
 	switch system.Bios {
-	case "legacy", "":
+	case "":
 		// nothing to do, that is the qemu default
 	case "uefi":
-		cmd.Args = append([]string{cmd.Args[0], "-bios", ovmfPath()}, cmd.Args[1:]...)
+		biosPath, err := biosPath(system.Bios)
+		if err != nil {
+			return nil, err
+		}
+		cmd.Args = append([]string{cmd.Args[0], "-bios", biosPath}, cmd.Args[1:]...)
 	default:
-		return nil, fmt.Errorf(`cannot set bios to %q, only {uefi,legacy} are supported`, system.Bios)
+		return nil, fmt.Errorf(`cannot set bios to %q, only "uefi" or unset are supported`, system.Bios)
 	}
 	return cmd, nil
 }

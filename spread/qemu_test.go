@@ -35,13 +35,10 @@ func makeMockQemuImg(c *C, mockSystemName string) (restore func()) {
 var _ = Suite(&qemuSuite{})
 
 func (s *qemuSuite) SetUpTest(c *C) {
-	restore := spread.MockOvmfPackageSymlink("/invalid/path")
-	s.AddCleanup(restore)
-
 	// SPREAD_QEMU_OVMF_PATH must not be unset for the tests
-	if ovmfEnv, isSet := os.LookupEnv("SPREAD_QEMU_OVMF_PATH"); isSet {
-		os.Unsetenv("SPREAD_QEMU_OVMF_PATH")
-		defer os.Setenv("SPREAD_QEMU_OVMF_PATH", ovmfEnv)
+	if ovmfEnv, isSet := os.LookupEnv("SPREAD_QEMU_FALLBACK_BIOS_PATH"); isSet {
+		os.Unsetenv("SPREAD_QEMU_FALLBACK_BIOS_PATH")
+		defer os.Setenv("SPREAD_QEMU_FALLBACK_BIOS_PATH", ovmfEnv)
 	}
 }
 
@@ -68,9 +65,8 @@ func (s *qemuSuite) TestQemuCmdWithEfi(c *C) {
 	}{
 		// empty string means legacy
 		{"", false, ""},
-		{"legacy", false, ""},
 		{"uefi", true, ""},
-		{"invalid", false, `cannot set bios to "invalid", only {uefi,legacy} are supported`},
+		{"invalid", false, `cannot set bios to "invalid", only "uefi" or unset are supported`},
 	}
 
 	for _, tc := range tests {

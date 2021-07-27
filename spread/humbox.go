@@ -205,7 +205,7 @@ func (p *humboxProvider) checkKey() error {
 
 	m := humboxLocation.FindStringSubmatch(p.backend.Location)
 	if m == nil {
-		err = fmt.Errorf("location for %q backend must use the http(s)://<user>@<hostname>:<port> format", p.backend.Name)
+		return fmt.Errorf("location for %q backend must use the http(s)://<user>@<hostname>:<port> format", p.backend.Name)
 	}
 
 	p.account = m[2]

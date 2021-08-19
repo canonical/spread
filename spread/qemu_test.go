@@ -91,3 +91,30 @@ func (s *qemuSuite) TestQemuCmdWithEfi(c *C) {
 		c.Check(strings.Contains(s, ":-bios:/usr/share/OVMF/OVMF_CODE.fd:"), Equals, tc.UseBiosQemuOption)
 	}
 }
+
+func (s *qemuSuite) TestQemuCmdDefaults(c *C) {
+	imageName := "ubuntu-20.06-64"
+
+	restore := makeMockQemuImg(c, imageName)
+	defer restore()
+
+	ms := &spread.System{
+		Name:    "some-name",
+		Image:   imageName,
+		Backend: "qemu",
+	}
+	cmd, err := spread.QemuCmd(ms, "/path/to/img", 1234, 9999)
+	c.Assert(err, IsNil)
+	c.Check(cmd.Args, DeepEquals, []string{
+		"qemu-system-x86_64",
+		"-nographic",
+		"-enable-kvm",
+		"-snapshot",
+		"-m", "1234",
+		"-net", "nic",
+		"-net", "user,hostfwd=tcp:127.0.0.1:9999-:22",
+		"-serial", "telnet:127.0.0.1:10099,server,nowait",
+		"-monitor", "telnet:127.0.0.1:10199,server,nowait",
+		"file=/path/to/img,if=virtio",
+	})
+}

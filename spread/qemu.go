@@ -133,7 +133,8 @@ func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
 		"-net", fwd,
 		"-serial", serial,
 		"-monitor", monitor,
-		path)
+		"-drive", fmt.Sprintf("file=%s,if=virtio", path),
+	)
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
 	}

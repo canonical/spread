@@ -32,7 +32,7 @@ type Options struct {
 	Restore        bool
 	Resend         bool
 	Discard        bool
-	Residue        string
+	Artifacts      string
 	Seed           int64
 	Repeat         int
 	GarbageCollect bool
@@ -436,6 +436,7 @@ const (
 
 func (r *Runner) run(client *Client, job *Job, verb string, context interface{}, script, debug string, abend *bool) bool {
 	script = strings.TrimSpace(script)
+	server := client.Server()
 	if len(script) == 0 {
 		return true
 	}
@@ -448,10 +449,10 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		if r.sequence[job] == 0 {
 			r.sequence[job] = len(r.sequence) + 1
 		}
-		printft(start, startTime, "%s %s (%d/%d)...", strings.Title(verb), contextStr, r.sequence[job], len(r.pending))
+		printft(start, startTime, "%s %s (%s) (%d/%d)...", strings.Title(verb), contextStr, server.Label(), r.sequence[job], len(r.pending))
 		r.mu.Unlock()
 	} else {
-		printft(start, startTime, "%s %s...", strings.Title(verb), contextStr)
+		printft(start, startTime, "%s %s (%s)...", strings.Title(verb), contextStr, server.Label())
 	}
 	var dir string
 	if context == job.Backend || context == job.Project {
@@ -478,14 +479,14 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		// Use a different time so it has a different id on Travis, but keep
 		// the original start time so the error message shows the task time.
 		start = start.Add(1)
-		printft(start, startTime|endTime|startFold|endFold, "Error %s %s : %v", verb, contextStr, err)
+		printft(start, startTime|endTime|startFold|endFold, "Error %s %s (%s) : %v", verb, contextStr, server.Label(), err)
 		if debug != "" {
 			start = time.Now()
 			output, err := client.Trace(debug, dir, job.Environment)
 			if err != nil {
-				printft(start, startTime|endTime|startFold|endFold, "Error debugging %s : %v", contextStr, err)
+				printft(start, startTime|endTime|startFold|endFold, "Error debugging %s (%s) : %v", contextStr, server.Label(), err)
 			} else if len(output) > 0 {
-				printft(start, startTime|endTime|startFold|endFold, "Debug output for %s : %v", contextStr, outputErr(output, nil))
+				printft(start, startTime|endTime|startFold|endFold, "Debug output for %s (%s) : %v", contextStr, server.Label(), outputErr(output, nil))
 			}
 		}
 		if r.options.Debug || r.options.ShellAfter {
@@ -632,9 +633,9 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 				repeat = -1
 			}
 			if !abend && !r.options.Restore && repeat <= 0 {
-				if err := r.fetchResidue(client, job); err != nil {
-					printf("Cannot fetch residue of %s: %v", job, err)
-					r.tomb.Killf("cannot fetch residue of %s: %v", job, err)
+				if err := r.fetchArtifacts(client, job); err != nil {
+					printf("Cannot fetch artifacts of %s: %v", job, err)
+					r.tomb.Killf("cannot fetch artifacts of %s: %v", job, err)
 				}
 			}
 			if !abend && !r.run(client, job, restoring, job, job.Restore(), debug, &abend) {
@@ -814,14 +815,14 @@ func (r *Runner) client(backend *Backend, system *System) *Client {
 	return nil
 }
 
-func (r *Runner) fetchResidue(client *Client, job *Job) error {
-	if r.options.Residue == "" || len(job.Task.Residue) == 0 {
+func (r *Runner) fetchArtifacts(client *Client, job *Job) error {
+	if r.options.Artifacts == "" || len(job.Task.Artifacts) == 0 {
 		return nil
 	}
 
-	localDir := filepath.Join(r.options.Residue, job.Name)
+	localDir := filepath.Join(r.options.Artifacts, job.Name)
 	if err := os.MkdirAll(localDir, 0755); err != nil {
-		return fmt.Errorf("cannot create residue directory: %v", err)
+		return fmt.Errorf("cannot create artifacts directory: %v", err)
 	}
 
 	tarr, tarw := io.Pipe()
@@ -836,10 +837,10 @@ func (r *Runner) fetchResidue(client *Client, job *Job) error {
 		return fmt.Errorf("cannot start unpacking tar: %v", err)
 	}
 
-	printf("Fetching residue of %s...", job)
+	printf("Fetching artifacts of %s...", job)
 
 	remoteDir := filepath.Join(r.project.RemotePath, job.Task.Name)
-	err = client.RecvTar(remoteDir, job.Task.Residue, tarw)
+	err = client.RecvTar(remoteDir, job.Task.Artifacts, tarw)
 	tarw.Close()
 	terr := cmd.Wait()
 

@@ -110,6 +110,9 @@ func (p *qemuProvider) qemuCmd(imgPath string, port int) *exec.Cmd {
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
 	}
+	if p.backend.CpuCount > 0 {
+		cmd.Args = append([]string{cmd.Args[0], "-smp", strconv.Itoa(p.backend.CpuCount)}, cmd.Args[1:]...)
+	}
 
 	return cmd
 }

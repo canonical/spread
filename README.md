@@ -810,6 +810,8 @@ _$PROJECT/spread.yaml_
 ```
 backends:
     qemu:
+        memory: 4G
+        cpu-count: 4
         systems:
             - ubuntu-16.04:
                 username: ubuntu

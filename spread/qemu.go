@@ -97,15 +97,7 @@ func systemPath(system *System) string {
 	return os.ExpandEnv("$HOME/.spread/qemu/" + system.Image + ".img")
 }
 
-func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, error) {
-	// FIXME Find an available port more reliably.
-	port := 59301 + rand.Intn(99)
-
-	path := systemPath(system)
-	if info, err := os.Stat(path); err != nil || info.IsDir() {
-		return nil, &FatalError{fmt.Errorf("cannot find qemu image at %s", path)}
-	}
-
+func (p *qemuProvider) qemuCmd(imgPath string, port int) *exec.Cmd {
 	mem := 1500
 	if p.backend.Memory > 0 {
 		mem = int(p.backend.Memory / mb)
@@ -114,16 +106,30 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 	serial := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+100)
 	monitor := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+200)
 	fwd := fmt.Sprintf("user,hostfwd=tcp:127.0.0.1:%d-:22", port)
-	cmd := exec.Command("qemu-system-x86_64", "-enable-kvm", "-snapshot", "-m", strconv.Itoa(mem), "-net", "nic", "-net", fwd, "-serial", serial, "-monitor", monitor, path)
+	cmd := exec.Command("qemu-system-x86_64", "-enable-kvm", "-snapshot", "-m", strconv.Itoa(mem), "-net", "nic", "-net", fwd, "-serial", serial, "-monitor", monitor, imgPath)
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
 	}
-	printf("Serial and monitor for %s available at ports %d and %d.", system, port+100, port+200)
 
+	return cmd
+}
+
+func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, error) {
+	// FIXME Find an available port more reliably.
+	port := 59301 + rand.Intn(99)
+
+	imgPath := systemPath(system)
+	if info, err := os.Stat(imgPath); err != nil || info.IsDir() {
+		return nil, &FatalError{fmt.Errorf("cannot find qemu image at %s", imgPath)}
+	}
+
+	cmd := p.qemuCmd(imgPath, port)
 	err := cmd.Start()
 	if err != nil {
 		return nil, &FatalError{fmt.Errorf("cannot launch qemu %s: %v", system, err)}
 	}
+
+	printf("Serial and monitor for %s available at ports %d and %d.", system, port+100, port+200)
 
 	s := &qemuServer{
 		p: p,

@@ -187,7 +187,7 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		name = p.backend.Location + ":" + name
 	}
 
-	args := []string{"launch", lxdimage, name}
+	args := []string{"launch", lxdimage, name, "-c", "security.nesting=true"}
 	if !p.options.Reuse {
 		args = append(args, "--ephemeral")
 	}

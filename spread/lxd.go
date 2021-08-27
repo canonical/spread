@@ -18,6 +18,16 @@ import (
 	"golang.org/x/net/context"
 )
 
+type Distro int
+
+const (
+	Unknown Distro = iota
+	Ubuntu
+	Debian
+	Fedora
+	Alpine
+)
+
 func LXD(p *Project, b *Backend, o *Options) Provider {
 	return &lxdProvider{p, b, o}
 }
@@ -64,11 +74,81 @@ func (s *lxdServer) ReuseData() interface{} {
 	return &s.d
 }
 
+func (s *lxdServer) Distro() Distro {
+	// TODO: This doesn't handle explicit LXD image specifiers
+	// (like images:fedora/26)
+	//
+	// Fixing that in general might require the user to specify the distro
+	// in the spread.yaml metadata
+	parts := strings.Split(s.System().Image, "-")
+	if parts[0] == "ubuntu" {
+		return Ubuntu
+	}
+	if parts[0] == "debian" {
+		return Debian
+	}
+	if parts[0] == "fedora" {
+		return Fedora
+	}
+	if parts[0] == "alpine" {
+		return Alpine
+	}
+	return Unknown
+}
+
 func (s *lxdServer) Discard(ctx context.Context) error {
 	output, err := exec.Command("lxc", "delete", "--force", s.d.Name).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("cannot discard lxd container: %v", outputErr(output, err))
 	}
+	return nil
+}
+
+func (s *lxdServer) Prepare(ctx context.Context) error {
+	if s.Distro() == Unknown {
+		s.Discard(ctx)
+		return fmt.Errorf("Unknown distro type for image %s, bailing", s.System().Image)
+	}
+
+	args := []string{"exec", s.d.Name, "--"}
+	args = append(args, sshInstallCommand(s.Distro())...)
+
+
+	output, err := exec.Command("lxc", args...).CombinedOutput()
+	if err != nil {
+		printf("Command output: %s", output)
+		s.Discard(ctx)
+		return err
+	}
+
+	err = s.p.tuneSSH(s.d.Name, s.Distro())
+	if err != nil {
+		s.Discard(ctx)
+		return err
+	}
+
+	if s.Distro() == Fedora {
+		// Fedora LXD images do *not* contain tar by default, so we must install it manually
+		args = []string{"exec", s.d.Name, "--", "dnf", "install", "--assumeyes", "tar"}
+		output, err = exec.Command("lxc", args...).CombinedOutput()
+
+		if err != nil {
+			printf("Command output: %s", output)
+			s.Discard(ctx)
+			return err
+		}
+	}
+    if s.Distro() == Alpine {
+        // Alpine images do not contain bash, which rather inconveniences spread
+        args = []string{"exec", s.d.Name, "--", "apk", "add", "bash"}
+        output, err = exec.Command("lxc", args...).CombinedOutput()
+
+		if err != nil {
+			printf("Command output: %s", output)
+			s.Discard(ctx)
+			return err
+		}
+    }
 	return nil
 }
 
@@ -107,7 +187,7 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		name = p.backend.Location + ":" + name
 	}
 
-	args := []string{"launch", lxdimage, name}
+	args := []string{"launch", lxdimage, name, "-c", "security.nesting=true"}
 	if !p.options.Reuse {
 		args = append(args, "--ephemeral")
 	}
@@ -151,9 +231,8 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		}
 	}
 
-	err = p.tuneSSH(name)
+	err = s.Prepare(ctx)
 	if err != nil {
-		s.Discard(ctx)
 		return nil, err
 	}
 
@@ -189,6 +268,20 @@ func debArch() string {
 		return "ppc64"
 	}
 	return "amd64"
+}
+
+func sshInstallCommand(distro Distro) []string {
+	if distro == Ubuntu || distro == Debian {
+		return []string{"apt", "install", "openssh-server"}
+	}
+	if distro == Fedora {
+		return []string{"dnf", "--assumeyes", "install", "openssh-server"}
+	}
+	if distro == Alpine {
+		return []string{"apk", "add", "openssh-server"}
+	}
+	// Precondition failure - unknown distro!
+	return []string{}
 }
 
 func (p *lxdProvider) lxdImage(system *System) (string, error) {
@@ -479,11 +572,25 @@ func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
 	return sjsons[0], nil
 }
 
-func (p *lxdProvider) tuneSSH(name string) error {
+func sshReloadCommand(distro Distro) []string {
+	if distro == Fedora {
+		return []string{"systemctl", "restart", "sshd"}
+	}
+	if distro == Ubuntu || distro == Debian {
+		return []string{"systemctl", "restart", "ssh"}
+	}
+	if distro == Alpine {
+		return []string{"service", "sshd", "restart"}
+	}
+	// Precondition failure: unknown distro!
+	return []string{}
+}
+
+func (p *lxdProvider) tuneSSH(name string, distro Distro) error {
 	cmds := [][]string{
 		{"sed", "-i", `s/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/`, "/etc/ssh/sshd_config"},
-		{"/bin/bash", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", p.options.Password)},
-		{"killall", "-HUP", "sshd"},
+		{"/bin/sh", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", p.options.Password)},
+		sshReloadCommand(distro),
 	}
 	for _, args := range cmds {
 		output, err := exec.Command("lxc", append([]string{"exec", name, "--"}, args...)...).CombinedOutput()

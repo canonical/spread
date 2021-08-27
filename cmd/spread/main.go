@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/niemeyer/pretty"
-	"github.com/snapcore/spread/spread"
+	"github.com/RAOF/spread/spread"
 )
 
 var (

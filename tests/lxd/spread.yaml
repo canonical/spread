@@ -4,6 +4,7 @@ backends:
     lxd:
         systems:
             - ubuntu-16.04
+            - fedora-26
 
 path: /home/test
 

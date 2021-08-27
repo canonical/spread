@@ -1,4 +1,5 @@
 name: spread
+base: core20
 version: 2018.08.21
 summary: Convenient full-system test (task) distribution
 description: |
@@ -21,7 +22,11 @@ apps:
 parts:
     spread:
         plugin: go
-        go-packages:
-            - github.com/RAOF/spread/cmd/spread
+        source: .
+          #        build-packages:
+          #          - git
+          #        go-channel: 1.12/stable
+          #        go-packages:
+          #            - github.com/RAOF/spread/cmd/spread
         stage-packages:
             - lxd-client

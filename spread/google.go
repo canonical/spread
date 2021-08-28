@@ -150,6 +150,20 @@ func (s *googleServer) Discard(ctx context.Context) error {
 	return s.p.removeMachine(ctx, s)
 }
 
+func (s *googleServer) SerialOutput() ([]byte, error) {
+	var err error
+	var result struct {
+		Contents string
+	}
+
+	err = s.p.doz("GET", fmt.Sprintf("/instances/%s/serialPort?port=1", s.d.Name), nil, &result)
+	if err != nil {
+		printf("Cannot get console output for %s: %v", s, err)
+		return nil, fmt.Errorf("cannot get console output for %s: %v", s, err)
+	}
+	return []byte(result.Contents), nil
+}
+
 const googleStartupScript = `
 echo root:%s | chpasswd
 

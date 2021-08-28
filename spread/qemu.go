@@ -72,6 +72,10 @@ func (s *qemuServer) Discard(ctx context.Context) error {
 	return nil
 }
 
+func (s *qemuServer) SerialOutput() ([]byte, error) {
+	return nil, nil
+}
+
 func (p *qemuProvider) Backend() *Backend {
 	return p.backend
 }

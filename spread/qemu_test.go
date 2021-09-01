@@ -35,10 +35,12 @@ func makeMockQemuImg(c *C, mockSystemName string) (restore func()) {
 var _ = Suite(&qemuSuite{})
 
 func (s *qemuSuite) SetUpTest(c *C) {
-	// SPREAD_QEMU_OVMF_PATH must not be unset for the tests
+	// SPREAD_QEMU_FALLBACK_BIOS_PATH must not be unset for the tests
 	if ovmfEnv, isSet := os.LookupEnv("SPREAD_QEMU_FALLBACK_BIOS_PATH"); isSet {
 		os.Unsetenv("SPREAD_QEMU_FALLBACK_BIOS_PATH")
-		defer os.Setenv("SPREAD_QEMU_FALLBACK_BIOS_PATH", ovmfEnv)
+		s.AddCleanup(func() {
+			os.Setenv("SPREAD_QEMU_FALLBACK_BIOS_PATH", ovmfEnv)
+		})
 	}
 }
 

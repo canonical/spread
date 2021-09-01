@@ -130,6 +130,9 @@ type System struct {
 	// https://cloud.google.com/compute/docs/instances/specify-min-cpu-platform#availablezones
 	CpuFamily string `yaml:"cpu-family"`
 
+	// Specify a backend specific plan, e.g. `e2-standard-2`
+	Plan string
+
 	Environment *Environment
 	Variants    []string
 

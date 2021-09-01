@@ -128,6 +128,9 @@ type System struct {
 	// Supported are {"legacy","uefi",""}, only for qemu so far.
 	Bios string
 
+	// Specify a backend specific plan, e.g. `e2-standard-2`
+	Plan string
+
 	Environment *Environment
 	Variants    []string
 
@@ -552,6 +555,9 @@ func Load(path string) (*Project, error) {
 			}
 			if system.Storage == 0 {
 				system.Storage = backend.Storage
+			}
+			if system.Plan == "" {
+				system.Plan = backend.Plan
 			}
 			if err := checkEnv(system, &system.Environment); err != nil {
 				return nil, err

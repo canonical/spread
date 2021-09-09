@@ -125,7 +125,7 @@ type System struct {
 	// Only for Google so far.
 	SecureBoot bool `yaml:"secure-boot"`
 
-	// Supported are {"legacy","uefi",""}, only for qemu so far.
+	// Supported are {"uefi",""}, only for qemu so far.
 	Bios string
 
 	// Specify a backend specific plan, e.g. `e2-standard-2`

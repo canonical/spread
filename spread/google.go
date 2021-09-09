@@ -355,7 +355,7 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 	}
 
 	err := p.dofl("GET", "/compute/v1/projects/"+project+"/global/images?orderBy=creationTimestamp+desc", nil, &result, noPathPrefix)
-	if err == googleNotFound {
+	if err == errGoogleNotFound {
 	}
 	if err != nil {
 		return nil, &FatalError{fmt.Errorf("cannot retrieve Google images for project %q: %v", project, err)}

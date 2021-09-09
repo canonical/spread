@@ -429,8 +429,8 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 	}
 
 	minCpuPlatform := "AUTOMATIC"
-	if system.CpuFamily != "" {
-		minCpuPlatform = system.CpuFamily
+	if system.CPUFamily != "" {
+		minCpuPlatform = system.CPUFamily
 	}
 
 	params := googleParams{

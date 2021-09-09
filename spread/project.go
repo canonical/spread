@@ -125,10 +125,9 @@ type System struct {
 	// Only for Google so far.
 	SecureBoot bool `yaml:"secure-boot"`
 
-	// Request a specific CPU family, e.g. "Intel Skylake". This follows
-	// the GCE naming today:
-	// https://cloud.google.com/compute/docs/instances/specify-min-cpu-platform#availablezones
-	CpuFamily string `yaml:"cpu-family"`
+	// Request a specific CPU family, e.g. "Intel Skylake" The
+	// exact string is backend specific.
+	CPUFamily string `yaml:"cpu-family"`
 
 	// Specify a backend specific plan, e.g. `e2-standard-2`
 	Plan string

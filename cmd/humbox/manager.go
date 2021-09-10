@@ -21,7 +21,7 @@ import (
 
 	"golang.org/x/crypto/blake2b"
 
-	"gopkg.in/niemeyer/ynext.v3"
+	"gopkg.in/yaml.v3"
 )
 
 type Setup struct {

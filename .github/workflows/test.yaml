@@ -11,39 +11,18 @@ on:
 
 jobs:
   run-tests:
-    runs-on: ubuntu-20.04
+    runs-on: self-hosted
     steps:
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt install -y xdelta3
+      - uses: actions/checkout@v2
 
-      - name: Setup go version
-        uses: actions/setup-go@v2
-        with:
-          # Using the lastest available go version for focal
-          go-version: 1.13.8
-
-      - name: Set environment
+      - name: Run tests
         run: |
-          echo "GOHOME=${{ github.workspace }}" >> "$GITHUB_ENV"
-          echo "GOPATH=${{ github.workspace }}" >> "$GITHUB_ENV"
+          spread google:
 
-      - name: Checkout project
-        uses: actions/checkout@v2
-        with:
-          path: src/github.com/snapcore/spread
-
-      - name: Build spread
+      - name: Discard spread workers
+        if: always()
         run: |
-          cd ${{ github.workspace }}/src/github.com/snapcore/spread
-          go get ./cmd/spread
-          
-      - name: run tests
-        env:
-          SPREAD_GOOGLE_KEY: ${{ secrets.SPREAD_GOOGLE_KEY }}
-        run: |
-          cd ${{ github.workspace }}/src/github.com/snapcore/spread
-          mkdir -p bin
-          cp -f "$GOHOME/bin/spread" ./bin/spread
-          "$GOHOME/bin/spread" google:
+          shopt -s nullglob
+          for r in .spread-reuse.*.yaml; do
+            spread -discard -reuse-pid="$(echo "$r" | grep -o -E '[0-9]+')"
+          done

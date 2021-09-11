@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"syscall"
+	"time"
 
 	"golang.org/x/net/context"
 )
@@ -93,6 +95,9 @@ func (p *qemuProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *
 	return s, nil
 }
 
+// can be manipulated in tests
+var qemuBinary = "qemu-system-x86_64"
+
 func systemPath(system *System) string {
 	return os.ExpandEnv("$HOME/.spread/qemu/" + system.Image + ".img")
 }
@@ -114,7 +119,9 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 	serial := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+100)
 	monitor := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+200)
 	fwd := fmt.Sprintf("user,hostfwd=tcp:127.0.0.1:%d-:22", port)
-	cmd := exec.Command("qemu-system-x86_64", "-enable-kvm", "-snapshot", "-m", strconv.Itoa(mem), "-net", "nic", "-net", fwd, "-serial", serial, "-monitor", monitor, path)
+	cmd := exec.Command(qemuBinary, "-enable-kvm", "-snapshot", "-m", strconv.Itoa(mem), "-net", "nic", "-net", fwd, "-serial", serial, "-monitor", monitor, path)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
 	}
@@ -124,6 +131,29 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 	if err != nil {
 		return nil, &FatalError{fmt.Errorf("cannot launch qemu %s: %v", system, err)}
 	}
+
+	// watch if qemu comes up as expected and if not cancel the context
+	// that is used by waitPortUp
+	ctx, cancelFn := context.WithCancel(ctx)
+	portUpDoneCh := make(chan struct{})
+	go func() {
+		var retry = time.NewTicker(500 * time.Millisecond)
+		for {
+			var wstatus syscall.WaitStatus
+			wpid, err := syscall.Wait4(cmd.Process.Pid, &wstatus, syscall.WNOHANG, nil)
+			if err != nil || wpid != 0 {
+				print("qemu exited unexpectedly: %v", wstatus)
+				cancelFn()
+			}
+
+			select {
+			case <-portUpDoneCh:
+				return
+			case <-retry.C:
+				// nothing
+			}
+		}
+	}()
 
 	s := &qemuServer{
 		p: p,
@@ -139,6 +169,8 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 		s.Discard(ctx)
 		return nil, err
 	}
+	close(portUpDoneCh)
+
 	printf("Allocated %s.", s)
 	return s, nil
 }

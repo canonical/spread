@@ -6,6 +6,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+var WaitPortUp = waitPortUp
+
 func MockClient() *Client {
 	config := &ssh.ClientConfig{
 		User:    "mock",
@@ -34,5 +36,13 @@ func MockSshDial(f func(network, addr string, config *ssh.ClientConfig) (*ssh.Cl
 	sshDial = f
 	return func() {
 		sshDial = oldSshDial
+	}
+}
+
+func MockQemuBinary(new string) (restore func()) {
+	old := qemuBinary
+	qemuBinary = new
+	return func() {
+		qemuBinary = old
 	}
 }

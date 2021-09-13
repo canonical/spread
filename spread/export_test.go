@@ -36,3 +36,5 @@ func MockSshDial(f func(network, addr string, config *ssh.ClientConfig) (*ssh.Cl
 		sshDial = oldSshDial
 	}
 }
+
+var QemuCmd = qemuCmd

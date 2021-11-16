@@ -36,6 +36,7 @@ type Options struct {
 	Seed           int64
 	Repeat         int
 	GarbageCollect bool
+	ShowOutput     bool
 }
 
 type Runner struct {
@@ -473,7 +474,7 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	}
 	client.SetWarnTimeout(job.WarnTimeoutFor(context))
 	client.SetKillTimeout(job.KillTimeoutFor(context))
-	_, err := client.Trace(script, dir, job.Environment)
+	out, err := client.Trace(script, dir, job.Environment)
 	printft(start, endTime, "")
 	if err != nil {
 		// Use a different time so it has a different id on Travis, but keep
@@ -499,6 +500,9 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 		}
 		*abend = r.options.Abend
 		return false
+	} else if r.options.ShowOutput == true {
+		start = start.Add(1)
+		printft(start, startTime|endTime|startFold|endFold, "Output %s %s (%s) :\n%v", verb, contextStr, server.Label(), string(out))
 	}
 	if r.options.ShellAfter && verb == executing {
 		printf("Starting shell after %s %s...", verb, job)

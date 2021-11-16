@@ -63,6 +63,7 @@ type Backend struct {
 	Plan     string
 	Location string
 	Storage  Size
+	Disks    int
 
 	Systems SystemsMap
 
@@ -121,6 +122,7 @@ type System struct {
 
 	// Only for Linode and Google so far.
 	Storage Size
+	Disks   int
 
 	// Only for Google so far.
 	SecureBoot bool `yaml:"secure-boot"`
@@ -552,6 +554,9 @@ func Load(path string) (*Project, error) {
 			}
 			if system.Storage == 0 {
 				system.Storage = backend.Storage
+			}
+			if system.Disks == 0 {
+				system.Disks = backend.Disks
 			}
 			if system.Plan == "" {
 				system.Plan = backend.Plan

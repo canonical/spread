@@ -14,7 +14,8 @@ Spread
 [Rebooting](#rebooting)  
 [Timeouts](#timeouts)  
 [Fast iterations with reuse](#reuse)  
-[Debugging](#debugging)  
+[Debugging](#debugging)
+[Verbosity](#verbosity)
 [Repeating tasks](#repeating)
 [Passwords and usernames](#passwords)  
 [Including, excluding, and renaming files](#including)  
@@ -517,6 +518,21 @@ debug: |
 In a similar way to prepare and restore scripts, these can also be defined
 as a `debug-each` script at the project, backend, and suite levels, so they
 are aggregated and repeated for every task under them.
+
+<a name="verbosity"/>
+
+## Verbosity
+
+The option `-v` displayes basic information about the current spread execution
+and its progress.
+
+The output of the tasks performed can be displayed by using the option
+`-vv`. By using this option spread shows output for a task when it doesn't fail,
+that sometimes it is needed for debugging, tracing, etc.
+
+To see debug information about all the communication done by spread the option
+`-vvv` may be used. This option displays all the low level messages done by spread
+interacting with the backends and systems.
 
 
 <a name="ordering">

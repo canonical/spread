@@ -102,12 +102,15 @@ func systemPath(system *System) string {
 
 func biosPath(biosName string) (string, error) {
 	bios := os.ExpandEnv("$HOME/.spread/qemu/bios/" + biosName + ".img")
-	if info, err := os.Stat(biosName); err == nil && info.Mode().IsRegular() {
+	if info, err := os.Stat(bios); err == nil && info.Mode().IsRegular() {
+		debugf("using local bios file: %v", bios)
 		return bios, nil
 	}
 
 	if p := os.Getenv("SPREAD_QEMU_FALLBACK_BIOS_PATH"); p != "" {
-		return os.ExpandEnv(filepath.Join(p, biosName+".img")), nil
+		fallbackBios := os.ExpandEnv(filepath.Join(p, biosName+".img"))
+		debugf("using fallback bios file: %v", fallbackBios)
+		return fallbackBios, nil
 	}
 
 	switch biosName {

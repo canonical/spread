@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"github.com/google/uuid"
 )
 
 func MockClient() *Client {
@@ -17,8 +18,8 @@ func MockClient() *Client {
 	}
 }
 
-func DialOnReboot(cli *Client, prevUptime time.Time) error {
-	return cli.dialOnReboot(prevUptime)
+func DialOnReboot(cli *Client, prevBootId uuid.UUID) error {
+	return cli.dialOnReboot(prevBootId)
 }
 
 func SetKillTimeout(cli *Client, killTimeout time.Duration) {

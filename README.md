@@ -5,6 +5,7 @@ Spread
 
 [Why?](#why)  
 [The cascading matrix](#matrix)  
+[Install](#install)
 [Hello world](#hello-world)  
 [Environments](#environments)  
 [Variants](#variants)  
@@ -86,6 +87,16 @@ Any time you want to see how your matrix looks like and all the jobs that would
 run, use the `-list` option. It will show one entry per line in the format:
 ```
 backend:system:suite/task:variant
+```
+
+<a name="install"/>
+
+## Install
+
+Please install `spread` using Go install method:
+
+```shell
+go install github.com/snapcore/spread/cmd/spread@latest
 ```
 
 <a name="hello-world"/>

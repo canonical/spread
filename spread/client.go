@@ -792,7 +792,7 @@ func (s *localScript) run() (stdout, stderr []byte, err error) {
 
 	var buf bytes.Buffer
 	buf.WriteString("set -eu\n")
-	buf.WriteString("ADDRESS() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ADDRESS>' || echo \"<ADDRESS $1>\"; }\n")
+	buf.WriteString("ADDRESS() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ADDRESS>' || echo \"<ADDRESS $@>\"; }\n")
 	buf.WriteString("FATAL() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<FATAL>' || echo \"<FATAL $@>\"; exit 213; }\n")
 	buf.WriteString("ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n")
 	buf.WriteString("MATCH() { { set +xu; } 2> /dev/null; local stdin=$(cat); echo $stdin | grep -q -E \"$@\" || { echo \"error: pattern not found on stdin:\\n$stdin\">&2; return 1; }; }\n")

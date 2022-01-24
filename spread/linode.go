@@ -212,7 +212,7 @@ func (p *linodeProvider) unreserve(s *linodeServer) {
 	p.mu.Unlock()
 }
 
-func (p *linodeProvider) Allocate(ctx context.Context, system *System) (Server, error) {
+func (p *linodeProvider) Allocate(ctx context.Context, system *System, id int) (Server, error) {
 	if err := p.checkKey(); err != nil {
 		return nil, err
 	}

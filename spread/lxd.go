@@ -93,7 +93,7 @@ func (p *lxdProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *S
 	return s, nil
 }
 
-func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, error) {
+func (p *lxdProvider) Allocate(ctx context.Context, system *System, id int) (Server, error) {
 	lxdimage, err := p.lxdImage(system)
 	if err != nil {
 		return nil, err

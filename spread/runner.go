@@ -229,7 +229,7 @@ func (r *Runner) loop() (err error) {
 				// logic will have a better chance of producing the same
 				// ordering on each of the workers.
 				order := rand.New(rand.NewSource(seed + int64(i))).Perm(len(r.pending))
-				go r.worker(backend, system, order)
+				go r.worker(backend, system, i, order)
 			}
 		}
 	}
@@ -528,10 +528,10 @@ func suiteWorkersKey(job *Job) [3]string {
 	return [3]string{job.Backend.Name, job.System.Name, job.Suite.Name}
 }
 
-func (r *Runner) worker(backend *Backend, system *System, order []int) {
+func (r *Runner) worker(backend *Backend, system *System, id int, order []int) {
 	defer func() { r.done <- true }()
 
-	client := r.client(backend, system)
+	client := r.client(backend, system, id)
 	if client == nil {
 		return
 	}
@@ -748,7 +748,7 @@ func (r *Runner) minSampleForTask(other *Job) *Job {
 	return nil
 }
 
-func (r *Runner) client(backend *Backend, system *System) *Client {
+func (r *Runner) client(backend *Backend, system *System, id int) *Client {
 
 	retries := 0
 	for r.tomb.Alive() {
@@ -764,7 +764,7 @@ func (r *Runner) client(backend *Backend, system *System) *Client {
 			if r.options.Reuse && len(r.reuse.ReuseSystems(system)) > 0 {
 				break
 			}
-			client = r.allocateServer(backend, system)
+			client = r.allocateServer(backend, system, id)
 			if client == nil {
 				break
 			}
@@ -865,7 +865,7 @@ func (r *Runner) discardServer(server Server) {
 	r.mu.Unlock()
 }
 
-func (r *Runner) allocateServer(backend *Backend, system *System) *Client {
+func (r *Runner) allocateServer(backend *Backend, system *System, id int) *Client {
 	if r.options.Discard {
 		return nil
 	}
@@ -882,7 +882,7 @@ func (r *Runner) allocateServer(backend *Backend, system *System) *Client {
 Allocate:
 	for {
 		lerr := err
-		server, err = r.providers[backend.Name].Allocate(r.tomb.Context(nil), system)
+		server, err = r.providers[backend.Name].Allocate(r.tomb.Context(nil), system, id)
 		if err == nil {
 			break
 		}

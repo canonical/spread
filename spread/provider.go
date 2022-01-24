@@ -13,7 +13,7 @@ var rnd = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 type Provider interface {
 	Backend() *Backend
-	Allocate(ctx context.Context, system *System) (Server, error)
+	Allocate(ctx context.Context, system *System, id int) (Server, error)
 	Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error)
 	GarbageCollect() error
 }

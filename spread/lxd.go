@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"gopkg.in/yaml.v2"
 
 	"golang.org/x/net/context"
 )
@@ -479,11 +480,21 @@ func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
 	return sjsons[0], nil
 }
 
+func (p *lxdProvider) getSshDaemon(name string) string {
+	// for Debian/Ubuntu systems the name of the daemon is 'ssh'
+	if strings.Contains(name, "ubuntu") {
+		return "ssh"
+	}
+
+	// for CentOS / RHEL / Fedora / Redhat the name is 'sshd'
+	return "sshd"
+}
+
 func (p *lxdProvider) tuneSSH(name string) error {
 	cmds := [][]string{
 		{"sed", "-i", `s/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/`, "/etc/ssh/sshd_config"},
 		{"/bin/bash", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", p.options.Password)},
-		{"service", "sshd", "restart"},
+		{"service", p.getSshDaemon(name), "restart"},
 	}
 	for _, args := range cmds {
 		output, err := exec.Command("lxc", append([]string{"exec", name, "--"}, args...)...).CombinedOutput()

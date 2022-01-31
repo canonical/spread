@@ -230,12 +230,7 @@ type googleImage struct {
 var termExp = regexp.MustCompile("[a-z]+|[0-9](?:[0-9.]*[0-9])?")
 
 func toTerms(s string) []string {
-	var terms []string
-	s = strings.ToLower(s)
-	for _, term := range termExp.FindAllString(strings.ToLower(s), -1) {
-		terms = append(terms, term)
-	}
-	return terms
+	return termExp.FindAllString(strings.ToLower(s), -1)
 }
 
 func containsTerms(superset, subset []string) bool {
@@ -360,7 +355,7 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 	}
 
 	err := p.dofl("GET", "/compute/v1/projects/"+project+"/global/images?orderBy=creationTimestamp+desc", nil, &result, noPathPrefix)
-	if err == googleNotFound {
+	if err == errGoogleNotFound {
 	}
 	if err != nil {
 		return nil, &FatalError{fmt.Errorf("cannot retrieve Google images for project %q: %v", project, err)}
@@ -383,8 +378,8 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 
 	name := googleName()
 	plan := googleDefaultPlan
-	if p.backend.Plan != "" {
-		plan = p.backend.Plan
+	if system.Plan != "" {
+		plan = system.Plan
 	}
 
 	image, family, err := p.image(system)
@@ -433,18 +428,15 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 		diskParams["diskSizeGb"] = int(system.Storage / gb)
 	}
 
-	secureBootParams := googleParams{}
-	if system.SecureBoot {
-		secureBootParams = googleParams{
-			"enableSecureBoot": true,
-			"enableVtpm": true,
-			"enableIntegrityMonitoring": true,
-		}
+	minCpuPlatform := "AUTOMATIC"
+	if system.CPUFamily != "" {
+		minCpuPlatform = system.CPUFamily
 	}
 
 	params := googleParams{
-		"name":        name,
-		"machineType": "zones/" + p.gzone() + "/machineTypes/" + plan,
+		"name":           name,
+		"machineType":    "zones/" + p.gzone() + "/machineTypes/" + plan,
+		"minCpuPlatform": minCpuPlatform,
 		"networkInterfaces": []googleParams{{
 			"accessConfigs": []googleParams{{
 				"type": "ONE_TO_ONE_NAT",
@@ -465,7 +457,14 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 		"tags": googleParams{
 			"items": []string{"spread"},
 		},
-		"shieldedInstanceConfig": secureBootParams,
+	}
+
+	if system.SecureBoot {
+		params["shieldedInstanceConfig"] = googleParams{
+			"enableSecureBoot":          true,
+			"enableVtpm":                true,
+			"enableIntegrityMonitoring": true,
+		}
 	}
 
 	var op googleOperation
@@ -945,7 +944,7 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 			// Unmarshal even on errors, so the call site has a chance to inspect the data on errors.
 			err = json.Unmarshal(data, result)
 			if err != nil && resp.StatusCode == 404 {
-				return googleNotFound
+				return errGoogleNotFound
 			}
 		}
 
@@ -974,7 +973,7 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 	return nil
 }
 
-var googleNotFound = fmt.Errorf("not found")
+var errGoogleNotFound = fmt.Errorf("not found")
 
 func ungzip(data []byte, err error) ([]byte, error) {
 	if err != nil || len(data) < 2 || data[0] != 0x1f || data[1] != 0x8b {

@@ -5,10 +5,13 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 
 	"golang.org/x/net/context"
 )
+
+var ovmfDefaultPath = "/usr/share/OVMF/OVMF_CODE.fd"
 
 func QEMU(p *Project, b *Backend, o *Options) Provider {
 	return &qemuProvider{p, b, o}
@@ -97,30 +100,78 @@ func systemPath(system *System) string {
 	return os.ExpandEnv("$HOME/.spread/qemu/" + system.Image + ".img")
 }
 
+func biosPath(biosName string) (string, error) {
+	bios := os.ExpandEnv("$HOME/.spread/qemu/bios/" + biosName + ".img")
+	if info, err := os.Stat(bios); err == nil && info.Mode().IsRegular() {
+		debugf("using local bios file: %v", bios)
+		return bios, nil
+	}
+
+	if p := os.Getenv("SPREAD_QEMU_FALLBACK_BIOS_PATH"); p != "" {
+		fallbackBios := os.ExpandEnv(filepath.Join(p, biosName+".img"))
+		debugf("using fallback bios file: %v", fallbackBios)
+		return fallbackBios, nil
+	}
+
+	switch biosName {
+	case "uefi":
+		return ovmfDefaultPath, nil
+	}
+
+	return "", fmt.Errorf("cannot find bios path for %q", biosName)
+}
+
+func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
+	serial := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+100)
+	monitor := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+200)
+	fwd := fmt.Sprintf("user,hostfwd=tcp:127.0.0.1:%d-:22", port)
+	cmd := exec.Command("qemu-system-x86_64",
+		"-enable-kvm",
+		"-snapshot",
+		"-m", strconv.Itoa(mem),
+		"-net", "nic",
+		"-net", fwd,
+		"-serial", serial,
+		"-monitor", monitor,
+		path)
+	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
+		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
+	}
+
+	switch system.Bios {
+	case "":
+		// nothing to do, that is the qemu default
+	case "uefi":
+		biosPath, err := biosPath(system.Bios)
+		if err != nil {
+			return nil, err
+		}
+		cmd.Args = append([]string{cmd.Args[0], "-bios", biosPath}, cmd.Args[1:]...)
+	default:
+		return nil, fmt.Errorf(`cannot set bios to %q, only "uefi" or unset are supported`, system.Bios)
+	}
+	return cmd, nil
+}
+
 func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, error) {
 	// FIXME Find an available port more reliably.
 	port := 59301 + rand.Intn(99)
-
+	mem := 1500
+	if p.backend.Memory > 0 {
+		mem = int(p.backend.Memory / mb)
+	}
 	path := systemPath(system)
 	if info, err := os.Stat(path); err != nil || info.IsDir() {
 		return nil, &FatalError{fmt.Errorf("cannot find qemu image at %s", path)}
 	}
 
-	mem := 1500
-	if p.backend.Memory > 0 {
-		mem = int(p.backend.Memory / mb)
-	}
-
-	serial := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+100)
-	monitor := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+200)
-	fwd := fmt.Sprintf("user,hostfwd=tcp:127.0.0.1:%d-:22", port)
-	cmd := exec.Command("qemu-system-x86_64", "-enable-kvm", "-snapshot", "-m", strconv.Itoa(mem), "-net", "nic", "-net", fwd, "-serial", serial, "-monitor", monitor, path)
-	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
-		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
+	cmd, err := qemuCmd(system, path, mem, port)
+	if err != nil {
+		return nil, err
 	}
 	printf("Serial and monitor for %s available at ports %d and %d.", system, port+100, port+200)
 
-	err := cmd.Start()
+	err = cmd.Start()
 	if err != nil {
 		return nil, &FatalError{fmt.Errorf("cannot launch qemu %s: %v", system, err)}
 	}

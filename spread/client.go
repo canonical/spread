@@ -584,9 +584,7 @@ func (c *Client) Send(from, to string, include, exclude []string) error {
 	for _, pattern := range exclude {
 		args = append(args, "--exclude="+pattern)
 	}
-	for _, pattern := range include {
-		args = append(args, pattern)
-	}
+	args = append(args, include...)
 
 	var stderr bytes.Buffer
 

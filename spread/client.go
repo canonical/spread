@@ -304,10 +304,10 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 			errch <- c.Run("reboot", "", nil)
 		}()
 
-		warn := time.NewTicker(c.warnTimeout)
+		retry := time.NewTicker(60 * time.Second)
+		defer retry.Stop()
 		select {
-		case <-errch:
-		case <-warn.C:
+		case <-retry.C:
 			c.sshc.Close()
 		}
 

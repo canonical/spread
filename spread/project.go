@@ -1061,10 +1061,11 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 	sort.Sort(jobsByName(jobs))
 
 	if options.RepeatAll > 0 {
-		jobsWithRepeat := make([]string, len(jobs) * (options.RepeatAll + 1))
+		jobsWithRepeat := []*Job{}
 		for repeatAll := options.RepeatAll; repeatAll >= 0; repeatAll-- {
 			jobsWithRepeat = append(jobsWithRepeat, jobs...)
 		}
+
 		return jobsWithRepeat, nil
 	}
 	return jobs, nil

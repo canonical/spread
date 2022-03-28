@@ -153,15 +153,13 @@ func (r *Runner) loop() (err error) {
 		}
 
 		if !r.options.Discard {
-			for repeatAll := r.options.RepeatAll; repeatAll >= 0; repeatAll-- {
-				logNames(debugf, "Pending jobs after workers returned", r.pending, taskName)
-				for _, job := range r.pending {
-					if job != nil {
-						r.add(&r.stats.TaskAbort, job)
-					}
+			logNames(debugf, "Pending jobs after workers returned", r.pending, taskName)
+			for _, job := range r.pending {
+				if job != nil {
+					r.add(&r.stats.TaskAbort, job)
 				}
-				r.stats.log()
 			}
+			r.stats.log()
 		}
 		if !r.options.Reuse || r.options.Discard {
 			for len(r.servers) > 0 {

@@ -35,6 +35,7 @@ type Options struct {
 	Artifacts      string
 	Seed           int64
 	Repeat         int
+	RepeatAll      int
 	GarbageCollect bool
 }
 
@@ -152,13 +153,15 @@ func (r *Runner) loop() (err error) {
 		}
 
 		if !r.options.Discard {
-			logNames(debugf, "Pending jobs after workers returned", r.pending, taskName)
-			for _, job := range r.pending {
-				if job != nil {
-					r.add(&r.stats.TaskAbort, job)
+			for repeatAll := r.options.RepeatAll; repeatAll >= 0; repeatAll-- {
+				logNames(debugf, "Pending jobs after workers returned", r.pending, taskName)
+				for _, job := range r.pending {
+					if job != nil {
+						r.add(&r.stats.TaskAbort, job)
+					}
 				}
+				r.stats.log()
 			}
-			r.stats.log()
 		}
 		if !r.options.Reuse || r.options.Discard {
 			for len(r.servers) > 0 {

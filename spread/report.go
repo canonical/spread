@@ -27,63 +27,88 @@ func (tss *XUnitTestSuites) getSuite(suiteName string) *XUnitTestSuite {
 }
 
 type XUnitTestSuite struct {
-	XMLName    xml.Name        `xml:"testsuite"`
-	Tests      int             `xml:"tests,attr"`
-	Failures   int             `xml:"failures,attr"`
-	Time       string          `xml:"time,attr"`
-	Name       string          `xml:"name,attr"`
-	Properties []*XUnitProperty `xml:"properties>property,omitempty"`
-	TestCases  []*XUnitTestCase
+	XMLName     xml.Name         `xml:"testsuite"`
+	Successfull int              `xml:"successfull,attr"`
+	Failed      int              `xml:"failed,attr"`
+	Aborted     int              `xml:"aborted,attr"`
+	Total       int              `xml:"total,attr"`
+	Time        string           `xml:"time,attr"`
+	Name        string           `xml:"name,attr"`
+	TestCases   []*XUnitTestCase
 }
 
 func NewTestSuite(suiteName string) *XUnitTestSuite {
 	return &XUnitTestSuite{
-		Tests: 0,
-		Failures: 0,
+		Successfull: 0,
+		Failed: 0,
+		Aborted: 0,
+		Total: 0,
 		Time: "",
 		Name: suiteName,
-		Properties: []*XUnitProperty{},
 		TestCases: []*XUnitTestCase{},
 	}
 }
 
 func (ts *XUnitTestSuite) addTest(test *XUnitTestCase) {
-	if test.Failure != nil {
-		ts.Failures += 1
+	for _, t := range ts.TestCases {
+    	if test.Backend == t.Backend && test.System == t.System && test.Name == t.Name {
+    		if len(test.Details) > 0 {
+    			t.Details = append(t.Details, test.Details[0])
+    		}
+    		return
+    	}
 	}
-	ts.Tests += 1
+
+	if len(test.Details) > 0 {
+		if test.Details[0].Type == failed {
+			ts.Failed += 1
+		} else {
+			ts.Aborted += 1	
+		}
+	} else {
+		ts.Successfull += 1
+	}
+	ts.Total += 1
 	ts.TestCases = append(ts.TestCases, test)
 }
 
 type XUnitTestCase struct {
 	XMLName     xml.Name          `xml:"testcase"`
-	Classname   string            `xml:"classname,attr"`
+	Backend     string            `xml:"backend,attr"`
+	System      string            `xml:"system,attr"`
 	Name        string            `xml:"name,attr"`
-	SkipMessage *XUnitSkipMessage `xml:"skipped,omitempty"`
-	Failure     *XUnitFailure     `xml:"failure,omitempty"`
+	Suite       string            `xml:"suite,attr"`
+	Details     []*XUnitDetail    `xml:"details,omitempty"`
 }
 
-func NewTestCase(testName string, className string) *XUnitTestCase {
+func NewTestCase(testName string, backend string, system string, suitename string) *XUnitTestCase {
 	return &XUnitTestCase{
-				Classname: className,
-				Name:      testName,
-				Failure:   nil,
+				Backend: backend,
+				System:  system,
+				Name:    testName,
+				Suite:   suitename,
+				Details:  []*XUnitDetail{},
 			}	
+}
+
+type XUnitDetail struct {
+	Type     string `xml:"type,attr"`
+	Info     string `xml:"info,attr"`
+	Message  string `xml:"message,attr"`
 }
 
 type XUnitSkipMessage struct {
 	Message string `xml:"message,attr"`
 }
 
-type XUnitProperty struct {
-	Name  string `xml:"name,attr"`
-	Value string `xml:"value,attr"`
-}
-
 type XUnitFailure struct {
 	Message  string `xml:"message,attr"`
 	Type     string `xml:"type,attr"`
-	Contents string `xml:",chardata"`
+}
+
+type XUnitAbort struct {
+	Message  string `xml:"message,attr"`
+	Type     string `xml:"type,attr"`
 }
 
 type XUnitReport struct {
@@ -108,24 +133,36 @@ func (r XUnitReport) finish() error {
 	return nil
 }
 
-func (r XUnitReport) addTest(suiteName string, test *XUnitTestCase) {
-	suite := r.TestSuites.getSuite(suiteName)
+func (r XUnitReport) addTest(test *XUnitTestCase) {
+	suite := r.TestSuites.getSuite(test.Suite)
 	suite.addTest(test)
 }
 
-func (r XUnitReport) addFailedTest(suiteName string, className string, testName string) {
-	testcase := NewTestCase(testName, className)
-	testcase.Failure = &XUnitFailure{
-					Message:  "Failed",
-					Type:     "",
-					Contents: "",
-				}
-	r.addTest(suiteName, testcase)
+func (r XUnitReport) addFailedTest(suiteName string, backend string, system string, testName string, verb string) {
+	testcase := NewTestCase(testName, backend, system, suiteName)
+	detail := &XUnitDetail{
+				Type:     failed,
+				Info:     verb,
+				Message:  "",
+			}
+	testcase.Details = append(testcase.Details, detail)
+	r.addTest(testcase)
 }
 
-func (r XUnitReport) addPassedTest(suiteName string, className string, testName string) {
-	testcase := NewTestCase(testName, className)
-	r.addTest(suiteName, testcase)
+func (r XUnitReport) addAbortedTest(suiteName string, backend string, system string, testName string) {
+	testcase := NewTestCase(testName, backend, system, suiteName)
+	detail := &XUnitDetail{
+				Type:     aborted,
+				Info:     "",
+				Message:  "",
+			}
+	testcase.Details = append(testcase.Details, detail)
+	r.addTest(testcase)
+}
+
+func (r XUnitReport) addSuccessfullTest(suiteName string, backend string, system string, testName string) {
+	testcase := NewTestCase(testName, backend, system, suiteName)
+	r.addTest(testcase)
 }
 
 func check(e error) {

@@ -7,10 +7,18 @@ prepare: |
     fi
 
     mkdir -p ~/.spread/qemu
-    ln -sf /dev/sda ~/.spread/qemu/ubuntu-16.04.img
+    if [ "$SPREAD_BACKEND" = qemu ]; then
+        ln -sf /dev/sda ~/.spread/qemu/ubuntu-16.04.img
+    else
+        apt install -y autopkgtest genisoimage
+        autopkgtest-buildvm-ubuntu-cloud -a amd64 -r xenial
+        mv autopkgtest-xenial-amd64.img ~/.spread/qemu/ubuntu-16.04.img
+    fi
 
-    touch /run/spread-reuse.yaml
-    ln -sf /run/spread-reuse.yaml .spread-reuse.yaml
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
 
 execute: |
     spread -vv -reuse -resend &> task.out

@@ -1,4 +1,4 @@
-summary: Test the lxd backend.
+summary: Test the NOMATCH function.
 
 prepare: |
     if [ ! -f .spread-reuse.yaml ]; then
@@ -9,8 +9,7 @@ prepare: |
 execute: |
     spread -vv -reuse -resend &> task.out
 
-    grep 'lxd:ubuntu-16.04:checks/main' task.out
-    grep '^WORKS$' task.out
+    cat task.out | grep '^WORKS$'
 
 debug: |
     cat task.out || true

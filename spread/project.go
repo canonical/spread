@@ -119,6 +119,21 @@ type System struct {
 	Password string
 	Workers  int
 
+	// Only for Linode and Google so far.
+	Storage Size
+
+	// Only for Google so far.
+	SecureBoot bool `yaml:"secure-boot"`
+
+	// Supported are {"uefi",""}, only for qemu so far.
+	Bios string
+	// Request a specific CPU family, e.g. "Intel Skylake" The
+	// exact string is backend specific.
+	CPUFamily string `yaml:"cpu-family"`
+
+	// Specify a backend specific plan, e.g. `e2-standard-2`
+	Plan string
+
 	Environment *Environment
 	Variants    []string
 
@@ -336,7 +351,7 @@ type Task struct {
 	Execute string
 	Debug   string
 
-	Residue []string
+	Artifacts []string
 
 	Name string `yaml:"-"`
 	Path string `yaml:"-"`
@@ -514,7 +529,7 @@ func Load(path string) (*Project, error) {
 			backend.Type = bname
 		}
 		switch backend.Type {
-		case "google", "linode", "lxd", "qemu", "adhoc":
+		case "google", "linode", "lxd", "qemu", "adhoc", "humbox":
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}
@@ -540,6 +555,12 @@ func Load(path string) (*Project, error) {
 			}
 			if system.Workers == 0 {
 				system.Workers = 1
+			}
+			if system.Storage == 0 {
+				system.Storage = backend.Storage
+			}
+			if system.Plan == "" {
+				system.Plan = backend.Plan
 			}
 			if err := checkEnv(system, &system.Environment); err != nil {
 				return nil, err
@@ -656,9 +677,9 @@ func Load(path string) (*Project, error) {
 				return nil, err
 			}
 
-			for _, fname := range task.Residue {
+			for _, fname := range task.Artifacts {
 				if filepath.IsAbs(fname) || fname != filepath.Clean(fname) || strings.HasPrefix(fname, "../") {
-					return nil, fmt.Errorf("%s has improper residue path: %s", task.Name, fname)
+					return nil, fmt.Errorf("%s has improper artifact path: %s", task.Name, fname)
 				}
 			}
 
@@ -1289,6 +1310,10 @@ func (s *Size) UnmarshalYAML(u func(interface{}) error) error {
 		*s = 0
 		return nil
 	}
+	if str == "preserve-size" {
+		*s = -1
+		return nil
+	}
 	n, err := strconv.Atoi(str[:len(str)-1])
 	if err != nil {
 		return fmt.Errorf("invalid size string: %q", str)
@@ -1314,7 +1339,7 @@ type OptionalInt struct {
 }
 
 func (s OptionalInt) String() string {
-	return strconv.FormatInt(s.Value, 64)
+	return strconv.FormatInt(s.Value, 10)
 }
 
 func (s *OptionalInt) UnmarshalYAML(u func(interface{}) error) error {

@@ -65,6 +65,8 @@ type googleServerData struct {
 	Plan    string    `json:"machineType"`
 	Status  string    `yaml:"-"`
 	Created time.Time `json:"creationTimestamp"`
+
+	Labels map[string]string `yaml:"-"`
 }
 
 func (d *googleServerData) cleanup() {
@@ -148,59 +150,10 @@ func (s *googleServer) Discard(ctx context.Context) error {
 	return s.p.removeMachine(ctx, s)
 }
 
-func (p *googleProvider) GarbageCollect() error {
-	printf("Collecting garbage for google")
-	result, err := p.listMachines()
-	if err != nil {
-		return err
-	}
-
-	// Iterate over all the running instances
-	for _, instance := range result.Items {
-		printf("Checking %s...", instance.Name)
-		creationTime, err := time.Parse(time.RFC3339, instance.CreationTimestamp) 
-		if err != nil {
-			printf("Creation timestamp with wrong format %q", instance.CreationTimestamp)
-		}
-
-		// 120 minutes is the default timeout
-		var haltTimeout = 120 * time.Minute
-		for label, value := range instance.Labels {
-			if label == "halt-timeout" {
-				d, err := time.ParseDuration(strings.TrimSpace(value))
-				if err != nil {
-					printf("halt-timeout must look like 10s or 15m or 1.5h, not %q", value)
-				} else {
-					haltTimeout = d
-				}
-			}
-		}
-		runningTime := time.Now().Sub(creationTime)
-		if runningTime > haltTimeout {
-			printf("Server %s exceeds halt-timeout. Shutting it down...", instance.Name)
-			s := &googleServer{
-				p: p,
-				d: googleServerData{
-					Name:    instance.Name,
-					Plan:    googleDefaultPlan,
-					Status:  instance.Status,
-					Created: creationTime,
-				},
-			}
-			p.doRemoveMachine(s)
-		}
-
-	}
-	return nil
-}
-
 const googleStartupScript = `
 echo root:%s | chpasswd
-
 sed -i 's/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /etc/ssh/sshd_config
-
 pkill -o -HUP sshd || true
-
 echo '` + googleReadyMarker + `' > /dev/ttyS2
 `
 
@@ -209,7 +162,7 @@ const googleNameLayout = "Jan021504.000000"
 const googleDefaultPlan = "n1-standard-1"
 
 func googleName() string {
-	return strings.ToLower(strings.Replace(time.Now().Format(googleNameLayout), ".", "-", 1))
+	return strings.ToLower(strings.Replace(time.Now().UTC().Format(googleNameLayout), ".", "-", 1))
 }
 
 func googleParseName(name string) (time.Time, error) {
@@ -274,12 +227,7 @@ type googleImage struct {
 var termExp = regexp.MustCompile("[a-z]+|[0-9](?:[0-9.]*[0-9])?")
 
 func toTerms(s string) []string {
-	var terms []string
-	s = strings.ToLower(s)
-	for _, term := range termExp.FindAllString(strings.ToLower(s), -1) {
-		terms = append(terms, term)
-	}
-	return terms
+	return termExp.FindAllString(strings.ToLower(s), -1)
 }
 
 func containsTerms(superset, subset []string) bool {
@@ -404,7 +352,7 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 	}
 
 	err := p.dofl("GET", "/compute/v1/projects/"+project+"/global/images?orderBy=creationTimestamp+desc", nil, &result, noPathPrefix)
-	if err == googleNotFound {
+	if err == errGoogleNotFound {
 	}
 	if err != nil {
 		return nil, &FatalError{fmt.Errorf("cannot retrieve Google images for project %q: %v", project, err)}
@@ -427,13 +375,8 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 
 	name := googleName()
 	plan := googleDefaultPlan
-	if p.backend.Plan != "" {
-		plan = p.backend.Plan
-	}
-
-	storage := 10
-	if p.backend.Storage > 0 {
-		storage = int(p.backend.Storage / gb)
+	if system.Plan != "" {
+		plan = system.Plan
 	}
 
 	image, family, err := p.image(system)
@@ -472,9 +415,25 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 		})
 	}
 
+	diskParams := googleParams{
+		"sourceImage": sourceImage,
+	}
+
+	if system.Storage == 0 {
+		diskParams["diskSizeGb"] = 10
+	} else if system.Storage > 0 {
+		diskParams["diskSizeGb"] = int(system.Storage / gb)
+	}
+
+	minCpuPlatform := "AUTOMATIC"
+	if system.CPUFamily != "" {
+		minCpuPlatform = system.CPUFamily
+	}
+
 	params := googleParams{
-		"name":        name,
-		"machineType": "zones/" + p.gzone() + "/machineTypes/" + plan,
+		"name":           name,
+		"machineType":    "zones/" + p.gzone() + "/machineTypes/" + plan,
+		"minCpuPlatform": minCpuPlatform,
 		"networkInterfaces": []googleParams{{
 			"accessConfigs": []googleParams{{
 				"type": "ONE_TO_ONE_NAT",
@@ -483,24 +442,26 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 			"network": "global/networks/default",
 		}},
 		"disks": []googleParams{{
-			"autoDelete": "true",
-			"boot":       "true",
-			"type":       "PERSISTENT",
-			"initializeParams": googleParams{
-				"sourceImage": sourceImage,
-				"diskSizeGb":  storage,
-			},
+			"autoDelete":       "true",
+			"boot":             "true",
+			"type":             "PERSISTENT",
+			"initializeParams": diskParams,
 		}},
 		"metadata": googleParams{
-			"items": []googleParams{{
-				"key":   "startup-script",
-				"value": fmt.Sprintf(googleStartupScript, p.options.Password),
-			}},
+			"items": metadata,
 		},
 		"labels": labels,
 		"tags": googleParams{
 			"items": []string{"spread"},
 		},
+	}
+
+	if system.SecureBoot {
+		params["shieldedInstanceConfig"] = googleParams{
+			"enableSecureBoot":          true,
+			"enableVtpm":                true,
+			"enableIntegrityMonitoring": true,
+		}
 	}
 
 	var op googleOperation
@@ -634,47 +595,88 @@ func (p *googleProvider) setMetadata(s *googleServer, meta *googleInstanceMetada
 	return nil
 }
 
-func (p *googleProvider) listMachines() (*googleInstances, error) {
-	var result googleInstances
-	err := p.doz("GET", "/instances", nil, &result)
-	if err != nil {
-		return &result, fmt.Errorf("cannot get instances list: %v", err)
-	}
-	return &result, err
+type googleListResult struct {
+	Items []googleServerData
 }
 
-func (p *googleProvider) doRemoveMachine(s *googleServer) (*googleOperation, error) {
-	var op googleOperation
-	err := p.doz("DELETE", "/instances/"+s.d.Name, nil, &op)
+var googleLabelWarning = true
+
+func (p *googleProvider) list() ([]*googleServer, error) {
+	debug("Listing available Google servers...")
+
+	var result googleListResult
+	err := p.doz("GET", "/instances", nil, &result)
 	if err != nil {
-		return &op, fmt.Errorf("cannot deallocate Google server %s: %v", s, err)
+		return nil, fmt.Errorf("cannot get instances list: %v", err)
 	}
-	return &op, err
+
+	servers := make([]*googleServer, 0, len(result.Items))
+	for _, d := range result.Items {
+		if _, err := googleParseName(d.Name); err != nil {
+			if googleLabelWarning {
+				googleLabelWarning = false
+				printf("WARNING: Some Google servers ignored due to unsafe labels.")
+			}
+			continue
+		}
+		servers = append(servers, &googleServer{p: p, d: d})
+	}
+
+	return servers, nil
 }
 
 func (p *googleProvider) removeMachine(ctx context.Context, s *googleServer) error {
 	if err := p.checkLabel(s); err != nil {
 		return fmt.Errorf("cannot deallocate Google server %s: %v", s, err)
 	}
-	_, err := p.doRemoveMachine(s)
+
+	var op googleOperation
+	err := p.doz("DELETE", "/instances/"+s.d.Name, nil, &op)
+	if err != nil {
+		return fmt.Errorf("cannot deallocate Google server %s: %v", s, err)
+	}
 
 	//_, err = p.waitOperation(ctx, s, "deallocate", op.Name)
 	return err
 }
 
-type googleInstance struct {
-	Id                    string
-	CreationTimestamp     string
-	Name                  string
-	MachineType           string
-	Status                string
-	Zone                  string
-	Labels                map[string]string
-}
+func (p *googleProvider) GarbageCollect() error {
+	servers, err := p.list()
+	if err != nil {
+		return err
+	}
 
-type googleInstances struct {
-	Id                    string
-	Items                 []googleInstance
+	now := time.Now()
+	haltTimeout := p.backend.HaltTimeout.Duration
+
+	// Iterate over all the running instances
+	for _, s := range servers {
+		serverTimeout := haltTimeout
+		if value, ok := s.d.Labels["halt-timeout"]; ok {
+			d, err := time.ParseDuration(strings.TrimSpace(value))
+			if err != nil {
+				printf("WARNING: Ignoring bad Google server %s halt-timeout label: %q", s, value)
+			} else {
+				serverTimeout = d
+			}
+		}
+
+		if serverTimeout == 0 {
+			continue
+		}
+
+		printf("Checking %s...", s)
+
+		runningTime := now.Sub(s.d.Created)
+		if runningTime > serverTimeout {
+			printf("Server %s exceeds halt-timeout. Shutting it down...", s)
+			err := p.removeMachine(context.Background(), s)
+			if err != nil {
+				printf("WARNING: Cannot garbage collect %s: %v", s, err)
+			}
+		}
+	}
+	return nil
 }
 
 type googleOperation struct {
@@ -893,14 +895,15 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 
 	<-googleThrottle
 
-	url := "https://www.googleapis.com/"
+	url := "https://www.googleapis.com"
 	if flags&noPathPrefix == 0 {
 		url += "/compute/v1/projects/" + p.gproject() + subpath
 	} else {
 		url += subpath
 	}
 
-	// Repeat on 500s. Comes from Linode logic, not observed on Google so far.
+	// Repeat on 500s. Note that Google's 500s may come in late, as a marshaled error
+	// under a different code. See the INTERNAL handling at the end below.
 	var resp *http.Response
 	var req *http.Request
 	var delays = rand.Perm(10)
@@ -938,7 +941,7 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 			// Unmarshal even on errors, so the call site has a chance to inspect the data on errors.
 			err = json.Unmarshal(data, result)
 			if err != nil && resp.StatusCode == 404 {
-				return googleNotFound
+				return errGoogleNotFound
 			}
 		}
 
@@ -947,6 +950,9 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 			if eresult.Error.Status == "INTERNAL" && eresult.Error.Code == 500 {
 				// Google has broken down like this before:
 				// https://paste.ubuntu.com/p/HMvvxNMq9G/
+				if i == 0 {
+					printf("Google internal error on %s. Retrying a few times...", subpath)
+				}
 				continue
 			}
 			if rerr := eresult.err(); rerr != nil {
@@ -964,7 +970,7 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 	return nil
 }
 
-var googleNotFound = fmt.Errorf("not found")
+var errGoogleNotFound = fmt.Errorf("not found")
 
 func ungzip(data []byte, err error) ([]byte, error) {
 	if err != nil || len(data) < 2 || data[0] != 0x1f || data[1] != 0x8b {

@@ -21,7 +21,7 @@ import (
 
 	"golang.org/x/crypto/blake2b"
 
-	"gopkg.in/niemeyer/ynext.v3"
+	"gopkg.in/yaml.v3"
 )
 
 type Setup struct {
@@ -66,7 +66,7 @@ type Account struct {
 
 func (acc *Account) Authenticate(token string) error {
 	if len(acc.Hash) != 67 || acc.Hash[:3] != "v1:" {
-		log.Printf("Account %q has unrecognized authentication hash format: %v", acc.Name)
+		log.Printf("Account %q has unrecognized authentication hash format: %q", acc.Name, acc.Hash)
 		return fmt.Errorf("account %q has unrecognized authentication format", acc.Name)
 	}
 
@@ -314,7 +314,7 @@ func (m *Manager) reloadServers() error {
 		}
 
 		if server.Name != name {
-			log.Printf("WARNING: Server %s is under incorrect directory %s", name)
+			log.Printf("WARNING: Server %s is under incorrect directory %s", server.Name, name)
 			continue
 		}
 
@@ -643,8 +643,9 @@ func (m *Manager) allocateSSHAddr(server *Server) error {
 		server.SSH = addr
 		return nil
 	}
-	log.Printf("Cannot find port available on host %q")
-	return fmt.Errorf("cannot find port available on host %q", m.Hostname())
+	hostname := m.Hostname()
+	log.Printf("Cannot find port available on host %q", hostname)
+	return fmt.Errorf("cannot find port available on host %q", hostname)
 }
 
 func (m *Manager) Deallocate(server *Server) error {

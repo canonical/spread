@@ -246,8 +246,7 @@ func (c *Client) Run(script string, dir string, env *Environment) error {
 }
 
 func (c *Client) Output(script string, dir string, env *Environment) (output []byte, err error) {
-	output, err = c.run(script, dir, env, splitOutput)
-	return output, err
+	return c.run(script, dir, env, splitOutput)
 }
 
 func (c *Client) CombinedOutput(script string, dir string, env *Environment) (output []byte, err error) {

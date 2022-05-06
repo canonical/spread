@@ -35,6 +35,7 @@ var (
 	repeat         = flag.Int("repeat", 0, "Number of times to repeat each task")
 	garbageCollect = flag.Bool("gc", false, "Garbage collect backend resources when possible")
 	xunit          = flag.Bool("xunit", false, "Create a XUnit report")
+	jsonunit       = flag.Bool("jsonunit", false, "Create a JSONUnit report")
 )
 
 func main() {
@@ -98,6 +99,7 @@ func run() error {
 		Repeat:         *repeat,
 		GarbageCollect: *garbageCollect,
 		XUnit:          *xunit,
+		JSONUnit:       *jsonunit,
 	}
 
 	project, err := spread.Load(".")

@@ -2,6 +2,7 @@ package spread
 
 import (
 	"encoding/xml"
+	"fmt"
 	"io/ioutil"
 )
 
@@ -20,7 +21,7 @@ func (tss *XUnitTestSuites) getSuite(suiteName string) *XUnitTestSuite {
             return s
         }
     }
-	suite := NewTestSuite(suiteName)
+	suite := NewXUnitTestSuite(suiteName)
 
 	tss.addSuite(suite)	
 	return suite
@@ -37,7 +38,7 @@ type XUnitTestSuite struct {
 	TestCases   []*XUnitTestCase
 }
 
-func NewTestSuite(suiteName string) *XUnitTestSuite {
+func NewXUnitTestSuite(suiteName string) *XUnitTestSuite {
 	return &XUnitTestSuite{
 		Successfull: 0,
 		Failed: 0,
@@ -81,7 +82,7 @@ type XUnitTestCase struct {
 	Details     []*XUnitDetail    `xml:"details,omitempty"`
 }
 
-func NewTestCase(testName string, backend string, system string, suitename string) *XUnitTestCase {
+func NewXUnitTestCase(testName string, backend string, system string, suitename string) *XUnitTestCase {
 	return &XUnitTestCase{
 				Backend: backend,
 				System:  system,
@@ -116,7 +117,7 @@ type XUnitReport struct {
 	TestSuites *XUnitTestSuites
 }
 
-func NewXUnitReport(name string) XUnitReport {
+func NewXUnitReport(name string) Report {
 	report := XUnitReport{}
 	report.FileName = name
 	report.TestSuites = &XUnitTestSuites{}
@@ -125,10 +126,14 @@ func NewXUnitReport(name string) XUnitReport {
 
 func (r XUnitReport) finish() error {
 	bytes, err := xml.MarshalIndent(r.TestSuites, "", "\t")
-	check(err)
+	if err != nil {
+		return fmt.Errorf("cannot indent the XUnit report: %v", err)
+	}
 
 	err = ioutil.WriteFile(r.FileName, bytes, 0644)
-    check(err)
+    if err != nil {
+		return fmt.Errorf("cannot write XUnit report to %s file: %v", r.FileName, err)
+	}
 
 	return nil
 }
@@ -139,7 +144,7 @@ func (r XUnitReport) addTest(test *XUnitTestCase) {
 }
 
 func (r XUnitReport) addFailedTest(suiteName string, backend string, system string, testName string, verb string) {
-	testcase := NewTestCase(testName, backend, system, suiteName)
+	testcase := NewXUnitTestCase(testName, backend, system, suiteName)
 	detail := &XUnitDetail{
 				Type:     failed,
 				Info:     verb,
@@ -150,7 +155,7 @@ func (r XUnitReport) addFailedTest(suiteName string, backend string, system stri
 }
 
 func (r XUnitReport) addAbortedTest(suiteName string, backend string, system string, testName string) {
-	testcase := NewTestCase(testName, backend, system, suiteName)
+	testcase := NewXUnitTestCase(testName, backend, system, suiteName)
 	detail := &XUnitDetail{
 				Type:     aborted,
 				Info:     "",
@@ -161,12 +166,6 @@ func (r XUnitReport) addAbortedTest(suiteName string, backend string, system str
 }
 
 func (r XUnitReport) addSuccessfullTest(suiteName string, backend string, system string, testName string) {
-	testcase := NewTestCase(testName, backend, system, suiteName)
+	testcase := NewXUnitTestCase(testName, backend, system, suiteName)
 	r.addTest(testcase)
-}
-
-func check(e error) {
-    if e != nil {
-        panic(e)
-    }
 }

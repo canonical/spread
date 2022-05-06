@@ -251,13 +251,11 @@ func (c *Client) Output(script string, dir string, env *Environment) (output []b
 }
 
 func (c *Client) CombinedOutput(script string, dir string, env *Environment) (output []byte, err error) {
-	output, err = c.run(script, dir, env, combinedOutput)
-	return output, err
+	return c.run(script, dir, env, combinedOutput)
 }
 
 func (c *Client) Trace(script string, dir string, env *Environment) (output []byte, err error) {
-	output, err = c.run(script, dir, env, traceOutput)
-	return output, err
+	return c.run(script, dir, env, traceOutput)
 }
 
 func (c *Client) Shell(script string, dir string, env *Environment) error {

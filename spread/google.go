@@ -152,8 +152,11 @@ func (s *googleServer) Discard(ctx context.Context) error {
 
 const googleStartupScript = `
 echo root:%s | chpasswd
+
 sed -i 's/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /etc/ssh/sshd_config
+
 pkill -o -HUP sshd || true
+
 echo '` + googleReadyMarker + `' > /dev/ttyS2
 `
 

@@ -1087,7 +1087,7 @@ const (
 func (s *stats) addTestsToXUnitReport(report XUnitReport, testsList []*Job, result string, verb string) {
 	for _, job := range testsList {
 		splittedName := strings.Split(taskName(job), "/")
-		suiteName := strings.Join(splittedName[:len(splittedName)-1], ".")
+		suiteName := strings.Join(splittedName[:len(splittedName)-1], "/")
 		testName := splittedName[len(splittedName)-1]
 
 		if result == failed {

@@ -52,6 +52,10 @@ func (ts *XUnitTestSuite) addTest(test *XUnitTestCase) {
 	for _, t := range ts.TestCases {
     	if test.Backend == t.Backend && test.System == t.System && test.Name == t.Name {
     		if len(test.Details) > 0 {
+    			if test.Details[0].Type == aborted {
+    				ts.Aborted += 1
+    				ts.Failed -= 1
+    			} 
     			t.Details = append(t.Details, test.Details[0])
     		}
     		return

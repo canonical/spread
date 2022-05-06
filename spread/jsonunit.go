@@ -28,6 +28,10 @@ func (tc *JSONUnitTestCases) addTest(test *JSONUnitTestCase) {
 	for _, t := range tc.TestCases {
     	if test.Backend == t.Backend && test.System == t.System && test.Name == t.Name {
     		if len(test.Details) > 0 {
+    			if test.Details[0].Type == aborted {
+    				tc.Aborted += 1
+    				tc.Failed -= 1
+    			} 
     			t.Details = append(t.Details, test.Details[0])
     		}
     		return
@@ -38,7 +42,7 @@ func (tc *JSONUnitTestCases) addTest(test *JSONUnitTestCase) {
 		if test.Details[0].Type == failed {
 			tc.Failed += 1
 		} else {
-			tc.Aborted += 1	
+			tc.Aborted += 1
 		}
 	} else {
 		tc.Successfull += 1
@@ -52,15 +56,18 @@ type JSONUnitTestCase struct {
 	System      string            `json:"system,attr"`
 	Name        string            `json:"name,attr"`
 	Suite       string            `json:"suite,attr"`
-	Details     []*JSONUnitDetail    `json:"details,omitempty"`
+	FullName    string            `json:"fullname,attr"`
+	Details     []*JSONUnitDetail `json:"details,omitempty"`
 }
 
-func NewJSONUnitTestCase(testName string, backend string, system string, suitename string) *JSONUnitTestCase {
+func NewJSONUnitTestCase(testName string, backend string, system string, suiteName string) *JSONUnitTestCase {
+	fullname := backend + ":" + system + ":" + suiteName + "/" + testName 
 	return &JSONUnitTestCase{
-				Backend: backend,
-				System:  system,
-				Name:    testName,
-				Suite:   suitename,
+				Backend:  backend,
+				System:   system,
+				Name:     testName,
+				Suite:    suiteName,
+				FullName: fullname,
 				Details:  []*JSONUnitDetail{},
 			}	
 }

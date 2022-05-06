@@ -6,50 +6,26 @@ import (
 	"io/ioutil"
 )
 
-type JSONUnitTestSuites struct {
-	Suites   []*JSONUnitTestSuite
-}
-
-func (tss *JSONUnitTestSuites) addSuite(suite *JSONUnitTestSuite) {
-	tss.Suites = append(tss.Suites, suite)
-}
-
-func (tss *JSONUnitTestSuites) getSuite(suiteName string) *JSONUnitTestSuite {
-    for _, s := range tss.Suites {
-        if s.Name == suiteName {
-            return s
-        }
-    }
-	suite := NewJSONUnitTestSuite(suiteName)
-
-	tss.addSuite(suite)	
-	return suite
-}
-
-type JSONUnitTestSuite struct {
+type JSONUnitTestCases struct {
 	Successfull int              `json:"successfull,attr"`
 	Failed      int              `json:"failed,attr"`
 	Aborted     int              `json:"aborted,attr"`
 	Total       int              `json:"total,attr"`
-	Time        string           `json:"time,attr"`
-	Name        string           `json:"name,attr"`
 	TestCases   []*JSONUnitTestCase
 }
 
-func NewJSONUnitTestSuite(suiteName string) *JSONUnitTestSuite {
-	return &JSONUnitTestSuite{
+func NewJSONUnitTestCases() *JSONUnitTestCases {
+	return &JSONUnitTestCases{
 		Successfull: 0,
 		Failed: 0,
 		Aborted: 0,
 		Total: 0,
-		Time: "",
-		Name: suiteName,
 		TestCases: []*JSONUnitTestCase{},
 	}
 }
 
-func (ts *JSONUnitTestSuite) addTest(test *JSONUnitTestCase) {
-	for _, t := range ts.TestCases {
+func (tc *JSONUnitTestCases) addTest(test *JSONUnitTestCase) {
+	for _, t := range tc.TestCases {
     	if test.Backend == t.Backend && test.System == t.System && test.Name == t.Name {
     		if len(test.Details) > 0 {
     			t.Details = append(t.Details, test.Details[0])
@@ -60,15 +36,15 @@ func (ts *JSONUnitTestSuite) addTest(test *JSONUnitTestCase) {
 
 	if len(test.Details) > 0 {
 		if test.Details[0].Type == failed {
-			ts.Failed += 1
+			tc.Failed += 1
 		} else {
-			ts.Aborted += 1	
+			tc.Aborted += 1	
 		}
 	} else {
-		ts.Successfull += 1
+		tc.Successfull += 1
 	}
-	ts.Total += 1
-	ts.TestCases = append(ts.TestCases, test)
+	tc.Total += 1
+	tc.TestCases = append(tc.TestCases, test)
 }
 
 type JSONUnitTestCase struct {
@@ -95,34 +71,20 @@ type JSONUnitDetail struct {
 	Message  string `json:"message,attr"`
 }
 
-type JSONUnitSkipMessage struct {
-	Message string `json:"message,attr"`
-}
-
-type JSONUnitFailure struct {
-	Message  string `json:"message,attr"`
-	Type     string `json:"type,attr"`
-}
-
-type JSONUnitAbort struct {
-	Message  string `json:"message,attr"`
-	Type     string `json:"type,attr"`
-}
-
 type JSONUnitReport struct {
 	FileName string
-	TestSuites *JSONUnitTestSuites
+	TestCases *JSONUnitTestCases
 }
 
 func NewJSONUnitReport(name string) Report {
 	report := JSONUnitReport{}
 	report.FileName = name
-	report.TestSuites = &JSONUnitTestSuites{}
+	report.TestCases = NewJSONUnitTestCases()
 	return report 
 }
 
 func (r JSONUnitReport) finish() error {
-	bytes, err := json.MarshalIndent(r.TestSuites, "", "    ")
+	bytes, err := json.MarshalIndent(r.TestCases, "", "    ")
 	if err != nil {
 		return fmt.Errorf("cannot indent the JSONUnit report: %v", err)
 	}
@@ -136,8 +98,7 @@ func (r JSONUnitReport) finish() error {
 }
 
 func (r JSONUnitReport) addTest(test *JSONUnitTestCase) {
-	suite := r.TestSuites.getSuite(test.Suite)
-	suite.addTest(test)
+	r.TestCases.addTest(test)
 }
 
 func (r JSONUnitReport) addFailedTest(suiteName string, backend string, system string, testName string, verb string) {

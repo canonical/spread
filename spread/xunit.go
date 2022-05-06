@@ -33,7 +33,6 @@ type XUnitTestSuite struct {
 	Failed      int              `xml:"failed,attr"`
 	Aborted     int              `xml:"aborted,attr"`
 	Total       int              `xml:"total,attr"`
-	Time        string           `xml:"time,attr"`
 	Name        string           `xml:"name,attr"`
 	TestCases   []*XUnitTestCase
 }
@@ -44,7 +43,6 @@ func NewXUnitTestSuite(suiteName string) *XUnitTestSuite {
 		Failed: 0,
 		Aborted: 0,
 		Total: 0,
-		Time: "",
 		Name: suiteName,
 		TestCases: []*XUnitTestCase{},
 	}
@@ -75,41 +73,31 @@ func (ts *XUnitTestSuite) addTest(test *XUnitTestCase) {
 
 type XUnitTestCase struct {
 	XMLName     xml.Name          `xml:"testcase"`
+	Classname   string            `xml:"classname,attr"`
+	Name        string            `xml:"name,attr"`
+	Details     []*XUnitDetail    `xml:"details,omitempty"`
 	Backend     string            `xml:"backend,attr"`
 	System      string            `xml:"system,attr"`
-	Name        string            `xml:"name,attr"`
 	Suite       string            `xml:"suite,attr"`
-	Details     []*XUnitDetail    `xml:"details,omitempty"`
 }
 
-func NewXUnitTestCase(testName string, backend string, system string, suitename string) *XUnitTestCase {
+func NewXUnitTestCase(testName string, backend string, system string, suiteName string) *XUnitTestCase {
+	classname := backend + ":" + system + ":" + suiteName
 	return &XUnitTestCase{
+				Classname: classname,
 				Backend: backend,
 				System:  system,
 				Name:    testName,
-				Suite:   suitename,
+				Suite:   suiteName,
 				Details:  []*XUnitDetail{},
 			}	
 }
 
 type XUnitDetail struct {
-	Type     string `xml:"type,attr"`
-	Info     string `xml:"info,attr"`
-	Message  string `xml:"message,attr"`
-}
-
-type XUnitSkipMessage struct {
-	Message string `xml:"message,attr"`
-}
-
-type XUnitFailure struct {
-	Message  string `xml:"message,attr"`
-	Type     string `xml:"type,attr"`
-}
-
-type XUnitAbort struct {
-	Message  string `xml:"message,attr"`
-	Type     string `xml:"type,attr"`
+	XMLName  xml.Name  `xml:"error"`
+	Type     string    `xml:"type,attr"`
+	Info     string    `xml:"info,attr"`
+	Message  string    `xml:"message,attr"`
 }
 
 type XUnitReport struct {

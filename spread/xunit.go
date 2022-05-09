@@ -86,7 +86,7 @@ type XUnitTestCase struct {
 }
 
 func NewXUnitTestCase(testName string, backend string, system string, suiteName string) *XUnitTestCase {
-	classname := backend + ":" + system + ":" + suiteName
+	classname := backend + ":" + system + ":" + suiteName + "/"
 	return &XUnitTestCase{
 				Classname: classname,
 				Backend: backend,

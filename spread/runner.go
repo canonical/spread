@@ -37,7 +37,7 @@ type Options struct {
 	Repeat         int
 	GarbageCollect bool
 	XUnit          bool
-	JSONUnit          bool
+	JSONUnit       bool
 }
 
 type Runner struct {
@@ -161,11 +161,11 @@ func (r *Runner) loop() (err error) {
 				}
 			}
 			r.stats.log()
-			if r.options.XUnit { 
-				r.stats.createXUnitReport()			
+			if r.options.XUnit {
+				r.stats.createXUnitReport()
 			}
-			if r.options.JSONUnit { 
-				r.stats.createJSONUnitReport()			
+			if r.options.JSONUnit {
+				r.stats.createJSONUnitReport()
 			}
 		}
 		if !r.options.Reuse || r.options.Discard {
@@ -1094,29 +1094,29 @@ func (s *stats) addTestsToReport(report Report, testsList []*Job, result string,
 		} else {
 			report.addSuccessfullTest(suiteName, job.Backend.Name, job.System.Name, testName)
 		}
-		
+
 	}
 }
 
 func (s *stats) completeReport(report Report) {
 	s.addTestsToReport(report, s.TaskPrepareError, failed, preparing)
-	s.addTestsToReport(report, s.TaskError, failed, executing)	
+	s.addTestsToReport(report, s.TaskError, failed, executing)
 	s.addTestsToReport(report, s.TaskRestoreError, failed, restoring)
 	s.addTestsToReport(report, s.TaskAbort, aborted, "")
 	s.addTestsToReport(report, s.TaskDone, successfull, "")
-	report.finish()	
+	report.finish()
 }
 
 func (s *stats) createXUnitReport() {
 	printf("Creating XUnit report")
 	report := NewXUnitReport("report.xml")
-	s.completeReport(report)	
+	s.completeReport(report)
 }
 
 func (s *stats) createJSONUnitReport() {
 	printf("Creating JSONUnit report")
 	report := NewJSONUnitReport("report.json")
-	s.completeReport(report)	
+	s.completeReport(report)
 }
 
 func projectName(job *Job) string { return "project" }

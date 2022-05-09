@@ -1092,7 +1092,7 @@ func (s *stats) addTestsToReport(report Report, testsList []*Job, result string,
 		} else if result == aborted {
 			report.addAbortedTest(suiteName, job.Backend.Name, job.System.Name, testName)
 		} else {
-			report.addSuccessfullTest(suiteName, job.Backend.Name, job.System.Name, testName)
+			report.addPassedTest(suiteName, job.Backend.Name, job.System.Name, testName)
 		}
 
 	}
@@ -1103,7 +1103,7 @@ func (s *stats) completeReport(report Report) {
 	s.addTestsToReport(report, s.TaskError, failed, executing)
 	s.addTestsToReport(report, s.TaskRestoreError, failed, restoring)
 	s.addTestsToReport(report, s.TaskAbort, aborted, "")
-	s.addTestsToReport(report, s.TaskDone, successfull, "")
+	s.addTestsToReport(report, s.TaskDone, passed, "")
 	report.finish()
 }
 

@@ -28,23 +28,23 @@ func (tss *XUnitTestSuites) getSuite(suiteName string) *XUnitTestSuite {
 }
 
 type XUnitTestSuite struct {
-	XMLName     xml.Name `xml:"testsuite"`
-	Successfull int      `xml:"successfull,attr"`
-	Failed      int      `xml:"failed,attr"`
-	Aborted     int      `xml:"aborted,attr"`
-	Total       int      `xml:"total,attr"`
-	Name        string   `xml:"name,attr"`
-	TestCases   []*XUnitTestCase
+	XMLName   xml.Name `xml:"testsuite"`
+	Passed    int      `xml:"passed,attr"`
+	Failed    int      `xml:"failed,attr"`
+	Aborted   int      `xml:"aborted,attr"`
+	Total     int      `xml:"total,attr"`
+	Name      string   `xml:"name,attr"`
+	TestCases []*XUnitTestCase
 }
 
 func NewXUnitTestSuite(suiteName string) *XUnitTestSuite {
 	return &XUnitTestSuite{
-		Successfull: 0,
-		Failed:      0,
-		Aborted:     0,
-		Total:       0,
-		Name:        suiteName,
-		TestCases:   []*XUnitTestCase{},
+		Passed:    0,
+		Failed:    0,
+		Aborted:   0,
+		Total:     0,
+		Name:      suiteName,
+		TestCases: []*XUnitTestCase{},
 	}
 }
 
@@ -55,6 +55,7 @@ func (ts *XUnitTestSuite) addTest(test *XUnitTestCase) {
 				if test.Details[0].Type == aborted {
 					ts.Aborted += 1
 					ts.Failed -= 1
+					t.Status = aborted
 				}
 				t.Details = append(t.Details, test.Details[0])
 			}
@@ -65,11 +66,14 @@ func (ts *XUnitTestSuite) addTest(test *XUnitTestCase) {
 	if len(test.Details) > 0 {
 		if test.Details[0].Type == failed {
 			ts.Failed += 1
+			test.Status = failed
 		} else {
 			ts.Aborted += 1
+			test.Status = aborted
 		}
 	} else {
-		ts.Successfull += 1
+		ts.Passed += 1
+		test.Status = passed
 	}
 	ts.Total += 1
 	ts.TestCases = append(ts.TestCases, test)
@@ -77,12 +81,13 @@ func (ts *XUnitTestSuite) addTest(test *XUnitTestCase) {
 
 type XUnitTestCase struct {
 	XMLName   xml.Name       `xml:"testcase"`
+	Status    string         `xml:"status,attr"`
 	Classname string         `xml:"classname,attr"`
 	Name      string         `xml:"name,attr"`
 	Details   []*XUnitDetail `xml:"details,omitempty"`
-	Backend   string         `xml:"backend,attr"`
-	System    string         `xml:"system,attr"`
-	Suite     string         `xml:"suite,attr"`
+	Backend   string         `xml:"backend,omitempty"`
+	System    string         `xml:"system,omitempty"`
+	Suite     string         `xml:"suite,omitempty"`
 }
 
 func NewXUnitTestCase(testName string, backend string, system string, suiteName string) *XUnitTestCase {
@@ -100,8 +105,8 @@ func NewXUnitTestCase(testName string, backend string, system string, suiteName 
 type XUnitDetail struct {
 	XMLName xml.Name `xml:"failure"`
 	Type    string   `xml:"type,attr"`
-	Info    string   `xml:"info,attr"`
-	Message string   `xml:"message,attr"`
+	Info    string   `xml:"info,omitempty"`
+	Message string   `xml:"message,omitempty"`
 }
 
 type XUnitReport struct {
@@ -116,7 +121,18 @@ func NewXUnitReport(name string) Report {
 	return report
 }
 
+func (r XUnitReport) cleanTestCases() {
+	for _, ts := range r.TestSuites.Suites {
+		for _, t := range ts.TestCases {
+			t.Backend = ""
+			t.System = ""
+			t.Suite = ""
+		}
+	}
+}
+
 func (r XUnitReport) finish() error {
+	r.cleanTestCases()
 	bytes, err := xml.MarshalIndent(r.TestSuites, "", "\t")
 	if err != nil {
 		return fmt.Errorf("cannot indent the XUnit report: %v", err)
@@ -157,7 +173,7 @@ func (r XUnitReport) addAbortedTest(suiteName string, backend string, system str
 	r.addTest(testcase)
 }
 
-func (r XUnitReport) addSuccessfullTest(suiteName string, backend string, system string, testName string) {
+func (r XUnitReport) addPassedTest(suiteName string, backend string, system string, testName string) {
 	testcase := NewXUnitTestCase(testName, backend, system, suiteName)
 	r.addTest(testcase)
 }

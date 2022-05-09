@@ -6,31 +6,32 @@ import (
 	"io/ioutil"
 )
 
-type JSONUnitTestCases struct {
-	Successfull int `json:"successfull,attr"`
-	Failed      int `json:"failed,attr"`
-	Aborted     int `json:"aborted,attr"`
-	Total       int `json:"total,attr"`
-	TestCases   []*JSONUnitTestCase
+type JSONUnitTestSet struct {
+	Passed    int `json:"passed,attr"`
+	Failed    int `json:"failed,attr"`
+	Aborted   int `json:"aborted,attr"`
+	Total     int `json:"total,attr"`
+	TestCases []*JSONUnitTestCase
 }
 
-func NewJSONUnitTestCases() *JSONUnitTestCases {
-	return &JSONUnitTestCases{
-		Successfull: 0,
-		Failed:      0,
-		Aborted:     0,
-		Total:       0,
-		TestCases:   []*JSONUnitTestCase{},
+func NewJSONUnitTestSet() *JSONUnitTestSet {
+	return &JSONUnitTestSet{
+		Passed:    0,
+		Failed:    0,
+		Aborted:   0,
+		Total:     0,
+		TestCases: []*JSONUnitTestCase{},
 	}
 }
 
-func (tc *JSONUnitTestCases) addTest(test *JSONUnitTestCase) {
+func (tc *JSONUnitTestSet) addTest(test *JSONUnitTestCase) {
 	for _, t := range tc.TestCases {
 		if test.Backend == t.Backend && test.System == t.System && test.Name == t.Name {
 			if len(test.Details) > 0 {
 				if test.Details[0].Type == aborted {
 					tc.Aborted += 1
 					tc.Failed -= 1
+					t.Status = aborted
 				}
 				t.Details = append(t.Details, test.Details[0])
 			}
@@ -41,23 +42,27 @@ func (tc *JSONUnitTestCases) addTest(test *JSONUnitTestCase) {
 	if len(test.Details) > 0 {
 		if test.Details[0].Type == failed {
 			tc.Failed += 1
+			test.Status = failed
 		} else {
 			tc.Aborted += 1
+			test.Status = aborted
 		}
 	} else {
-		tc.Successfull += 1
+		tc.Passed += 1
+		test.Status = passed
 	}
 	tc.Total += 1
 	tc.TestCases = append(tc.TestCases, test)
 }
 
 type JSONUnitTestCase struct {
-	Backend  string            `json:"backend,attr"`
-	System   string            `json:"system,attr"`
+	Status   string            `json:"status,attr"`
 	Name     string            `json:"name,attr"`
-	Suite    string            `json:"suite,attr"`
 	FullName string            `json:"fullname,attr"`
 	Details  []*JSONUnitDetail `json:"details,omitempty"`
+	Backend  string            `json:"backend,omitempty"`
+	System   string            `json:"system,omitempty"`
+	Suite    string            `json:"suite,omitempty"`
 }
 
 func NewJSONUnitTestCase(testName string, backend string, system string, suiteName string) *JSONUnitTestCase {
@@ -74,24 +79,33 @@ func NewJSONUnitTestCase(testName string, backend string, system string, suiteNa
 
 type JSONUnitDetail struct {
 	Type    string `json:"type,attr"`
-	Info    string `json:"info,attr"`
-	Message string `json:"message,attr"`
+	Info    string `json:"info,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 type JSONUnitReport struct {
-	FileName  string
-	TestCases *JSONUnitTestCases
+	FileName string
+	TestSet  *JSONUnitTestSet
 }
 
 func NewJSONUnitReport(name string) Report {
 	report := JSONUnitReport{}
 	report.FileName = name
-	report.TestCases = NewJSONUnitTestCases()
+	report.TestSet = NewJSONUnitTestSet()
 	return report
 }
 
+func (r JSONUnitReport) cleanTestCases() {
+	for _, t := range r.TestSet.TestCases {
+		t.Backend = ""
+		t.System = ""
+		t.Suite = ""
+	}
+}
+
 func (r JSONUnitReport) finish() error {
-	bytes, err := json.MarshalIndent(r.TestCases, "", "    ")
+	r.cleanTestCases()
+	bytes, err := json.MarshalIndent(r.TestSet, "", "    ")
 	if err != nil {
 		return fmt.Errorf("cannot indent the JSONUnit report: %v", err)
 	}
@@ -105,7 +119,7 @@ func (r JSONUnitReport) finish() error {
 }
 
 func (r JSONUnitReport) addTest(test *JSONUnitTestCase) {
-	r.TestCases.addTest(test)
+	r.TestSet.addTest(test)
 }
 
 func (r JSONUnitReport) addFailedTest(suiteName string, backend string, system string, testName string, verb string) {
@@ -130,7 +144,7 @@ func (r JSONUnitReport) addAbortedTest(suiteName string, backend string, system 
 	r.addTest(testcase)
 }
 
-func (r JSONUnitReport) addSuccessfullTest(suiteName string, backend string, system string, testName string) {
+func (r JSONUnitReport) addPassedTest(suiteName string, backend string, system string, testName string) {
 	testcase := NewJSONUnitTestCase(testName, backend, system, suiteName)
 	r.addTest(testcase)
 }

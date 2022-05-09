@@ -98,7 +98,7 @@ func NewXUnitTestCase(testName string, backend string, system string, suiteName 
 }
 
 type XUnitDetail struct {
-	XMLName  xml.Name  `xml:"error"`
+	XMLName  xml.Name  `xml:"failure"`
 	Type     string    `xml:"type,attr"`
 	Info     string    `xml:"info,attr"`
 	Message  string    `xml:"message,attr"`

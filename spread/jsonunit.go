@@ -26,7 +26,7 @@ func NewJSONUnitTestSet() *JSONUnitTestSet {
 
 func (tc *JSONUnitTestSet) addTest(test *JSONUnitTestCase) {
 	for _, t := range tc.TestCases {
-		if test.Backend == t.Backend && test.System == t.System && test.Name == t.Name {
+		if test.Backend == t.Backend && test.System == t.System && test.Suite == t.Suite && test.Name == t.Name {
 			if len(test.Details) > 0 {
 				if test.Details[0].Type == aborted {
 					tc.Aborted += 1

@@ -1,0 +1,7 @@
+summary: Demo task 2
+
+details: |
+    The task is aborted with the resto of the suite
+
+execute: |
+    echo WORKS

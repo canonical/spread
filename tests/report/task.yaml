@@ -1,0 +1,68 @@
+summary: Test the reports
+
+prepare: |
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
+
+    apt install -y python3-pip
+    pip3 install xq
+
+restore: |
+    apt remove -y python3-pip
+
+execute: |
+    ! test -e report.xml
+    ! test -e report.json
+
+    spread -v -reuse -resend -xunit -jsonunit lxd:ubuntu-16.04:tests/ || true
+
+    test -e report.xml
+    test -e report.json
+
+    # These are the expected results for the reports
+    # Total: 8 Passed: 2 Aborted: 4 Failed: 2
+    # checks_1/task1 -> Passed
+    # checks_1/task2 -> Aborted
+    # checks_1/task3 -> Aborted
+    # checks_1/task4 -> Failed
+    # checks_1/task5 -> Failed
+    # checks_1/task6 -> Passed
+    # checks_2/task1 -> Aborted
+    # checks_2/task2 -> Aborted
+
+    # Verify the json report
+    test "$(jq -r '.passed' report.json)" == 2
+    test "$(jq -r '.failed' report.json)" == 2
+    test "$(jq -r '.aborted' report.json)" == 4
+    test "$(jq -r '.total' report.json)" == 8
+
+    echo "Checking failed tests"
+    jq -r '.TestCases[] | select(.status == "failed") | .fullname' report.json | MATCH "checks_1/test_4"
+    jq -r '.TestCases[] | select(.status == "failed") | .fullname' report.json | MATCH "checks_1/test_5"
+
+    echo "Checking aborted tests"
+    jq -r '.TestCases[] | select(.status == "aborted") | .fullname' report.json | MATCH "checks_1/test_2"
+    jq -r '.TestCases[] | select(.status == "aborted") | .fullname' report.json | MATCH "checks_1/test_3"
+    jq -r '.TestCases[] | select(.status == "aborted") | .fullname' report.json | MATCH "checks_2/test_1"
+    jq -r '.TestCases[] | select(.status == "aborted") | .fullname' report.json | MATCH "checks_2/test_2"
+
+    echo "Checking passed tests"
+    jq -r '.TestCases[] | select(.status == "passed") | .fullname' report.json | MATCH "checks_1/test_1"
+    jq -r '.TestCases[] | select(.status == "passed") | .fullname' report.json | MATCH "checks_1/test_6"
+
+    # Verify the xml report
+    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_1"]/@total)' | MATCH '>6<'
+    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_2"]/@total)' | MATCH '>2<'
+
+    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_1"]/@passed)' | MATCH '>2<'
+    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_1"]/@failed)' | MATCH '>2<'
+    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_1"]/@aborted)' | MATCH '>2<'
+    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_2"]/@passed)' | MATCH '>0<'
+    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_2"]/@failed)' | MATCH '>0<'
+    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_2"]/@aborted)' | MATCH '>2<'
+
+debug: |
+    cat .spread-reuse.yaml || true
+    cat task.out || true

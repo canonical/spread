@@ -1,0 +1,14 @@
+summary: Ensure it works.
+
+details: |
+    The task fails to restore, this means the task appeats as failed
+
+prepare: |
+    echo WORKS
+
+restore: |
+    exit 1
+
+execute: |
+    echo WORKS
+

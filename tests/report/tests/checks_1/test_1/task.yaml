@@ -1,0 +1,14 @@
+summary: Task 1
+
+details: |
+    The task passes
+
+prepare: |
+    echo WORKS
+
+restore: |
+    echo WORKS
+
+execute: |
+    echo WORKS
+

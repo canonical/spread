@@ -1,0 +1,14 @@
+summary: Ensure it works.
+
+details: |
+    The task passes
+
+prepare: |
+    echo WORKS
+
+restore: |
+    echo WORKS
+
+execute: |
+    echo WORKS
+

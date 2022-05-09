@@ -1,0 +1,15 @@
+summary: Ensure it works.
+
+details: |
+    The task fails to prepare and restore, this means the task is not executed and appears 
+    as aborted but the details includes the aborted and the failed.
+
+prepare: |
+    exit 1
+
+restore: |
+    exit 1
+
+execute: |
+    echo WORKS
+

@@ -1081,14 +1081,15 @@ func (s *stats) log() {
 	logNames(printf, "Failed project restore", s.ProjectRestoreError, projectName)
 }
 
-func (s *stats) addTestsToReport(report Report, testsList []*Job, result string, verb string) {
+func (s *stats) addTestsToReport(report Report, testsList []*Job, result string, stage string) {
 	for _, job := range testsList {
-		splittedName := strings.Split(taskName(job), "/")
-		suiteName := strings.Join(splittedName[:len(splittedName)-1], "/")
-		testName := splittedName[len(splittedName)-1]
+		// task names look like paths (eg suite/foo/bar/job)
+		name := taskName(job)
+		suiteName := filepath.Dir(name)
+		testName := filepath.Base(name)
 
 		if result == failed {
-			report.addFailedTest(suiteName, job.Backend.Name, job.System.Name, testName, verb)
+			report.addFailedTest(suiteName, job.Backend.Name, job.System.Name, testName, stage)
 		} else if result == aborted {
 			report.addAbortedTest(suiteName, job.Backend.Name, job.System.Name, testName)
 		} else {

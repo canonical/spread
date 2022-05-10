@@ -38,14 +38,9 @@ type XUnitTestSuite struct {
 }
 
 func NewXUnitTestSuite(suiteName string) *XUnitTestSuite {
-	return &XUnitTestSuite{
-		Passed:    0,
-		Failed:    0,
-		Aborted:   0,
-		Total:     0,
-		Name:      suiteName,
-		TestCases: []*XUnitTestCase{},
-	}
+	suite := &XUnitTestSuite{}
+	suite.Name = suiteName
+	return suite
 }
 
 func (ts *XUnitTestSuite) addTest(test *XUnitTestCase) {
@@ -91,7 +86,7 @@ type XUnitTestCase struct {
 }
 
 func NewXUnitTestCase(testName string, backend string, system string, suiteName string) *XUnitTestCase {
-	classname := backend + ":" + system + ":" + suiteName + "/"
+	classname := fmt.Sprintf("%s:%s:%s/", backend, system, suiteName)
 	return &XUnitTestCase{
 		Classname: classname,
 		Backend:   backend,
@@ -151,11 +146,11 @@ func (r XUnitReport) addTest(test *XUnitTestCase) {
 	suite.addTest(test)
 }
 
-func (r XUnitReport) addFailedTest(suiteName string, backend string, system string, testName string, verb string) {
+func (r XUnitReport) addFailedTest(suiteName string, backend string, system string, testName string, stage string) {
 	testcase := NewXUnitTestCase(testName, backend, system, suiteName)
 	detail := &XUnitDetail{
 		Type:    failed,
-		Info:    verb,
+		Info:    stage,
 		Message: "",
 	}
 	testcase.Details = append(testcase.Details, detail)

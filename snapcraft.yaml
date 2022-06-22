@@ -1,5 +1,5 @@
 name: spread
-version: 2018.08.21
+version: git
 summary: Convenient full-system test (task) distribution
 base: core20
 description: |

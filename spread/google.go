@@ -157,7 +157,7 @@ sed -i 's/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /et
 
 pkill -o -HUP sshd || true
 
-echo '` + googleReadyMarker + `' > /dev/ttyS2
+echo -e '\n` + googleReadyMarker + `\n' > /dev/console
 `
 
 const googleReadyMarker = "MACHINE-IS-READY"
@@ -523,7 +523,7 @@ func (p *googleProvider) waitServerBoot(ctx context.Context, s *googleServer) er
 	}
 	result.Next = "0"
 	for {
-		err = p.doz("GET", fmt.Sprintf("/instances/%s/serialPort?port=3&start=%s", s.d.Name, result.Next), nil, &result)
+		err = p.doz("GET", fmt.Sprintf("/instances/%s/serialPort?port=1&start=%s", s.d.Name, result.Next), nil, &result)
 		if err != nil {
 			printf("Cannot get console output for %s: %v", s, err)
 			return fmt.Errorf("cannot get console output for %s: %v", s, err)

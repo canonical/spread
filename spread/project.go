@@ -1219,14 +1219,14 @@ func evalstr(what string, strmaps ...strmap) ([]string, error) {
 			} else {
 				plain++
 			}
-			if delta > 0 && plain > 0 {
-				return nil, fmt.Errorf("%s specifies %s both in delta and plain format", strmap.context, what)
-			}
+			// Note: this code is commented to allow to specify add and remove as part of the filtering list
+			//if delta > 0 && plain > 0 {
+			//	return nil, fmt.Errorf("%s specifies %s both in delta and plain format", strmap.context, what)
+			//}
 			matches, err := matches(name, strmaps[:i+1]...)
 			if err != nil {
 				return nil, err
 			}
-
 			if add {
 				for _, match := range matches {
 					final[match] = true

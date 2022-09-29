@@ -154,6 +154,7 @@ const googleStartupScript = `
 echo root:%s | chpasswd
 
 sed -i 's/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /etc/ssh/sshd_config
+test -d /etc/ssh/sshd_config.d && echo -e 'PermitRootLogin=yes\nPasswordAuthentication=yes' > /etc/ssh/sshd_config.d/00-spread-settings.conf
 
 pkill -o -HUP sshd || true
 

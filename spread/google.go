@@ -157,7 +157,7 @@ sed -i 's/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /et
 
 pkill -o -HUP sshd || true
 
-echo -e '\n` + googleReadyMarker + `\n' > /dev/console
+echo -e '\n` + googleReadyMarker + `\n' > /dev/ttyS0 || echo -e '\n` + googleReadyMarker + `\n' > /dev/console
 `
 
 const googleReadyMarker = "MACHINE-IS-READY"

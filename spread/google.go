@@ -158,6 +158,7 @@ sed -i 's/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /et
 pkill -o -HUP sshd || true
 
 echo -e '\n` + googleReadyMarker + `\n' > /dev/ttyS0 || echo -e '\n` + googleReadyMarker + `\n' > /dev/console
+echo -e '\n` + googleReadyMarker + `\n' > /dev/ttyS2
 `
 
 const googleReadyMarker = "MACHINE-IS-READY"
@@ -517,19 +518,29 @@ func (p *googleProvider) waitServerBoot(ctx context.Context, s *googleServer) er
 	var err error
 	var marker = []byte(googleReadyMarker)
 	var trail []byte
-	var result struct {
+	var result1, result3 struct {
 		Contents string
 		Next     string
 	}
-	result.Next = "0"
+	result1.Next = "0"
+	result3.Next = "0"
 	for {
-		err = p.doz("GET", fmt.Sprintf("/instances/%s/serialPort?port=1&start=%s", s.d.Name, result.Next), nil, &result)
+		// Check output for serial port 1
+		err = p.doz("GET", fmt.Sprintf("/instances/%s/serialPort?port=1&start=%s", s.d.Name, result1.Next), nil, &result1)
 		if err != nil {
 			printf("Cannot get console output for %s: %v", s, err)
 			return fmt.Errorf("cannot get console output for %s: %v", s, err)
 		}
+		trail = append(trail, result1.Contents...)
 
-		trail = append(trail, result.Contents...)
+		// Check output for serial port 3
+		err = p.doz("GET", fmt.Sprintf("/instances/%s/serialPort?port=3&start=%s", s.d.Name, result3.Next), nil, &result3)
+		if err != nil {
+			printf("Cannot get console output for %s: %v", s, err)
+			return fmt.Errorf("cannot get console output for %s: %v", s, err)
+		}
+		trail = append(trail, result3.Contents...)
+
 		debugf("Current console buffer for %s:\n-----\n%s\n-----", s, trail)
 		if bytes.Contains(trail, marker) {
 			return nil

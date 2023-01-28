@@ -1,5 +1,6 @@
 name: spread
 version: 2018.08.21
+base: core20
 summary: Convenient full-system test (task) distribution
 description: |
     Spread is a plesant way distribute full-system integration tests and
@@ -21,5 +22,7 @@ apps:
 parts:
     spread:
         plugin: go
-        go-packages:
-            - github.com/snapcore/spread/cmd/spread
+        source-type: git
+        source: https://github.com/snapcore/spread
+        override-build:
+            cd cmd/spread && go install

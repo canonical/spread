@@ -17,8 +17,8 @@ func MockClient() *Client {
 	}
 }
 
-func DialOnReboot(cli *Client, prevUptime time.Time) error {
-	return cli.dialOnReboot(prevUptime)
+func DialOnReboot(cli *Client, prevBootID string) error {
+	return cli.dialOnReboot(prevBootID)
 }
 
 func SetKillTimeout(cli *Client, killTimeout time.Duration) {

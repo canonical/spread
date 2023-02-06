@@ -74,7 +74,7 @@ func (c *Client) ResetJob() {
 	c.SetJob("")
 }
 
-func (c *Client) dialOnReboot(prevUptime time.Time) error {
+func (c *Client) dialOnReboot(prevBootID string) error {
 	// First wait until SSH isn't working anymore.
 	timeout := time.After(c.killTimeout)
 	relog := time.NewTicker(c.warnTimeout)
@@ -84,7 +84,6 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 
 	waitConfig := *c.config
 	waitConfig.Timeout = 5 * time.Second
-	uptimeChanged := 3 * time.Second
 
 	for {
 		// Try to connect to the rebooting system, note that
@@ -93,15 +92,13 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 		// before the code times out.
 		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
 		if err == nil {
-			// once successfully connected, check uptime to
+			// once successfully connected, check boot_id to
 			// see if the reboot actually happend
 			c.sshc.Close()
 			c.sshc = sshc
-			currUptime, err := c.getUptime()
+			curBootID, err := c.getBootID()
 			if err == nil {
-				uptimeDelta := currUptime.Sub(prevUptime)
-				if uptimeDelta > uptimeChanged {
-					// Reboot done
+				if curBootID != prevBootID {
 					return nil
 				}
 			}
@@ -294,31 +291,26 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 		rebootKey = rerr.Key
 		output = append(output, '\n')
 
-		uptime, err := c.getUptime()
+		bootID, err := c.getBootID()
 		if err != nil {
 			return nil, err
 		}
 		c.Run("reboot", "", nil)
 
-		if err := c.dialOnReboot(uptime); err != nil {
+		if err := c.dialOnReboot(bootID); err != nil {
 			return nil, err
 		}
 	}
 	panic("unreachable")
 }
 
-func (c *Client) getUptime() (time.Time, error) {
-	uptime, err := c.Output("date -u -d \"$(cut -f1 -d. /proc/uptime) seconds ago\" +\"%Y-%m-%dT%H:%M:%SZ\"", "", nil)
+func (c *Client) getBootID() (string, error) {
+	rawBootID, err := c.Output("cat /proc/sys/kernel/random/boot_id", "", nil)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("cannot obtain the remote system uptime: %v", err)
+		return "", fmt.Errorf("cannot obtain the remote system boot_id: %v", err)
 	}
 
-	parsedUptime, err := time.Parse(time.RFC3339, string(uptime))
-	if err != nil {
-		return time.Time{}, fmt.Errorf("cannot parse the remote system uptime: %q", uptime)
-	}
-
-	return parsedUptime, nil
+	return string(bytes.TrimSpace(rawBootID)), nil
 }
 
 var toBashRC = map[string]bool{

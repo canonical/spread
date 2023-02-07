@@ -1,5 +1,5 @@
 name: spread
-version: 2020.08.19
+adopt-info: spread
 summary: Convenient full-system test (task) distribution
 description: |
     Spread is a plesant way distribute full-system integration tests and
@@ -23,3 +23,7 @@ parts:
     spread:
         plugin: go
         source: .
+        build-packages: [git]
+        override-pull: |
+          snapcraftctl pull
+          snapcraftctl set-version "$(date +"%Y.%m.%d").g$(git describe --always)"

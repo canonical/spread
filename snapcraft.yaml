@@ -1,5 +1,5 @@
 name: spread
-version: git
+version: 2020.08.19
 summary: Convenient full-system test (task) distribution
 base: core18
 description: |
@@ -13,6 +13,7 @@ description: |
 
 confinement: classic
 grade: stable
+base: core20
 
 apps:
     spread:
@@ -22,7 +23,4 @@ apps:
 parts:
     spread:
         plugin: go
-        go-packages:
-            - github.com/snapcore/spread/cmd/spread
-        build-packages:
-            - gcc
+        source: .

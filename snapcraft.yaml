@@ -12,7 +12,7 @@ description: |
 
 confinement: strict
 grade: stable
-base: core20
+base: core22
 
 apps:
     spread:
@@ -24,6 +24,7 @@ parts:
         plugin: go
         source: .
         build-packages: [git]
+        build-snaps: [go]
         override-pull: |
           snapcraftctl pull
           snapcraftctl set-version "$(date +"%Y.%m.%d").g$(git describe --always)"

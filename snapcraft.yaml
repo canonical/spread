@@ -15,13 +15,13 @@ grade: stable
 base: core22
 
 plugs:
-  spread-config:
+  dot-spread:
     interface: personal-files
     read:
       - $HOME/.spread
     write:
       - $HOME/.spread
-  gcloud-config:
+  dot-gcloud:
     interface: personal-files
     read:
       - $HOME/.config/gcloud
@@ -32,8 +32,8 @@ apps:
           - home
           - network
           - network-bind
-          - spread-config
-          - gcloud-config
+          - dot-spread
+          - dot-gcloud
 
 parts:
     spread:

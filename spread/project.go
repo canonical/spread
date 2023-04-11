@@ -64,6 +64,9 @@ type Backend struct {
 	Location string
 	Storage  Size
 
+	// Only for Openstack and Google so far.
+	Network  string
+
 	Systems SystemsMap
 
 	Prepare     string
@@ -529,7 +532,7 @@ func Load(path string) (*Project, error) {
 			backend.Type = bname
 		}
 		switch backend.Type {
-		case "google", "linode", "lxd", "qemu", "adhoc", "humbox":
+		case "google", "linode", "lxd", "qemu", "adhoc", "humbox", "openstack":
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}

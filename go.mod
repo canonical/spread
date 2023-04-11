@@ -3,7 +3,9 @@ module github.com/snapcore/spread
 go 1.13
 
 require (
+	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e
+	github.com/rackspace/gophercloud v1.0.1-0.20201021153103-2f2c61ebc394 // indirect
 	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97
 	golang.org/x/net v0.0.0-20210716203947-853a461950ff
 	golang.org/x/oauth2 v0.0.0-20210628180205-a41e5a781914

@@ -139,6 +139,10 @@ type System struct {
 
 	Priority OptionalInt
 	Manual   bool
+
+	// Type of machine emulated, only for qemu. Defaults to "pc", which is
+	// the QEMU default for x86_64
+	MachineType string `yaml:"machine-type"`
 }
 
 func (system *System) String() string { return system.Backend + ":" + system.Name }

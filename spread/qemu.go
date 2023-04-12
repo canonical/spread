@@ -121,6 +121,13 @@ func biosPath(biosName string) (string, error) {
 	return "", fmt.Errorf("cannot find bios path for %q", biosName)
 }
 
+func machineType(system *System) string {
+	if system.MachineType == "" {
+		return "pc"
+	}
+	return system.MachineType
+}
+
 func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
 	serial := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+100)
 	monitor := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+200)
@@ -133,6 +140,7 @@ func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
 		"-net", fwd,
 		"-serial", serial,
 		"-monitor", monitor,
+		"-M", machineType(system),
 		path)
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)

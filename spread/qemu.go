@@ -121,6 +121,15 @@ func biosPath(biosName string) (string, error) {
 	return "", fmt.Errorf("cannot find bios path for %q", biosName)
 }
 
+func qemuDrive(path string, system *System) string {
+	qemuDrive := fmt.Sprintf("file=%s,format=raw", path)
+	// If virtio is not required, QEMU will use the default disk interface
+	if system.VirtioDisk {
+		qemuDrive += ",if=virtio"
+	}
+	return qemuDrive
+}
+
 func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
 	serial := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+100)
 	monitor := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+200)
@@ -133,7 +142,7 @@ func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
 		"-net", fwd,
 		"-serial", serial,
 		"-monitor", monitor,
-		path)
+		"-drive", qemuDrive(path, system))
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
 	}

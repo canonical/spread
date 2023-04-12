@@ -1,6 +1,7 @@
 package spread_test
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -89,5 +90,36 @@ func (s *qemuSuite) TestQemuCmdWithEfi(c *C) {
 		// XXX: reuse testutil.Contains from snapd?
 		s := strings.Join(cmd.Args, ":")
 		c.Check(strings.Contains(s, ":-bios:/usr/share/OVMF/OVMF_CODE.fd:"), Equals, tc.UseBiosQemuOption)
+	}
+}
+
+func (s *qemuSuite) TestQemuVirtioDrive(c *C) {
+	imageName := "ubuntu-20.06-64"
+
+	restore := makeMockQemuImg(c, imageName)
+	defer restore()
+
+	path := "/path/to/image"
+
+	tests := []struct {
+		VirtioDisk  bool
+		DriveString string
+	}{
+		{false, fmt.Sprintf("file=%s,format=raw", path)},
+		{true, fmt.Sprintf("file=%s,format=raw,if=virtio", path)},
+	}
+
+	for _, tc := range tests {
+		ms := &spread.System{
+			Name:       "some-name",
+			Image:      imageName,
+			Backend:    "qemu",
+			VirtioDisk: tc.VirtioDisk,
+		}
+		cmd, err := spread.QemuCmd(ms, path, 512, 9999)
+		c.Assert(err, IsNil)
+
+		s := strings.Join(cmd.Args, " ")
+		c.Assert(s, Matches, fmt.Sprintf("^.*-drive %s.*$", tc.DriveString))
 	}
 }

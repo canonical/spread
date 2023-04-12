@@ -139,6 +139,10 @@ type System struct {
 
 	Priority OptionalInt
 	Manual   bool
+
+	// Specify that the disk should be attached using the "virtio" backend
+	// in QEMU. Only supported by the qemu backend.
+	VirtioDisk bool `default:"false" yaml:"virtio-disk"`
 }
 
 func (system *System) String() string { return system.Backend + ":" + system.Name }

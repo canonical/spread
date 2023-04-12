@@ -123,3 +123,32 @@ func (s *qemuSuite) TestQemuVirtioDrive(c *C) {
 		c.Assert(s, Matches, fmt.Sprintf("^.*-drive %s.*$", tc.DriveString))
 	}
 }
+
+func (s *qemuSuite) TestQemuVirtioNet(c *C) {
+	imageName := "ubuntu-20.06-64"
+
+	restore := makeMockQemuImg(c, imageName)
+	defer restore()
+
+	tests := []struct {
+		VirtioNet       bool
+		NetDeviceString string
+	}{
+		{false, fmt.Sprintf("netdev=user0,driver=e1000")},
+		{true, fmt.Sprintf("netdev=user0,driver=virtio-net-pci")},
+	}
+
+	for _, tc := range tests {
+		ms := &spread.System{
+			Name:      "some-name",
+			Image:     imageName,
+			Backend:   "qemu",
+			VirtioNet: tc.VirtioNet,
+		}
+		cmd, err := spread.QemuCmd(ms, "/path/to/image", 512, 9999)
+		c.Assert(err, IsNil)
+
+		s := strings.Join(cmd.Args, " ")
+		c.Assert(s, Matches, fmt.Sprintf("^.*-device %s.*$", tc.NetDeviceString))
+	}
+}

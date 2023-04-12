@@ -143,6 +143,10 @@ type System struct {
 	// Specify that the disk should be attached using the "virtio" backend
 	// in QEMU. Only supported by the qemu backend.
 	VirtioDisk bool `default:"false" yaml:"virtio-disk"`
+
+	// Specify that the network interface should be attached using the
+	// "virtio" backend in QEMU. Only supported by the qemu backend.
+	VirtioNet bool `default:"false" yaml:"virtio-net"`
 }
 
 func (system *System) String() string { return system.Backend + ":" + system.Name }

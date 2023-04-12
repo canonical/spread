@@ -130,16 +130,26 @@ func qemuDrive(path string, system *System) string {
 	return qemuDrive
 }
 
+func qemuNetDevice(system *System) string {
+	netdev := "netdev=user0,driver="
+	if system.VirtioNet {
+		netdev += "virtio-net-pci"
+	} else {
+		netdev += "e1000"
+	}
+	return netdev
+}
+
 func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
 	serial := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+100)
 	monitor := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+200)
-	fwd := fmt.Sprintf("user,hostfwd=tcp:127.0.0.1:%d-:22", port)
+	fwd := fmt.Sprintf("user,id=user0,hostfwd=tcp:127.0.0.1:%d-:22", port)
 	cmd := exec.Command("qemu-system-x86_64",
 		"-enable-kvm",
 		"-snapshot",
 		"-m", strconv.Itoa(mem),
-		"-net", "nic",
-		"-net", fwd,
+		"-netdev", fwd,
+		"-device", qemuNetDevice(system),
 		"-serial", serial,
 		"-monitor", monitor,
 		"-drive", qemuDrive(path, system))

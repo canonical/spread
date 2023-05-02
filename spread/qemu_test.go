@@ -1,6 +1,7 @@
 package spread_test
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -89,5 +90,45 @@ func (s *qemuSuite) TestQemuCmdWithEfi(c *C) {
 		// XXX: reuse testutil.Contains from snapd?
 		s := strings.Join(cmd.Args, ":")
 		c.Check(strings.Contains(s, ":-bios:/usr/share/OVMF/OVMF_CODE.fd:"), Equals, tc.UseBiosQemuOption)
+	}
+}
+
+func (s *qemuSuite) TestQemuMachineTypes(c *C) {
+	imageName := "ubuntu-20.06-64"
+
+	restore := makeMockQemuImg(c, imageName)
+	defer restore()
+
+	tests := []struct {
+		machineType         string
+		expectedMachineType string
+		expectedErr         string
+	}{
+		// Make sure the default is "pc"
+		{"", "pc", ""},
+		// Make sure the specified machine type is used
+		{"q35", "q35", ""},
+		// Do not allow multiple words
+		{"invalid machine", "", `invalid machine type: "invalid machine"`},
+	}
+
+	for _, tc := range tests {
+		ms := &spread.System{
+			Name:    "some-name",
+			Image:   imageName,
+			Backend: "qemu",
+			Plan:    tc.machineType,
+		}
+		cmd, err := spread.QemuCmd(ms, "/path/to/image", 512, 9999)
+
+		if tc.expectedErr != "" {
+			c.Check(err, ErrorMatches, tc.expectedErr)
+			continue
+		}
+		c.Assert(err, IsNil)
+
+		s := strings.Join(cmd.Args, " ")
+		// Make sure the QEMU command specifies the given machine type, e.g. "-M pc"
+		c.Assert(s, Matches, fmt.Sprintf("^.*-M %s.*$", tc.expectedMachineType))
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 
 	"golang.org/x/net/context"
@@ -121,7 +122,30 @@ func biosPath(biosName string) (string, error) {
 	return "", fmt.Errorf("cannot find bios path for %q", biosName)
 }
 
+func machineType(system *System) (string, error) {
+	// Utilise the variable to determine which QEMU machine type should be
+	// used. Use the "pc" QEMU machine type if nothing is specified.
+	if system.Plan == "" {
+		system.Plan = "pc"
+	}
+
+	// Make sure that the value for the machine type is sane and does not
+	// allow the user to pass arbitrary arguments to QEMU by ensuring that
+	// the value is a single word.
+	r := regexp.MustCompile(`^\S+$`)
+	if !r.Match([]byte(system.Plan)) {
+		return "", fmt.Errorf(`invalid machine type: "%s"`, system.Plan)
+	}
+
+	return system.Plan, nil
+}
+
 func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
+	machine, err := machineType(system)
+	if err != nil {
+		return nil, err
+	}
+
 	serial := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+100)
 	monitor := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+200)
 	fwd := fmt.Sprintf("user,hostfwd=tcp:127.0.0.1:%d-:22", port)
@@ -133,6 +157,7 @@ func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
 		"-net", fwd,
 		"-serial", serial,
 		"-monitor", monitor,
+		"-M", machine,
 		path)
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)

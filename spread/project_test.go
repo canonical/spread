@@ -74,6 +74,9 @@ backends:
    - system-2:
       plan: plan-for-2
    - system-3:
+   - system-4:
+      device-backends:
+        test-device: test-backend
 suites:
  tests/:
   summary: mock tests
@@ -91,6 +94,8 @@ suites:
 	c.Check(backend.Systems["system-1"].Plan, Equals, "global-plan")
 	c.Check(backend.Systems["system-2"].Plan, Equals, "plan-for-2")
 	c.Check(backend.Systems["system-3"].Plan, Equals, "global-plan")
+	c.Check(len(backend.Systems["system-4"].DeviceBackends), Equals, 1)
+	c.Check(backend.Systems["system-4"].DeviceBackends["test-device"], Equals, "test-backend")
 }
 
 func (s *projectSuite) TestOptionalInt(c *C) {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 
 	"golang.org/x/net/context"
@@ -121,19 +122,58 @@ func biosPath(biosName string) (string, error) {
 	return "", fmt.Errorf("cannot find bios path for %q", biosName)
 }
 
+func setDefaultDeviceBackends(system *System) error {
+	if system.DeviceBackends == nil {
+		system.DeviceBackends = map[string]string{}
+	}
+
+	defaults := map[string]string{
+		"drive":   "none",
+		"network": "e1000",
+	}
+
+	// Set the default device backends for the devices that were not set in
+	// the system YAML
+	for device, defaultBackend := range defaults {
+		if _, ok := system.DeviceBackends[device]; !ok {
+			system.DeviceBackends[device] = defaultBackend
+		}
+	}
+
+	// Make sure that the values set in the configuration are sane and don't
+	// allow the user to pass arbitrary arguments to QEMU by ensuring that
+	// the value is a single word
+	r := regexp.MustCompile(`^\S+$`)
+
+	for device, backend := range system.DeviceBackends {
+		if !r.Match([]byte(backend)) {
+			return fmt.Errorf(`invalid backend for device %s: "%s"`, device, backend)
+		}
+	}
+
+	return nil
+}
+
 func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
+	err := setDefaultDeviceBackends(system)
+	if err != nil {
+		return nil, err
+	}
+
 	serial := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+100)
 	monitor := fmt.Sprintf("telnet:127.0.0.1:%d,server,nowait", port+200)
-	fwd := fmt.Sprintf("user,hostfwd=tcp:127.0.0.1:%d-:22", port)
+	fwd := fmt.Sprintf("user,id=user0,hostfwd=tcp:127.0.0.1:%d-:22", port)
+	netdev := fmt.Sprintf("netdev=user0,driver=%s", system.DeviceBackends["network"])
+	drivedev := fmt.Sprintf("file=%s,format=raw,if=%s", path, system.DeviceBackends["drive"])
 	cmd := exec.Command("qemu-system-x86_64",
 		"-enable-kvm",
 		"-snapshot",
 		"-m", strconv.Itoa(mem),
-		"-net", "nic",
-		"-net", fwd,
+		"-netdev", fwd,
+		"-device", netdev,
 		"-serial", serial,
 		"-monitor", monitor,
-		path)
+		"-drive", drivedev)
 	if os.Getenv("SPREAD_QEMU_GUI") != "1" {
 		cmd.Args = append([]string{cmd.Args[0], "-nographic"}, cmd.Args[1:]...)
 	}

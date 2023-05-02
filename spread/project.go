@@ -139,6 +139,13 @@ type System struct {
 
 	Priority OptionalInt
 	Manual   bool
+
+	// Specify the backends to use for devices in the system under test.
+	// The specific effect of this will depend on the backend used for
+	// this system.
+	// Currently, only the qemu backend supports this, and only for the
+	// drive and network device drivers.
+	DeviceBackends DeviceBackendsMap `yaml:"device-backends"`
 }
 
 func (system *System) String() string { return system.Backend + ":" + system.Name }
@@ -1363,3 +1370,5 @@ func sortedKeys(m map[string]bool) []string {
 	sort.Strings(keys)
 	return keys
 }
+
+type DeviceBackendsMap map[string]string

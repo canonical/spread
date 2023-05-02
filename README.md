@@ -852,6 +852,30 @@ adt-buildvm-ubuntu-cloud
 ```
 When done move the downloaded image into the location described above.
 
+The QEMU backend will normally create the VM with the default device
+backends. The backends for the network and drive devices can be overriden
+using the `device-backends` map in the systems configuration, and can be
+set to any string which will then be passed to QEMU. Currently, only
+setting the backend for the network and drive interfaces are supported.
+
+For example, to set the drive backend to `virtio` and the network backend
+to `virtio-net-pci`, the following system configuration could be used:
+
+_$PROJECT/spread.yaml_
+```
+backends:
+    qemu:
+        systems:
+            - ubuntu-16.04:
+                username: ubuntu
+                password: ubuntu
+                device-backends:
+                    drive: virtio
+                    network: virtio-net-pci
+```
+
+Care must be taken when setting these values as they are passed verbatim
+to the QEMU instance, without checking if the backend is supported by QEMU.
 
 <a name="google"/>
 

@@ -1,6 +1,7 @@
 package spread_test
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -89,5 +90,89 @@ func (s *qemuSuite) TestQemuCmdWithEfi(c *C) {
 		// XXX: reuse testutil.Contains from snapd?
 		s := strings.Join(cmd.Args, ":")
 		c.Check(strings.Contains(s, ":-bios:/usr/share/OVMF/OVMF_CODE.fd:"), Equals, tc.UseBiosQemuOption)
+	}
+}
+
+func (s *qemuSuite) TestQemuDeviceBackends(c *C) {
+	imageName := "ubuntu-20.06-64"
+
+	restore := makeMockQemuImg(c, imageName)
+	defer restore()
+
+	path := "/path/to/image"
+
+	tests := []struct {
+		deviceBackends map[string]string
+		driveDevString string
+		netDevString   string
+		expectedErr    string
+	}{
+		{
+			map[string]string{},
+			fmt.Sprintf("file=%s,format=raw,if=none", path),
+			"netdev=user0,driver=e1000",
+			"",
+		},
+		{
+			map[string]string{
+				"drive": "virtio",
+			},
+			fmt.Sprintf("file=%s,format=raw,if=virtio", path),
+			"netdev=user0,driver=e1000",
+			"",
+		},
+		{
+			map[string]string{
+				"network": "virtio-net-pci",
+			},
+			fmt.Sprintf("file=%s,format=raw,if=none", path),
+			"netdev=user0,driver=virtio-net-pci",
+			"",
+		},
+		{
+			map[string]string{
+				"drive":   "virtio",
+				"network": "virtio-net-pci",
+			},
+			fmt.Sprintf("file=%s,format=raw,if=virtio", path),
+			"netdev=user0,driver=virtio-net-pci",
+			"",
+		},
+		{
+			map[string]string{
+				"drive": "invalid drive backend",
+			},
+			"",
+			"",
+			`invalid backend for device drive: "invalid drive backend"`,
+		},
+		{
+			map[string]string{
+				"drive": "",
+			},
+			"",
+			"",
+			`invalid backend for device drive: ""`,
+		},
+	}
+
+	for _, tc := range tests {
+		ms := &spread.System{
+			Name:           "some-name",
+			Image:          imageName,
+			Backend:        "qemu",
+			DeviceBackends: tc.deviceBackends,
+		}
+		cmd, err := spread.QemuCmd(ms, path, 512, 9999)
+
+		if tc.expectedErr != "" {
+			c.Check(err, ErrorMatches, tc.expectedErr)
+			continue
+		}
+
+		c.Assert(err, IsNil)
+		s := strings.Join(cmd.Args, " ")
+		c.Assert(s, Matches, fmt.Sprintf("^.*-drive %s.*$", tc.driveDevString))
+		c.Assert(s, Matches, fmt.Sprintf("^.*-device %s.*$", tc.netDevString))
 	}
 }

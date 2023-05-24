@@ -26,6 +26,6 @@ func (s *clientSuite) TestDialOnReboot(c *C) {
 	spread.SetWarnTimeout(cli, 50*time.Millisecond)
 	spread.SetKillTimeout(cli, 100*time.Millisecond)
 
-	err := spread.DialOnReboot(cli, time.Time{})
+	err := spread.DialOnReboot(cli, "")
 	c.Check(err, ErrorMatches, "kill-timeout reached after mock-job reboot request")
 }

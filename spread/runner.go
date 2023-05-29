@@ -22,6 +22,7 @@ import (
 type Options struct {
 	Password       string
 	Filter         Filter
+	Args           string
 	Reuse          bool
 	ReusePid       int
 	Debug          bool
@@ -161,12 +162,7 @@ func (r *Runner) loop() (err error) {
 				}
 			}
 			r.stats.log()
-			if r.options.XUnit {
-				r.stats.createXUnitReport()
-			}
-			if r.options.JSONUnit {
-				r.stats.createJSONUnitReport()
-			}
+			r.createReports()
 		}
 		if !r.options.Reuse || r.options.Discard {
 			for len(r.servers) > 0 {
@@ -1033,6 +1029,51 @@ func (r *Runner) reuseServer(backend *Backend, system *System) *Client {
 	return nil
 }
 
+func (r *Runner) createReports() {
+	if r.options.XUnit || r.options.JSONUnit {
+		report := NewXUnitReport()
+		r.completeReport(report, r.stats)
+
+		if r.options.XUnit {
+			err := report.finishXML("report.xml")
+			if err != nil {
+				printf("Failed to create XUnit report: %v", err)
+			}
+		}
+		if r.options.JSONUnit {
+			err := report.finishJSON("report.json")
+			if err != nil {
+				printf("Failed to create JSONUnit report: %v", err)
+			}
+		}
+	}
+}
+
+func (r *Runner) addTestsToReport(report *XUnitReport, testsList []*Job, result string, stage string) {
+	for _, job := range testsList {
+		// task names look like paths (eg suite/foo/bar/job)
+		name := taskName(job)
+		suiteName := filepath.Dir(name)
+		testName := filepath.Base(name)
+
+		if result == failed {
+			report.addFailedTest(suiteName, job.Backend.Name, job.System.Name, testName, stage)
+		} else if result == aborted {
+			report.addAbortedTest(suiteName, job.Backend.Name, job.System.Name, testName)
+		} else {
+			report.addPassedTest(suiteName, job.Backend.Name, job.System.Name, testName)
+		}
+	}
+}
+
+func (r *Runner) completeReport(report *XUnitReport, stats stats) {
+	r.addTestsToReport(report, stats.TaskPrepareError, failed, preparing)
+	r.addTestsToReport(report, stats.TaskError, failed, executing)
+	r.addTestsToReport(report, stats.TaskRestoreError, failed, restoring)
+	r.addTestsToReport(report, stats.TaskAbort, aborted, "")
+	r.addTestsToReport(report, stats.TaskDone, passed, "")	
+}
+
 type stats struct {
 	TaskDone            []*Job
 	TaskError           []*Job
@@ -1079,45 +1120,6 @@ func (s *stats) log() {
 	logNames(printf, "Failed backend restore", s.BackendRestoreError, backendName)
 	logNames(printf, "Failed project prepare", s.ProjectPrepareError, projectName)
 	logNames(printf, "Failed project restore", s.ProjectRestoreError, projectName)
-}
-
-func (s *stats) addTestsToReport(report Report, testsList []*Job, result string, stage string) {
-	for _, job := range testsList {
-		// task names look like paths (eg suite/foo/bar/job)
-		name := taskName(job)
-		suiteName := filepath.Dir(name)
-		testName := filepath.Base(name)
-
-		if result == failed {
-			report.addFailedTest(suiteName, job.Backend.Name, job.System.Name, testName, stage)
-		} else if result == aborted {
-			report.addAbortedTest(suiteName, job.Backend.Name, job.System.Name, testName)
-		} else {
-			report.addPassedTest(suiteName, job.Backend.Name, job.System.Name, testName)
-		}
-
-	}
-}
-
-func (s *stats) completeReport(report Report) {
-	s.addTestsToReport(report, s.TaskPrepareError, failed, preparing)
-	s.addTestsToReport(report, s.TaskError, failed, executing)
-	s.addTestsToReport(report, s.TaskRestoreError, failed, restoring)
-	s.addTestsToReport(report, s.TaskAbort, aborted, "")
-	s.addTestsToReport(report, s.TaskDone, passed, "")
-	report.finish()
-}
-
-func (s *stats) createXUnitReport() {
-	printf("Creating XUnit report")
-	report := NewXUnitReport("report.xml")
-	s.completeReport(report)
-}
-
-func (s *stats) createJSONUnitReport() {
-	printf("Creating JSONUnit report")
-	report := NewJSONUnitReport("report.json")
-	s.completeReport(report)
 }
 
 func projectName(job *Job) string { return "project" }

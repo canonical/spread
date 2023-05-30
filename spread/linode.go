@@ -64,7 +64,7 @@ type linodeProvider struct {
 	}
 }
 
-var client = &http.Client{}
+var httpClient = &http.Client{}
 
 type linodeServer struct {
 	p *linodeProvider
@@ -1537,7 +1537,7 @@ func (p *linodeProvider) dofl(params linodeParams, result interface{}, flags doF
 	var resp *http.Response
 	var delays = rand.Perm(10)
 	for i := 0; i < 10; i++ {
-		resp, err = client.PostForm("https://api.linode.com", values)
+		resp, err = httpClient.PostForm("https://api.linode.com", values)
 		if err == nil && 500 <= resp.StatusCode && resp.StatusCode < 600 {
 			time.Sleep(time.Duration(delays[i]) * 250 * time.Millisecond)
 			continue

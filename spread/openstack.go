@@ -6,12 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rackspace/gophercloud"
-	"github.com/rackspace/gophercloud/openstack"
-	"github.com/rackspace/gophercloud/openstack/compute/v2/servers"
-	"github.com/rackspace/gophercloud/openstack/compute/v2/images"
-	"github.com/rackspace/gophercloud/openstack/networking/v2/networks"
-	"github.com/rackspace/gophercloud/pagination"
+	"github.com/go-goose/goose/v5/client"
+	"github.com/go-goose/goose/v5/glance"
+	"github.com/go-goose/goose/v5/identity"
+	"github.com/go-goose/goose/v5/neutron"
+	"github.com/go-goose/goose/v5/nova"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/context"
@@ -37,9 +36,10 @@ type openstackProvider struct {
 	openstackProject string
 	openstackAvailabilityZone  string
 
-	computeClient *gophercloud.ServiceClient
-	networkClient *gophercloud.ServiceClient
-	imageClient *gophercloud.ServiceClient
+	region string	
+	computeClient *nova.Client
+	networkClient *neutron.Client
+	imageClient *glance.Client
 
 	mu sync.Mutex
 
@@ -178,76 +178,117 @@ func openstackName() string {
 	return strings.ToLower(strings.Replace(time.Now().UTC().Format(openstackNameLayout), ".", "-", 1))
 }
 
-func (p *openstackProvider) createMachine(ctx context.Context, system *System) (*openstackServer, error) {
-	debugf("Creating new openstack server for %s...", system.Name)
-
-	name := openstackName()
-	flavor := openstackDefaultFlavor
-	if system.Plan != "" {
-		flavor = system.Plan
-	}
-
-	// cloud init script
-	cloudconfig := fmt.Sprintf(openstackCloudInitScript, p.options.Password)
-
-	// tags to the created instance
-	tags := map[string]string{
-		"spread":   "true",
-		"owner":    strings.ToLower(username()),
-		"reuse":    strconv.FormatBool(p.options.Reuse),
-		"password": p.options.Password,
-	}
-
-	networkID, err := networks.IDFromName(p.networkClient, p.backend.Network)
-	network, err := networks.Get(p.networkClient, networkID).Extract()
+func (p *openstackProvider) findFlavorId(flavorName string) (string, error) {
+	flavors, err := p.computeClient.ListFlavors()
 	if err != nil {
-		return nil, &FatalError{fmt.Errorf("Could not retrieve network for server", err)}
+		return "", fmt.Errorf("failed to retrieve flavors list: %v", err)
 	}
 
-	// This is disabled because the glance module tested is returning error to retrieve the list of images
-	//image, err := p.findImage(system.Image)
-	//if err != nil {
-	//	return nil, &FatalError{fmt.Errorf("Could not retrieve image for server", err)}
-	//}
-	image := system.Image
-
-	server, err := servers.Create(p.computeClient, servers.CreateOpts{
-		Name:       name,
-		ImageName:  image,
-		FlavorName: flavor,
-		UserData:   []byte(cloudconfig),
-		Metadata:   tags,
-		Networks:   []servers.Network{servers.Network{UUID: network.ID,}},
-	}).Extract()
-	if err != nil {
-		return nil, &FatalError{fmt.Errorf("Could not create instance", err)}
-	}
-
-	s := &openstackServer{
-		p: p,
-		d: openstackServerData{
-			Name:    server.ID,
-			Flavor:  flavor,
-			Status:  openstackProvisioning,
-			Created: time.Now(),
-		},
-
-		system: system,
-	}
-
-	// First we need to wait until the image is active and there is no erros during the spawning process
-	err = servers.WaitForStatus(p.computeClient, server.ID, "ACTIVE", 180)
-	if err != nil {
-		if p.removeMachine(ctx, s) != nil {
-			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) new openstack server %s: %v", s, err)}
+	var flavorId string
+	for _, flavor := range flavors {
+		if flavor.Name == flavorName {
+			flavorId = flavor.Id
+			break
 		}
-		return nil, &FatalError{fmt.Errorf("cannot allocate new openstack server %s: %v", s, err)}
 	}
 
-	instance, _ := servers.Get(p.computeClient, server.ID).Extract()
-	// The adreesses for a network is a list of maps, and we are configuring just 1 network address
-	networkInfo := instance.Addresses[p.backend.Network].([]interface{})[0].(map[string]interface{})
-	s.address = fmt.Sprintf("%v", networkInfo["addr"])
+	if flavorId == "" {
+		return "", fmt.Errorf("specified flavor not found: %s", flavorName)
+	}
+
+	return flavorId, nil
+}
+
+func (p *openstackProvider) findNetworkId() (string, error) {
+	networks, err := p.networkClient.ListNetworksV2()
+	if err != nil {
+		return "", fmt.Errorf("failed to retrieve networks list: %v", err)
+	}
+
+	var netId string
+	for _, net := range networks {
+		if net.External == true {
+			netId = net.Id
+			break
+		}
+	}
+	if netId == "" {
+		return "", fmt.Errorf("no valid network found to create floating IP")
+	}
+
+	return netId, nil
+}
+
+func (p *openstackProvider) findImageId(imageName string) (string, error) {
+    images, err := p.imageClient.ListImagesDetail()
+	if err != nil {
+		return "", fmt.Errorf("failed to retrieve images list: %v", err)
+	}
+
+    var sameImage glance.ImageDetail
+    var lastImage glance.ImageDetail
+	for _, i := range images {
+		if i.Name == imageName {
+            sameImage = i
+        } else if strings.Contains(i.Name, imageName) {
+        	// Check if the creation date for the current image is after the previous selected one
+        	currCreatedDate, err := time.Parse(time.RFC3339, i.Created)
+        	if err != nil {
+				return "", fmt.Errorf("error parsing image: %v", err)
+			}
+        	lastCreatedDate, err := time.Parse(time.RFC3339, lastImage.Created)
+			if err != nil {
+				return "", fmt.Errorf("error parsing image: %v", err)
+			}
+			if currCreatedDate.After(lastCreatedDate) {
+        		lastImage = i
+        	}
+        }
+	}
+
+    // return the image when it matchs exactly with the provided name
+	if sameImage.Id != "" {		
+        return sameImage.Id, nil
+    }    
+
+    if lastImage.Id != "" {
+        return lastImage.Id, nil
+    }
+
+    return "", fmt.Errorf("No matching image found")
+}
+
+func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer, timeoutSeconds int) error {
+	// Wait until the server is actually running
+	start := time.Now()
+	for {
+		if time.Since(start) > time.Duration(timeoutSeconds) * time.Second {			
+			return &FatalError{fmt.Errorf("timeout reached checking status")}
+		}
+		server, err := p.computeClient.GetServer(s.d.Name)
+		if err != nil {
+			return fmt.Errorf("error retrieving server information: %v", err)
+		}
+		if server.Status != nova.StatusBuild {
+			if server.Status != nova.StatusActive {
+				return fmt.Errorf("server status is not active: %s", server.Status)
+			}
+			break
+		}
+		time.Sleep(5 * time.Second)
+	}
+	debugf("server %s is running", s.d.Name)
+	return nil
+}
+
+func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer, timeoutSeconds int) error {
+	server, err := p.computeClient.GetServer(s.d.Name)
+	if err != nil {
+		return fmt.Errorf("error retrieving server information: %v", err)
+	}
+	// The adreesses for a network is map of networks and list of ip adresses
+	// We are configuring just 1 network address for the network
+	s.address = server.Addresses[p.backend.Network][0].Address
 
 	config := &ssh.ClientConfig{
 		User:            "root",
@@ -260,15 +301,12 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		addr += ":22"
 	}
 
-	// Iterate 5 minutes until the ssh connection to the host can be stablished
+	// Iterate until the ssh connection to the host can be stablished
 	// In openstack the client cannot access to the serial console of the instance
 	start := time.Now()
     for {
-        if time.Since(start) > 5*time.Minute {
-   			if p.removeMachine(ctx, s) != nil {
-				return nil, &FatalError{fmt.Errorf("cannot deallocate new openstack server %s: %v", s, err)}
-			}
-			return nil, &FatalError{fmt.Errorf("failed to ssh to the allocated instance")}
+        if time.Since(start) > time.Duration(timeoutSeconds) * time.Second {
+			return &FatalError{fmt.Errorf("failed to ssh to the allocated instance")}
         }
 
         _, err = ssh.Dial("tcp", addr, config)
@@ -278,100 +316,121 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 
         time.Sleep(2 * time.Second)
     }
-
-	return s, nil
+    debugf("connection to server %s is stablished", s.d.Name)
+    return nil
 }
 
-func (p *openstackProvider) findImage(imageName string) (string, error) {
-    var sameImage images.Image
-    var lastImage images.Image
+func (p *openstackProvider) createMachine(ctx context.Context, system *System) (*openstackServer, error) {
+	debugf("Creating new openstack server for %s...", system.Name)
 
-    options := &images.ListOpts{Limit: 100, Name: imageName}
-    err := images.ListDetail(p.imageClient, options).EachPage(func(page pagination.Page) (bool, error) {
-        imageList, err := images.ExtractImages(page)
-        if err != nil {
-            return false, err
-        }
+	name := openstackName()
+	flavor := openstackDefaultFlavor
+	if system.Plan != "" {
+		flavor = system.Plan
+	}
+	flavorId, err := p.findFlavorId(flavor)
+	if err != nil {
+		return nil, err
+	}
 
-        for _, i := range imageList {
-            if i.Name == imageName {
-                sameImage = i
-            } else if strings.Contains(i.Name, imageName) {
-            	// Check if the creation date for the current image is after the previous selected one
-            	currCreatedDate, err := time.Parse(time.RFC3339, i.Created)
-            	if err != nil {
-					return false, &FatalError{fmt.Errorf("error parsing image: %v", err)}
-				}
-            	lastCreatedDate, err := time.Parse(time.RFC3339, lastImage.Created)
-				if err != nil {
-					return false, &FatalError{fmt.Errorf("error parsing image: %v", err)}
-				}
-				if currCreatedDate.After(lastCreatedDate) {
-            		lastImage = i
-            	}
-            }
-        }
+	networkID, err := p.findNetworkId()
+	if err != nil {
+		return nil, err
+	}
 
-        return true, nil
-    })
+	imageID, err := p.findImageId(system.Image)
+	if err != nil {
+		return nil, err
+	}	
 
-    if err != nil {
-        return "", err
-    }
+	// cloud init script
+	cloudconfig := fmt.Sprintf(openstackCloudInitScript, p.options.Password)
 
-    // return the image when it matchs exactly with the provided name
-	if sameImage.ID != "" {		
-        return sameImage.Name, nil
-    }    
+	// tags to the created instance
+	tags := map[string]string{
+		"spread":   "true",
+		"owner":    strings.ToLower(username()),
+		"reuse":    strconv.FormatBool(p.options.Reuse),
+		"password": p.options.Password,
+	}
 
-    if lastImage.ID != "" {
-        return lastImage.Name, nil
-    }
+	opts := nova.RunServerOpts{
+		Name:             name,
+		FlavorId:         flavorId,
+		ImageId:          imageID,
+		AvailabilityZone: p.region,
+		Networks:         []nova.ServerNetworks{{NetworkId: networkID,}},
+		Metadata:   	  tags,
+		UserData:         []byte(cloudconfig),
+	}
+	server, err := p.computeClient.RunServer(opts)
+	if err != nil {
+		return nil, &FatalError{fmt.Errorf("Could not create instance", err)}
+	}
 
-    return "", fmt.Errorf("No matching image found")
+	s := &openstackServer{
+		p: p,
+		d: openstackServerData{
+			Name:    server.Id,
+			Flavor:  flavor,
+			Status:  openstackProvisioning,
+			Created: time.Now(),
+		},
+
+		system: system,
+	}
+
+	// First we need to wait until the image is active and there is no erros during the spawning process
+	// The timeout for this process is 180 seconds
+	err = p.waitServerCompleteBuilding(s, 180)
+	if err != nil {
+		if p.removeMachine(ctx, s) != nil {
+			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) new openstack server %s: %v", s, err)}
+		}
+		return nil, &FatalError{fmt.Errorf("cannot allocate new openstack server %s: %v", s, err)}
+	}
+
+	// Connect through ssh to the
+	err = p.waitServerCompleteSetup(s, 300)
+	if err != nil {
+		if p.removeMachine(ctx, s) != nil {
+			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) openstack server %s: %v", s, err)}
+		}
+		return nil, &FatalError{fmt.Errorf("cannot stablish ssh connection to the openstach server %s: %v", s, err)}
+	}
+
+	return s, nil
 }
 
 func (p *openstackProvider) list() ([]*openstackServer, error) {
 	debug("Listing available openstack instances...")
 
-	// Retrieve a pager (i.e. a paginated collection)
-	opts := servers.ListOpts{}
-	pager := servers.List(p.computeClient, opts)
-	var instances []*openstackServer
-
-	// Define an anonymous function to be executed on each page's iteration
-	err := pager.EachPage(func(page pagination.Page) (bool, error) {
-		serverList, err := servers.ExtractServers(page)
-		if err != nil {
-			return false, &FatalError{fmt.Errorf("cannot list openstack instances: %v", err)}
-		}
-
-		for _, s := range serverList {
-			val, ok := s.Metadata["spread"]
-			if ok && val == "true" {
-				createdTime, err := time.Parse(time.RFC3339, s.Created)
-				if err != nil {
-					return false, &FatalError{fmt.Errorf("cannot list openstack instances: %v", err)}
-				}
-				d := openstackServerData{
-					Name:    s.Name,
-					Created: createdTime,
-				}
-				instances = append(instances, &openstackServer{p: p, d: d})
-			}
-		}
-		return true, nil
-	})
+	filter := nova.NewFilter()
+	servers, err := p.computeClient.ListServersDetail(filter)
 	if err != nil {
 		return nil, &FatalError{fmt.Errorf("cannot list openstack instances: %v", err)}
 	}
 
+	var instances []*openstackServer
+	for _, s := range servers {
+		val, ok := s.Metadata["spread"]
+		if ok && val == "true" {
+			createdTime, err := time.Parse(time.RFC3339, s.Created)
+			if err != nil {
+				return nil, &FatalError{fmt.Errorf("cannot parse creation date for instances: %v", err)}
+			}
+			d := openstackServerData{
+				Name:    s.Name,
+				Created: createdTime,
+			}
+			instances = append(instances, &openstackServer{p: p, d: d})
+		}
+	}
 	return instances, nil
 }
 
 func (p *openstackProvider) removeMachine(ctx context.Context, s *openstackServer) error {
-	result := servers.Delete(p.computeClient, s.d.Name)
-	return result.Err
+	return p.computeClient.DeleteServer(s.d.Name)
 }
 
 func (p *openstackProvider) GarbageCollect() error {
@@ -435,46 +494,23 @@ func (p *openstackProvider) checkKey() error {
 
 	var err error
 
-	if p.aRegion() == openstackMissingRegion {
-		err = fmt.Errorf("location for %q backend must use wrong format", p.backend.Name)
-	}
-
 	if err == nil && p.computeClient == nil {
 		// retrieve variables used to authenticate from the environment
-		authOpts, err := openstack.AuthOptionsFromEnv()
+		cred, err := identity.CompleteCredentialsFromEnv()
 		if err != nil {
-			return &FatalError{fmt.Errorf("cannot auto from env: %v", err)}
+			return &FatalError{fmt.Errorf("cannot retrieve credentials from env: %v", err)}
 		}
 
-		// Connect to keystone module to authenticate the client
-		var provider *gophercloud.ProviderClient
-		err = gophercloud.WaitFor(120, func() (bool, error) {
-			provider, err = openstack.AuthenticatedClient(authOpts)
-			if err == nil {
-				return true, nil
-			}
-			return false, nil
-		})
-		if err != nil {
-			return &FatalError{fmt.Errorf("cannot authenticate client: %v", err)}
+		authClient := client.NewClient(cred, identity.AuthUserPass, nil)
+		if err = authClient.Authenticate(); err != nil {
+			return &FatalError{fmt.Errorf("error authenticating: %v", err)}
 		}
 
-		// Create openstack compute client
-		computeClient, err := openstack.NewComputeV2(provider, gophercloud.EndpointOpts{
-			Region: p.openstackAvailabilityZone,
-		})
-		// Create openstack network client
-		networkClient, err := openstack.NewNetworkV2(provider, gophercloud.EndpointOpts{
-			Region: p.openstackAvailabilityZone,
-		})
-		// Create openstack image client
-		imageClient, err := openstack.NewImageServiceV2(provider, gophercloud.EndpointOpts{
-			Region: p.openstackAvailabilityZone,
-		})
-
-		p.computeClient = computeClient
-		p.networkClient = networkClient
-		p.imageClient = imageClient
+		// Create clients for the used modules
+		p.region = cred.Region
+		p.computeClient = nova.New(authClient)
+		p.networkClient = neutron.New(authClient)
+		p.imageClient = glance.New(authClient)
 		p.keyErr = err
 	}
 

@@ -295,7 +295,7 @@ func (p *humboxProvider) dofl(method, subpath string, params interface{}, result
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.SetBasicAuth(p.account, p.backend.Key)
-		resp, err = client.Do(req)
+		resp, err = httpClient.Do(req)
 		if err == nil && 500 <= resp.StatusCode && resp.StatusCode < 600 {
 			time.Sleep(time.Duration(delays[i]) * 250 * time.Millisecond)
 			continue

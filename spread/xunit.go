@@ -39,29 +39,29 @@ func (ts *XUnitTestSuite) addTest(test *XUnitTestCase) {
 		// in this case it counts as aborted and not as failed
 		// The total is not changed in this scenario
 		if test.Name == t.Name {
-			if len(test.Details) > 0 {
-				if test.Details[0].Status == aborted {
+			if len(test.Failures) > 0 {
+				if test.Failures[0].Result == aborted {
 					ts.Aborted += 1
 					ts.Failed -= 1
-					t.Status = aborted
+					t.Result = aborted
 				}
-				t.Details = append(t.Details, test.Details[0])
+				t.Failures = append(t.Failures, test.Failures[0])
 			}
 			return
 		}		
 	}
 
-	if len(test.Details) > 0 {
-		if test.Details[0].Status == failed {
+	if len(test.Failures) > 0 {
+		if test.Failures[0].Result == failed {
 			ts.Failed += 1
-			test.Status = failed
+			test.Result = failed
 		} else {
 			ts.Aborted += 1
-			test.Status = aborted
+			test.Result = aborted
 		}
 	} else {
 		ts.Passed += 1
-		test.Status = passed
+		test.Result = passed
 	}
 	ts.Total += 1
 	ts.Tests = append(ts.Tests, test)
@@ -70,8 +70,8 @@ func (ts *XUnitTestSuite) addTest(test *XUnitTestCase) {
 type XUnitTestCase struct {
 	Name      string          `xml:"name,attr" json:"name,attr"`
 	suite     string
-	Status    string          `xml:"status,attr" json:"status,attr"`
-	Details   []*XUnitDetail  `xml:"detail,omitempty" json:"detail,omitempty"`
+	Result    string          `xml:"result,attr" json:"result,attr"`
+	Failures  []*XUnitFailure  `xml:"failure,omitempty" json:"failure,omitempty"`
 }
 
 func NewXUnitTestCase(testName string, backend string, system string, suiteName string) *XUnitTestCase {
@@ -79,19 +79,19 @@ func NewXUnitTestCase(testName string, backend string, system string, suiteName 
 	return &XUnitTestCase{
 		Name:    name,
 		suite:   suiteName, 
-		Details: []*XUnitDetail{},
+		Failures: []*XUnitFailure{},
 	}
 }
 
-type XUnitDetail struct {
+type XUnitFailure struct {
 	Info    string    `xml:"info" json:"info"`
-	Status  string    `xml:"status" json:"status"`
+	Result  string    `xml:"result" json:"result"`
 }
 
-func NewXUnitDetail(info string, status string) *XUnitDetail {
-	return &XUnitDetail{
+func NewXUnitFailure(info string, Result string) *XUnitFailure {
+	return &XUnitFailure{
 		Info:    info,
-		Status:  status,
+		Result:  Result,
 	}
 }
 
@@ -151,15 +151,15 @@ func (r *XUnitReport) addTest(test *XUnitTestCase) {
 
 func (r *XUnitReport) addFailedTest(suiteName string, backend string, system string, testName string, stage string) {
 	testcase := NewXUnitTestCase(testName, backend, system, suiteName)
-	detail := NewXUnitDetail(stage, failed)
-	testcase.Details = append(testcase.Details, detail)
+	failure := NewXUnitFailure(stage, failed)
+	testcase.Failures = append(testcase.Failures, failure)
 	r.addTest(testcase)
 }
 
 func (r *XUnitReport) addAbortedTest(suiteName string, backend string, system string, testName string) {
 	testcase := NewXUnitTestCase(testName, backend, system, suiteName)
-	detail := NewXUnitDetail(executing, aborted)
-	testcase.Details = append(testcase.Details, detail)
+	failure := NewXUnitFailure(executing, aborted)
+	testcase.Failures = append(testcase.Failures, failure)
 	r.addTest(testcase)
 }
 

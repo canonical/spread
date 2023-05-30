@@ -1,0 +1,10 @@
+summary: test
+
+prepare: |
+    echo works
+
+execute: |
+    exit 1
+
+restore: |
+    echo works

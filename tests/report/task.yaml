@@ -6,62 +6,82 @@ prepare: |
         ln -s /run/spread-reuse.yaml .spread-reuse.yaml
     fi
 
-    apt install -y python3-pip
-    pip3 install xq
-
-restore: |
-    apt remove -y python3-pip
-
 execute: |
     ! test -e report.xml
     ! test -e report.json
 
-    spread -v -reuse -resend -xunit -jsonunit lxd:ubuntu-16.04:tests/ || true
+    # For tests1 these are the expected results for the reports
+    # Total: 5 Passed: 2 Aborted: 1 Failed: 2
+    # tests1/t11 -> Passed
+    # tests1/t12 -> Passed
+    # tests1/t13 -> Failed
+    # tests1/t14 -> Aborted
+    # tests1/t15 -> Failed (also failes debug section)
 
-    test -e report.xml
-    test -e report.json
+    spread -v -reuse -resend -xunit -jsonunit lxd:ubuntu-16.04:tests/tests1/ || true
 
-    # These are the expected results for the reports
-    # Total: 8 Passed: 2 Aborted: 4 Failed: 2
-    # checks_1/task1 -> Passed
-    # checks_1/task2 -> Aborted
-    # checks_1/task3 -> Aborted
-    # checks_1/task4 -> Failed
-    # checks_1/task5 -> Failed
-    # checks_1/task6 -> Passed
-    # checks_2/task1 -> Aborted
-    # checks_2/task2 -> Aborted
+    jq -r '.testsuites[0].total' report.json | MATCH 5
+    jq -r '.testsuites[0].passed' report.json | MATCH 2
+    jq -r '.testsuites[0].aborted' report.json | MATCH 1
+    jq -r '.testsuites[0].failed' report.json | MATCH 2
+    MATCH 'testsuite name="tests/tests1" passed="2" failed="2" aborted="1" total="5"' < report.xml
+    MATCH 'test name="lxd:ubuntu-16.04:tests/tests1/t14" status="aborted"' < report.xml
+    MATCH 'test name="lxd:ubuntu-16.04:tests/tests1/t13" status="failed"' < report.xml
+    MATCH 'test name="lxd:ubuntu-16.04:tests/tests1/t11" status="passed"' < report.xml
 
-    # Verify the json report
-    test "$(jq -r '.passed' report.json)" == 2
-    test "$(jq -r '.failed' report.json)" == 2
-    test "$(jq -r '.aborted' report.json)" == 4
-    test "$(jq -r '.total' report.json)" == 8
+    # For tests2 these are the expected results for the reports
+    # Total: 2 Passed: 0 Aborted: 2 Failed: 0
+    # The test suite fails to prepare so the tests are aborted
+    # tests2/t21 -> Aborted
+    # tests2/t22 -> Aborted
 
-    echo "Checking failed tests"
-    jq -r '.TestCases[] | select(.status == "failed") | .fullname' report.json | MATCH "checks_1/test_4"
-    jq -r '.TestCases[] | select(.status == "failed") | .fullname' report.json | MATCH "checks_1/test_5"
+    spread -v -reuse -resend -xunit -jsonunit lxd:ubuntu-16.04:tests/tests2/ || true
 
-    echo "Checking aborted tests"
-    jq -r '.TestCases[] | select(.status == "aborted") | .fullname' report.json | MATCH "checks_1/test_2"
-    jq -r '.TestCases[] | select(.status == "aborted") | .fullname' report.json | MATCH "checks_1/test_3"
-    jq -r '.TestCases[] | select(.status == "aborted") | .fullname' report.json | MATCH "checks_2/test_1"
-    jq -r '.TestCases[] | select(.status == "aborted") | .fullname' report.json | MATCH "checks_2/test_2"
+    jq -r '.testsuites[0].total' report.json | MATCH 2
+    jq -r '.testsuites[0].passed' report.json | MATCH 0
+    jq -r '.testsuites[0].aborted' report.json | MATCH 2
+    jq -r '.testsuites[0].failed' report.json | MATCH 0
+    MATCH 'testsuite name="tests/tests2" passed="0" failed="0" aborted="2" total="2"' < report.xml
+    MATCH 'test name="lxd:ubuntu-16.04:tests/tests2/t21" status="aborted' < report.xml
+    MATCH 'test name="lxd:ubuntu-16.04:tests/tests2/t22" status="aborted' < report.xml
 
-    echo "Checking passed tests"
-    jq -r '.TestCases[] | select(.status == "passed") | .fullname' report.json | MATCH "checks_1/test_1"
-    jq -r '.TestCases[] | select(.status == "passed") | .fullname' report.json | MATCH "checks_1/test_6"
+    # For tests3 these are the expected results for the reports
+    # Total: 3 Passed: 1 Aborted: 1 Failed: 1
+    # The test suite fails to restore so the tests are not affected
+    # tests3/t31 -> Passed
+    # tests3/t32 -> Failed
+    # tests3/t33 -> Aborted (also fails restore) (it is executed at last)
 
-    # Verify the xml report
-    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_1"]/@total)' | MATCH '>6<'
-    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_2"]/@total)' | MATCH '>2<'
+    spread -v -reuse -resend -xunit -jsonunit lxd:ubuntu-16.04:tests/tests3/ || true
 
-    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_1"]/@passed)' | MATCH '>2<'
-    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_1"]/@failed)' | MATCH '>2<'
-    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_1"]/@aborted)' | MATCH '>2<'
-    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_2"]/@passed)' | MATCH '>0<'
-    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_2"]/@failed)' | MATCH '>0<'
-    cat report.xml | xq 'string(/testsuites/testsuite[@name="tests/checks_2"]/@aborted)' | MATCH '>2<'
+    jq -r '.testsuites[0].total' report.json | MATCH 3
+    jq -r '.testsuites[0].passed' report.json | MATCH 1
+    jq -r '.testsuites[0].aborted' report.json | MATCH 1
+    jq -r '.testsuites[0].failed' report.json | MATCH 1
+    MATCH 'testsuite name="tests/tests3" passed="1" failed="1" aborted="1" total="3"' < report.xml
+
+    # For tests4 these are the expected results for the reports
+    # Total: 4 Passed: 1 Aborted: 2 Failed: 1
+    # The test 42 (which is the second to be executed) fails during restore,
+    # so the tests 43 and 44 are aborted.
+    # tests4/t41 -> Passed
+    # tests4/t42 -> Failed (fails during restore)
+    # tests4/t42 -> Aborted
+    # tests4/t43 -> Aborted
+
+    spread -v -reuse -resend -xunit -jsonunit lxd:ubuntu-16.04:tests/tests4/ || true
+
+    jq -r '.testsuites[0].total' report.json | MATCH 4
+    jq -r '.testsuites[0].passed' report.json | MATCH 1
+    jq -r '.testsuites[0].aborted' report.json | MATCH 2
+    jq -r '.testsuites[0].failed' report.json | MATCH 1
+    MATCH 'testsuite name="tests/tests4" passed="1" failed="1" aborted="2" total="4"' < report.xml
+
+    # Check the reports are not generated when the options -xunit and -jsonunit are not used
+    rm report.xml report.json
+    spread -v -reuse -resend lxd:ubuntu-16.04:tests/tests4/ || true
+    ! test -e report.xml
+    ! test -e report.json
 
 debug: |
     cat .spread-reuse.yaml || true

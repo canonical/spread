@@ -33,13 +33,13 @@ type openstackProvider struct {
 	backend *Backend
 	options *Options
 
-	openstackProject string
-	openstackAvailabilityZone  string
+	openstackProject          string
+	openstackAvailabilityZone string
 
-	region string	
+	region        string
 	computeClient *nova.Client
 	networkClient *neutron.Client
-	imageClient *glance.Client
+	imageClient   *glance.Client
 
 	mu sync.Mutex
 
@@ -58,8 +58,10 @@ type openstackServer struct {
 }
 
 type openstackServerData struct {
+	Id      string
 	Name    string
 	Flavor  string    `json:"machineType"`
+	Network string    `json:"network"`
 	Status  string    `yaml:"-"`
 	Created time.Time `json:"creationTimestamp"`
 
@@ -178,96 +180,119 @@ func openstackName() string {
 	return strings.ToLower(strings.Replace(time.Now().UTC().Format(openstackNameLayout), ".", "-", 1))
 }
 
-func (p *openstackProvider) findFlavorId(flavorName string) (string, error) {
+func (p *openstackProvider) findFlavor(flavorName string) (nova.Entity, error) {
+	var flavor nova.Entity
+
 	flavors, err := p.computeClient.ListFlavors()
 	if err != nil {
-		return "", fmt.Errorf("failed to retrieve flavors list: %v", err)
+		return flavor, fmt.Errorf("failed to retrieve flavors list: %v", err)
 	}
 
-	var flavorId string
-	for _, flavor := range flavors {
-		if flavor.Name == flavorName {
-			flavorId = flavor.Id
+	for _, f := range flavors {
+		if f.Name == flavorName {
+			flavor = f
 			break
 		}
 	}
 
-	if flavorId == "" {
-		return "", fmt.Errorf("specified flavor not found: %s", flavorName)
+	if flavor.Id == "" {
+		return flavor, fmt.Errorf("specified flavor not found: %s", flavorName)
 	}
 
-	return flavorId, nil
+	return flavor, nil
 }
 
-func (p *openstackProvider) findNetworkId() (string, error) {
+func (p *openstackProvider) findNetwork() (neutron.NetworkV2, error) {
+	var network neutron.NetworkV2
+
 	networks, err := p.networkClient.ListNetworksV2()
 	if err != nil {
-		return "", fmt.Errorf("failed to retrieve networks list: %v", err)
+		return network, fmt.Errorf("failed to retrieve networks list: %v", err)
 	}
 
-	var netId string
 	for _, net := range networks {
-		if net.External == true {
-			netId = net.Id
+		if net.External == false {
+			network = net
 			break
 		}
 	}
-	if netId == "" {
-		return "", fmt.Errorf("no valid network found to create floating IP")
+	if network.Id == "" {
+		return network, fmt.Errorf("no valid network found to create floating IP")
 	}
 
-	return netId, nil
+	return network, nil
 }
 
-func (p *openstackProvider) findImageId(imageName string) (string, error) {
-    images, err := p.imageClient.ListImagesDetail()
+func (p *openstackProvider) findImage(imageName string) (glance.ImageDetail, error) {
+	var sameImage glance.ImageDetail
+	var lastImage glance.ImageDetail
+	var lastCreatedDate time.Time
+
+	images, err := p.imageClient.ListImagesDetail()
 	if err != nil {
-		return "", fmt.Errorf("failed to retrieve images list: %v", err)
+		return sameImage, fmt.Errorf("failed to retrieve images list: %v", err)
 	}
 
-    var sameImage glance.ImageDetail
-    var lastImage glance.ImageDetail
 	for _, i := range images {
 		if i.Name == imageName {
-            sameImage = i
-        } else if strings.Contains(i.Name, imageName) {
-        	// Check if the creation date for the current image is after the previous selected one
-        	currCreatedDate, err := time.Parse(time.RFC3339, i.Created)
-        	if err != nil {
-				return "", fmt.Errorf("error parsing image: %v", err)
-			}
-        	lastCreatedDate, err := time.Parse(time.RFC3339, lastImage.Created)
+			sameImage = i
+		} else if strings.Contains(i.Name, imageName) {
+			// Check if the creation date for the current image is after the previous selected one
+			currCreatedDate, err := time.Parse(time.RFC3339, i.Created)
+			// When the creation date is not set or it cannot be parsed, it is considered as created just now
 			if err != nil {
-				return "", fmt.Errorf("error parsing image: %v", err)
+				currCreatedDate = time.Time{}
 			}
-			if currCreatedDate.After(lastCreatedDate) {
-        		lastImage = i
-        	}
-        }
+
+			// Save the image when either it is the first match or it is newer than the previous match
+			if lastImage.Id == "" || currCreatedDate.After(lastCreatedDate) {
+				lastImage = i
+				lastCreatedDate = currCreatedDate
+			}
+		}
 	}
 
-    // return the image when it matchs exactly with the provided name
-	if sameImage.Id != "" {		
-        return sameImage.Id, nil
-    }    
+	// return the image when it matchs exactly with the provided name
+	if sameImage.Id != "" {
+		return sameImage, nil
+	}
 
-    if lastImage.Id != "" {
-        return lastImage.Id, nil
-    }
+	if lastImage.Id != "" {
+		return lastImage, nil
+	}
 
-    return "", fmt.Errorf("No matching image found")
+	return sameImage, fmt.Errorf("No matching image found")
+}
+
+func (p *openstackProvider) findAvailabilityZone() (nova.AvailabilityZone, error) {
+	var zone nova.AvailabilityZone
+
+	zones, err := p.computeClient.ListAvailabilityZones()
+	if err != nil {
+		return zone, fmt.Errorf("failed to retrieve availability zones: %v", err)
+	}
+
+	if len(zones) == 0 {
+		return zone, fmt.Errorf("No availability zones found")
+	} else {
+		zone = zones[0]
+	}
+
+	return zone, nil
 }
 
 func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer, timeoutSeconds int) error {
 	// Wait until the server is actually running
 	start := time.Now()
 	for {
-		if time.Since(start) > time.Duration(timeoutSeconds) * time.Second {			
+		if time.Since(start) > time.Duration(timeoutSeconds)*time.Second {
 			return &FatalError{fmt.Errorf("timeout reached checking status")}
 		}
-		server, err := p.computeClient.GetServer(s.d.Name)
+		server, err := p.computeClient.GetServer(s.d.Id)
+		// When the server info cannot be retrieved, wait 2 seconds to retry
 		if err != nil {
-			return fmt.Errorf("error retrieving server information: %v", err)
+			time.Sleep(2 * time.Second)
+			continue
 		}
 		if server.Status != nova.StatusBuild {
 			if server.Status != nova.StatusActive {
@@ -282,13 +307,13 @@ func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer, timeo
 }
 
 func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer, timeoutSeconds int) error {
-	server, err := p.computeClient.GetServer(s.d.Name)
+	server, err := p.computeClient.GetServer(s.d.Id)
 	if err != nil {
 		return fmt.Errorf("error retrieving server information: %v", err)
 	}
 	// The adreesses for a network is map of networks and list of ip adresses
 	// We are configuring just 1 network address for the network
-	s.address = server.Addresses[p.backend.Network][0].Address
+	s.address = server.Addresses[s.d.Network][0].Address
 
 	config := &ssh.ClientConfig{
 		User:            "root",
@@ -304,44 +329,49 @@ func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer, timeoutS
 	// Iterate until the ssh connection to the host can be stablished
 	// In openstack the client cannot access to the serial console of the instance
 	start := time.Now()
-    for {
-        if time.Since(start) > time.Duration(timeoutSeconds) * time.Second {
+	for {
+		if time.Since(start) > time.Duration(timeoutSeconds)*time.Second {
 			return &FatalError{fmt.Errorf("failed to ssh to the allocated instance")}
-        }
+		}
 
-        _, err = ssh.Dial("tcp", addr, config)
-        if err == nil {
-            break
-        }
+		_, err = ssh.Dial("tcp", addr, config)
+		if err == nil {
+			break
+		}
 
-        time.Sleep(2 * time.Second)
-    }
-    debugf("connection to server %s is stablished", s.d.Name)
-    return nil
+		time.Sleep(2 * time.Second)
+	}
+	debugf("connection to server %s is stablished", s.d.Name)
+	return nil
 }
 
 func (p *openstackProvider) createMachine(ctx context.Context, system *System) (*openstackServer, error) {
 	debugf("Creating new openstack server for %s...", system.Name)
 
 	name := openstackName()
-	flavor := openstackDefaultFlavor
+	flavorName := openstackDefaultFlavor
 	if system.Plan != "" {
-		flavor = system.Plan
+		flavorName = system.Plan
 	}
-	flavorId, err := p.findFlavorId(flavor)
+	flavor, err := p.findFlavor(flavorName)
 	if err != nil {
 		return nil, err
 	}
 
-	networkID, err := p.findNetworkId()
+	network, err := p.findNetwork()
 	if err != nil {
 		return nil, err
 	}
 
-	imageID, err := p.findImageId(system.Image)
+	image, err := p.findImage(system.Image)
 	if err != nil {
 		return nil, err
-	}	
+	}
+
+	availabilityZone, err := p.findAvailabilityZone()
+	if err != nil {
+		return nil, err
+	}
 
 	// cloud init script
 	cloudconfig := fmt.Sprintf(openstackCloudInitScript, p.options.Password)
@@ -356,11 +386,11 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 
 	opts := nova.RunServerOpts{
 		Name:             name,
-		FlavorId:         flavorId,
-		ImageId:          imageID,
-		AvailabilityZone: p.region,
-		Networks:         []nova.ServerNetworks{{NetworkId: networkID,}},
-		Metadata:   	  tags,
+		FlavorId:         flavor.Id,
+		ImageId:          image.Id,
+		AvailabilityZone: availabilityZone.Name,
+		Networks:         []nova.ServerNetworks{{NetworkId: network.Id}},
+		Metadata:         tags,
 		UserData:         []byte(cloudconfig),
 	}
 	server, err := p.computeClient.RunServer(opts)
@@ -371,8 +401,10 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 	s := &openstackServer{
 		p: p,
 		d: openstackServerData{
-			Name:    server.Id,
-			Flavor:  flavor,
+			Id:      server.Id,
+			Name:    name,
+			Flavor:  flavor.Name,
+			Network: network.Name,
 			Status:  openstackProvisioning,
 			Created: time.Now(),
 		},
@@ -382,7 +414,7 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 
 	// First we need to wait until the image is active and there is no erros during the spawning process
 	// The timeout for this process is 180 seconds
-	err = p.waitServerCompleteBuilding(s, 180)
+	err = p.waitServerCompleteBuilding(s, 240)
 	if err != nil {
 		if p.removeMachine(ctx, s) != nil {
 			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) new openstack server %s: %v", s, err)}
@@ -391,7 +423,7 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 	}
 
 	// Connect through ssh to the
-	err = p.waitServerCompleteSetup(s, 300)
+	err = p.waitServerCompleteSetup(s, 360)
 	if err != nil {
 		if p.removeMachine(ctx, s) != nil {
 			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) openstack server %s: %v", s, err)}
@@ -407,6 +439,7 @@ func (p *openstackProvider) list() ([]*openstackServer, error) {
 
 	filter := nova.NewFilter()
 	servers, err := p.computeClient.ListServersDetail(filter)
+
 	if err != nil {
 		return nil, &FatalError{fmt.Errorf("cannot list openstack instances: %v", err)}
 	}
@@ -420,6 +453,7 @@ func (p *openstackProvider) list() ([]*openstackServer, error) {
 				return nil, &FatalError{fmt.Errorf("cannot parse creation date for instances: %v", err)}
 			}
 			d := openstackServerData{
+				Id:      s.Id,
 				Name:    s.Name,
 				Created: createdTime,
 			}
@@ -430,10 +464,14 @@ func (p *openstackProvider) list() ([]*openstackServer, error) {
 }
 
 func (p *openstackProvider) removeMachine(ctx context.Context, s *openstackServer) error {
-	return p.computeClient.DeleteServer(s.d.Name)
+	return p.computeClient.DeleteServer(s.d.Id)
 }
 
 func (p *openstackProvider) GarbageCollect() error {
+	if err := p.checkKey(); err != nil {
+		return err
+	}
+
 	instances, err := p.list()
 	if err != nil {
 		return err
@@ -458,7 +496,7 @@ func (p *openstackProvider) GarbageCollect() error {
 			continue
 		}
 
-		printf("Checking %s...", s)
+		printf("Checking openstack instance %s...", s)
 
 		runningTime := now.Sub(s.d.Created)
 		if runningTime > serverTimeout {
@@ -501,8 +539,15 @@ func (p *openstackProvider) checkKey() error {
 			return &FatalError{fmt.Errorf("cannot retrieve credentials from env: %v", err)}
 		}
 
-		authClient := client.NewClient(cred, identity.AuthUserPass, nil)
-		if err = authClient.Authenticate(); err != nil {
+		// Select the appropiate version of the UserPass authentication method
+		var authmode = identity.AuthUserPassV3
+		if cred.Version > 0 && cred.Version != 3 {
+			authmode = identity.AuthUserPass
+		}
+
+		authClient := client.NewClient(cred, authmode, nil)
+		err = authClient.Authenticate()
+		if err != nil {
 			return &FatalError{fmt.Errorf("error authenticating: %v", err)}
 		}
 

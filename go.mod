@@ -5,9 +5,7 @@ go 1.13
 require (
 	github.com/go-goose/goose v2.0.1+incompatible // indirect
 	github.com/go-goose/goose/v5 v5.0.0-20230421180421-abaee9096e3a // indirect
-	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e
-	github.com/rackspace/gophercloud v1.0.1-0.20201021153103-2f2c61ebc394 // indirect
 	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
 	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f
 	golang.org/x/oauth2 v0.0.0-20210628180205-a41e5a781914

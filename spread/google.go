@@ -668,7 +668,7 @@ func (p *googleProvider) GarbageCollect() error {
 			continue
 		}
 
-		printf("Checking %s...", s)
+		printf("Checking google instance %s...", s)
 
 		runningTime := now.Sub(s.d.Created)
 		if runningTime > serverTimeout {

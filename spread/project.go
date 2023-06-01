@@ -65,7 +65,7 @@ type Backend struct {
 	Storage  Size
 
 	// Only for Openstack and Google so far.
-	Network  string
+	Network string
 
 	Systems SystemsMap
 

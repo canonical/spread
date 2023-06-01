@@ -23,7 +23,8 @@ Spread
 [Fetching artifacts](#artifacts)  
 [LXD backend](#lxd)  
 [QEMU backend](#qemu)  
-[Google backend](#google)  
+[Google backend](#google)
+[Openstack backend](#openstack)  
 [Linode backend](#linode)  
 [AdHoc backend](#adhoc)  
 [More on parallelism](#parallelism)  
@@ -856,14 +857,14 @@ _$PROJECT/spread.yaml_
 backends:
     google:
         key: $(HOST:echo $GOOGLE_JSON_FILENAME)
-	location: yourproject/southamerica-east1-a
+    location: yourproject/southamerica-east1-a
         systems:
             - ubuntu-16.04
 
-	    # Extended syntax:
-	    - another-system:
-	        image: some-other-image
-		workers: 3
+        # Extended syntax:
+        - another-system:
+            image: some-other-image
+        workers: 3
 ```
 
 With these settings the Google backend in Spread will pick credentials from
@@ -898,6 +899,61 @@ and need to be removed by hand.
 
 For long term use, a dedicated project in the Google Cloud Platform is
 recommended to prevent automated manipulation of important machines.
+
+<a name="openstack"/>
+
+## Openstack backend
+
+The Openstack backend is easy to setup and use, and allows distributing
+your tasks to an openstack environment.
+
+_$PROJECT/spread.yaml_
+```
+(...)
+
+backends:
+    openstack:
+        plan: cpu2-ram4-disk10
+        halt-timeout: 2h
+        systems:
+            - ubuntu-20.04:
+                  image: ubuntu-focal-daily-amd64
+                  workers: 5
+
+            # Extended syntax:
+            - another-system:
+                image: some-other-image
+
+```
+
+The Openstack backend gets all the information to authenticate from the
+environment variables. The following variables have to be set:
+```
+OS_AUTH_URL
+OS_PROJECT_ID
+OS_PROJECT_NAME
+OS_USER_DOMAIN_NAME
+OS_PROJECT_DOMAIN_ID (optional)
+OS_TENANT_ID
+OS_TENANT_NAME
+OS_USERNAME
+OS_PASSWORD
+OS_REGION_NAME
+OS_INTERFACE
+OS_IDENTITY_API_VERSION
+```
+
+You can set up those variables by sourcing the Openstack RC file. 
+For more information about the environment setup please read 
+https://docs.openstack.org/ocata/user-guide/common/cli-set-environment-variables-using-openstack-rc.html
+
+Images are located by first attempting to match the provided value exactly
+against the image name, if there is not exact match the most recent image
+with partial match will be selected.
+
+When these machines terminate running, they will be removed. If anything
+happens that prevents the immediate removal, they will remain in the account
+and need to be removed by hand.
 
 
 <a name="linode"/>

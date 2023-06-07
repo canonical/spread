@@ -1071,7 +1071,7 @@ func (r *Runner) completeReport(report *XUnitReport, stats stats) {
 	r.addTestsToReport(report, stats.TaskError, failed, executing)
 	r.addTestsToReport(report, stats.TaskRestoreError, failed, restoring)
 	r.addTestsToReport(report, stats.TaskAbort, aborted, "")
-	r.addTestsToReport(report, stats.TaskDone, passed, "")	
+	r.addTestsToReport(report, stats.TaskDone, passed, "")
 }
 
 type stats struct {

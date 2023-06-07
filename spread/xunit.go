@@ -8,18 +8,18 @@ import (
 )
 
 const (
-	failed    = "failed"
-	aborted   = "aborted"
-	passed    = "passed"
+	failed  = "failed"
+	aborted = "aborted"
+	passed  = "passed"
 )
 
 type XUnitTestSuite struct {
-	Name     string           `xml:"name,attr" json:"name,attr"`
-	Passed   int              `xml:"passed,attr" json:"passed,attr"`
-	Failed   int              `xml:"failed,attr" json:"failed,attr"`
-	Aborted  int              `xml:"aborted,attr" json:"aborted,attr"`
-	Total    int              `xml:"total,attr" json:"total,attr"`
-	Tests    []*XUnitTestCase `xml:"test,omitempty" json:"tests,omitempty"`
+	Name    string           `xml:"name,attr" json:"name,attr"`
+	Passed  int              `xml:"passed,attr" json:"passed,attr"`
+	Failed  int              `xml:"failed,attr" json:"failed,attr"`
+	Aborted int              `xml:"aborted,attr" json:"aborted,attr"`
+	Total   int              `xml:"total,attr" json:"total,attr"`
+	Tests   []*XUnitTestCase `xml:"test,omitempty" json:"tests,omitempty"`
 }
 
 func NewXUnitTestSuite(name string) *XUnitTestSuite {
@@ -48,7 +48,7 @@ func (ts *XUnitTestSuite) addTest(test *XUnitTestCase) {
 				t.Failures = append(t.Failures, test.Failures[0])
 			}
 			return
-		}		
+		}
 	}
 
 	if len(test.Failures) > 0 {
@@ -68,35 +68,35 @@ func (ts *XUnitTestSuite) addTest(test *XUnitTestCase) {
 }
 
 type XUnitTestCase struct {
-	Name      string          `xml:"name,attr" json:"name,attr"`
-	suite     string
-	Result    string          `xml:"result,attr" json:"result,attr"`
-	Failures  []*XUnitFailure  `xml:"failure,omitempty" json:"failure,omitempty"`
+	Name     string `xml:"name,attr" json:"name,attr"`
+	suite    string
+	Result   string          `xml:"result,attr" json:"result,attr"`
+	Failures []*XUnitFailure `xml:"failure,omitempty" json:"failure,omitempty"`
 }
 
 func NewXUnitTestCase(testName string, backend string, system string, suiteName string) *XUnitTestCase {
 	name := fmt.Sprintf("%s:%s:%s/%s", backend, system, suiteName, testName)
 	return &XUnitTestCase{
-		Name:    name,
-		suite:   suiteName, 
+		Name:     name,
+		suite:    suiteName,
 		Failures: []*XUnitFailure{},
 	}
 }
 
 type XUnitFailure struct {
-	Info    string    `xml:"info" json:"info"`
-	Result  string    `xml:"result" json:"result"`
+	Info   string `xml:"info" json:"info"`
+	Result string `xml:"result" json:"result"`
 }
 
 func NewXUnitFailure(info string, Result string) *XUnitFailure {
 	return &XUnitFailure{
-		Info:    info,
-		Result:  Result,
+		Info:   info,
+		Result: Result,
 	}
 }
 
 type XUnitReport struct {
-	Suites  []*XUnitTestSuite `xml:"testsuite,omitempty" json:"testsuites,omitempty"`
+	Suites []*XUnitTestSuite `xml:"testsuite,omitempty" json:"testsuites,omitempty"`
 }
 
 func NewXUnitReport() *XUnitReport {

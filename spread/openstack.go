@@ -14,6 +14,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/context"
+	"golang.org/x/net/html"
 
 	"strconv"
 )
@@ -180,12 +181,37 @@ func openstackName() string {
 	return strings.ToLower(strings.Replace(time.Now().UTC().Format(openstackNameLayout), ".", "-", 1))
 }
 
+func findErrorTitle(node *html.Node) string {
+	if node.Type == html.ElementNode && node.Data == "title" {
+		return node.FirstChild.Data
+	}
+
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		title := findErrorTitle(child)
+		if title != "" {
+			return title
+		}
+	}
+
+	return ""
+}
+
+// error messages returned by openstack api are html
+// which contain title and details related to the error
+func errorTitle(msg string) string {
+	node, err := html.Parse(strings.NewReader(msg))
+	if err != nil {
+		return ""
+	}
+	return findErrorTitle(node)
+}
+
 func (p *openstackProvider) findFlavor(flavorName string) (nova.Entity, error) {
 	var flavor nova.Entity
 
 	flavors, err := p.computeClient.ListFlavors()
 	if err != nil {
-		return flavor, fmt.Errorf("failed to retrieve flavors list: %v", err)
+		return flavor, fmt.Errorf("failed to retrieve flavors list: %s", errorTitle(err.Error()))
 	}
 
 	for _, f := range flavors {
@@ -202,25 +228,22 @@ func (p *openstackProvider) findFlavor(flavorName string) (nova.Entity, error) {
 	return flavor, nil
 }
 
-func (p *openstackProvider) findNetwork() (neutron.NetworkV2, error) {
-	var network neutron.NetworkV2
+func (p *openstackProvider) findNetwork(name string) (neutron.NetworkV2, error) {
+	var serverNetwork neutron.NetworkV2
 
 	networks, err := p.networkClient.ListNetworksV2()
 	if err != nil {
-		return network, fmt.Errorf("failed to retrieve networks list: %v", err)
+		return serverNetwork, fmt.Errorf("failed to retrieve networks list: %s", errorTitle(err.Error()))
 	}
 
+	// When there are not networks defined, the first network which is not external
+	// is returned (external networks could not be allowed to request)
 	for _, net := range networks {
-		if net.External == false {
-			network = net
-			break
+		if (name == "" && net.External == false) || (name != "" && name == net.Name) {
+			return net, nil
 		}
 	}
-	if network.Id == "" {
-		return network, fmt.Errorf("no valid network found to create floating IP")
-	}
-
-	return network, nil
+	return serverNetwork, &FatalError{fmt.Errorf("no valid network found to create floating IP")}
 }
 
 func (p *openstackProvider) findImage(imageName string) (glance.ImageDetail, error) {
@@ -230,7 +253,7 @@ func (p *openstackProvider) findImage(imageName string) (glance.ImageDetail, err
 
 	images, err := p.imageClient.ListImagesDetail()
 	if err != nil {
-		return sameImage, fmt.Errorf("failed to retrieve images list: %v", err)
+		return sameImage, fmt.Errorf("failed to retrieve images list: %s", errorTitle(err.Error()))
 	}
 
 	for _, i := range images {
@@ -261,7 +284,7 @@ func (p *openstackProvider) findImage(imageName string) (glance.ImageDetail, err
 		return lastImage, nil
 	}
 
-	return sameImage, fmt.Errorf("No matching image found")
+	return sameImage, &FatalError{fmt.Errorf("No matching image found")}
 }
 
 func (p *openstackProvider) findAvailabilityZone() (nova.AvailabilityZone, error) {
@@ -269,16 +292,46 @@ func (p *openstackProvider) findAvailabilityZone() (nova.AvailabilityZone, error
 
 	zones, err := p.computeClient.ListAvailabilityZones()
 	if err != nil {
-		return zone, fmt.Errorf("failed to retrieve availability zones: %v", err)
+		return zone, fmt.Errorf("failed to retrieve availability zones: %s", errorTitle(err.Error()))
 	}
 
 	if len(zones) == 0 {
-		return zone, fmt.Errorf("No availability zones found")
+		return zone, &FatalError{fmt.Errorf("No availability zones found")}
 	} else {
 		zone = zones[0]
 	}
 
 	return zone, nil
+}
+
+func (p *openstackProvider) findSecurityGroupNames(names []string) ([]nova.SecurityGroupName, error) {
+	secGroupNames := []nova.SecurityGroupName{}
+	secGroups, err := p.networkClient.ListSecurityGroupsV2()
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve security groups: %s", errorTitle(err.Error()))
+	}
+
+	if len(secGroups) == 0 {
+		return nil, &FatalError{fmt.Errorf("No secyrity groups found")}
+	}
+
+	for _, name := range names {
+		found := false
+		for _, sg := range secGroups {
+			if name == sg.Name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, &FatalError{fmt.Errorf("Security group %s not found", name)}
+		}
+
+		var secGroupName nova.SecurityGroupName
+		secGroupName.Name = name
+		secGroupNames = append(secGroupNames, secGroupName)
+	}
+	return secGroupNames, nil
 }
 
 func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer, timeoutSeconds int) error {
@@ -296,7 +349,7 @@ func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer, timeo
 		}
 		if server.Status != nova.StatusBuild {
 			if server.Status != nova.StatusActive {
-				return fmt.Errorf("server status is not active: %s", server.Status)
+				return &FatalError{fmt.Errorf("server status is not active: %s", server.Status)}
 			}
 			break
 		}
@@ -309,7 +362,7 @@ func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer, timeo
 func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer, timeoutSeconds int) error {
 	server, err := p.computeClient.GetServer(s.d.Id)
 	if err != nil {
-		return fmt.Errorf("error retrieving server information: %v", err)
+		return fmt.Errorf("error retrieving server information: %s", errorTitle(err.Error()))
 	}
 	// The adreesses for a network is map of networks and list of ip adresses
 	// We are configuring just 1 network address for the network
@@ -358,7 +411,7 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		return nil, err
 	}
 
-	network, err := p.findNetwork()
+	network, err := p.findNetwork(system.Network)
 	if err != nil {
 		return nil, err
 	}
@@ -393,9 +446,18 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		Metadata:         tags,
 		UserData:         []byte(cloudconfig),
 	}
+
+	if len(system.SecurityGroups) > 0 {
+		sgNames, err := p.findSecurityGroupNames(system.SecurityGroups)
+		if err != nil {
+			return nil, err
+		}
+		opts.SecurityGroupNames = sgNames
+	}
+
 	server, err := p.computeClient.RunServer(opts)
 	if err != nil {
-		return nil, &FatalError{fmt.Errorf("Could not create instance", err)}
+		return nil, fmt.Errorf("Could not create instance", errorTitle(err.Error()))
 	}
 
 	s := &openstackServer{
@@ -428,7 +490,7 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		if p.removeMachine(ctx, s) != nil {
 			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) openstack server %s: %v", s, err)}
 		}
-		return nil, &FatalError{fmt.Errorf("cannot stablish ssh connection to the openstach server %s: %v", s, err)}
+		return nil, fmt.Errorf("cannot stablish ssh connection to the openstach server %s: %v", s, err)
 	}
 
 	return s, nil
@@ -441,7 +503,7 @@ func (p *openstackProvider) list() ([]*openstackServer, error) {
 	servers, err := p.computeClient.ListServersDetail(filter)
 
 	if err != nil {
-		return nil, &FatalError{fmt.Errorf("cannot list openstack instances: %v", err)}
+		return nil, fmt.Errorf("cannot list openstack instances: %s", errorTitle(err.Error()))
 	}
 
 	var instances []*openstackServer
@@ -464,7 +526,11 @@ func (p *openstackProvider) list() ([]*openstackServer, error) {
 }
 
 func (p *openstackProvider) removeMachine(ctx context.Context, s *openstackServer) error {
-	return p.computeClient.DeleteServer(s.d.Id)
+	err := p.computeClient.DeleteServer(s.d.Id)
+	if err != nil {
+		return fmt.Errorf("cannot remove openstack instance: %s", errorTitle(err.Error()))
+	}
+	return err
 }
 
 func (p *openstackProvider) GarbageCollect() error {
@@ -548,7 +614,7 @@ func (p *openstackProvider) checkKey() error {
 		authClient := client.NewClient(cred, authmode, nil)
 		err = authClient.Authenticate()
 		if err != nil {
-			return &FatalError{fmt.Errorf("error authenticating: %v", err)}
+			return &FatalError{fmt.Errorf("failed to authenticate: %s", errorTitle(err.Error()))}
 		}
 
 		// Create clients for the used modules

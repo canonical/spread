@@ -64,8 +64,9 @@ type Backend struct {
 	Location string
 	Storage  Size
 
-	// Only for Openstack and Google so far.
-	Network string
+	// Only for Openstack so far
+	Network        string
+	SecurityGroups []string `yaml:"security-groups"`
 
 	Systems SystemsMap
 
@@ -124,6 +125,10 @@ type System struct {
 
 	// Only for Linode and Google so far.
 	Storage Size
+
+	// Only for Openstack so far
+	Network        string
+	SecurityGroups []string `yaml:"security-groups"`
 
 	// Only for Google so far.
 	SecureBoot bool `yaml:"secure-boot"`
@@ -551,6 +556,7 @@ func Load(path string) (*Project, error) {
 		backend.RestoreEach = strings.TrimSpace(backend.RestoreEach)
 		backend.DebugEach = strings.TrimSpace(backend.DebugEach)
 
+		// Cascade the backend parameters to the systems
 		for sysname, system := range backend.Systems {
 			system.Backend = backend.Name
 			if system.Workers < 0 {
@@ -564,6 +570,12 @@ func Load(path string) (*Project, error) {
 			}
 			if system.Plan == "" {
 				system.Plan = backend.Plan
+			}
+			if system.Network == "" {
+				system.Network = backend.Network
+			}
+			if len(system.SecurityGroups) == 0 {
+				system.SecurityGroups = backend.SecurityGroups
 			}
 			if err := checkEnv(system, &system.Environment); err != nil {
 				return nil, err

@@ -1,0 +1,39 @@
+project: spread
+
+backends:
+    lxd:
+        systems:
+        - ubuntu-16.04
+
+path: /root/test
+
+suites:
+    tests/tests1/:
+        summary: Test suite 1 for spread
+        prepare: |
+            echo "Preparing tests1 suite"
+        restore: |
+            echo "Restoring tests1 suite"
+
+    tests/tests2/:
+        summary: Test suite 2 for spread
+        prepare: |
+            echo "Preparing tests2 suite"
+            exit 1
+        restore: |
+            echo "Restoring tests2 suite"
+
+    tests/tests3/:
+        summary: Test suite 3 for spread
+        prepare: |
+            echo "Preparing tests3 suite"
+        restore: |
+            echo "Restoring tests3 suite"
+            exit 1
+
+    tests/tests4/:
+        summary: Test suite 4 for spread
+        prepare: |
+            echo "Preparing tests1 suite"
+        restore: |
+            echo "Restoring tests1 suite"

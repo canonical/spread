@@ -1,7 +1,9 @@
 package spread
 
 import (
+	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,8 +17,6 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/context"
 	"golang.org/x/net/html"
-
-	"strconv"
 )
 
 func Openstack(p *Project, b *Backend, o *Options) Provider {
@@ -206,54 +206,45 @@ func errorTitle(msg string) string {
 	return findErrorTitle(node)
 }
 
-func (p *openstackProvider) findFlavor(flavorName string) (nova.Entity, error) {
-	var flavor nova.Entity
-
+func (p *openstackProvider) findFlavor(flavorName string) (*nova.Entity, error) {
 	flavors, err := p.computeClient.ListFlavors()
 	if err != nil {
-		return flavor, fmt.Errorf("failed to retrieve flavors list: %s", errorTitle(err.Error()))
+		return nil, fmt.Errorf("cannot retrieve flavors list: %s", errorTitle(err.Error()))
 	}
 
 	for _, f := range flavors {
 		if f.Name == flavorName {
-			flavor = f
-			break
+			return &f, nil
 		}
 	}
 
-	if flavor.Id == "" {
-		return flavor, fmt.Errorf("specified flavor not found: %s", flavorName)
-	}
-
-	return flavor, nil
+	return nil, fmt.Errorf("cannot find specified flavor: %s", flavorName)
 }
 
-func (p *openstackProvider) findNetwork(name string) (neutron.NetworkV2, error) {
-	var serverNetwork neutron.NetworkV2
-
+func (p *openstackProvider) findNetwork(name string) (*neutron.NetworkV2, error) {
 	networks, err := p.networkClient.ListNetworksV2()
 	if err != nil {
-		return serverNetwork, fmt.Errorf("failed to retrieve networks list: %s", errorTitle(err.Error()))
+		return nil, fmt.Errorf("cannot retrieve networks list: %s", errorTitle(err.Error()))
 	}
 
 	// When there are not networks defined, the first network which is not external
 	// is returned (external networks could not be allowed to request)
 	for _, net := range networks {
 		if (name == "" && net.External == false) || (name != "" && name == net.Name) {
-			return net, nil
+			return &net, nil
 		}
 	}
-	return serverNetwork, &FatalError{fmt.Errorf("no valid network found to create floating IP")}
+	return nil, &FatalError{errors.New("cannot find valid network to create floating IP")}
 }
 
-func (p *openstackProvider) findImage(imageName string) (glance.ImageDetail, error) {
+func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, error) {
 	var sameImage glance.ImageDetail
 	var lastImage glance.ImageDetail
 	var lastCreatedDate time.Time
 
 	images, err := p.imageClient.ListImagesDetail()
 	if err != nil {
-		return sameImage, fmt.Errorf("failed to retrieve images list: %s", errorTitle(err.Error()))
+		return nil, fmt.Errorf("failed to retrieve images list: %s", errorTitle(err.Error()))
 	}
 
 	for _, i := range images {
@@ -277,42 +268,38 @@ func (p *openstackProvider) findImage(imageName string) (glance.ImageDetail, err
 
 	// return the image when it matchs exactly with the provided name
 	if sameImage.Id != "" {
-		return sameImage, nil
+		return &sameImage, nil
 	}
 
 	if lastImage.Id != "" {
-		return lastImage, nil
+		return &lastImage, nil
 	}
 
-	return sameImage, &FatalError{fmt.Errorf("No matching image found")}
+	return nil, &FatalError{fmt.Errorf("cannot find matching image for %s", imageName)}
 }
 
-func (p *openstackProvider) findAvailabilityZone() (nova.AvailabilityZone, error) {
-	var zone nova.AvailabilityZone
-
+func (p *openstackProvider) findAvailabilityZone() (*nova.AvailabilityZone, error) {
 	zones, err := p.computeClient.ListAvailabilityZones()
 	if err != nil {
-		return zone, fmt.Errorf("failed to retrieve availability zones: %s", errorTitle(err.Error()))
+		return nil, fmt.Errorf("cannot retrieve availability zones: %s", errorTitle(err.Error()))
 	}
 
 	if len(zones) == 0 {
-		return zone, &FatalError{fmt.Errorf("No availability zones found")}
-	} else {
-		zone = zones[0]
+		return nil, &FatalError{errors.New("cannot find any availability zones")}
 	}
-
-	return zone, nil
+	return &zones[0], nil
 }
 
 func (p *openstackProvider) findSecurityGroupNames(names []string) ([]nova.SecurityGroupName, error) {
-	secGroupNames := []nova.SecurityGroupName{}
+	var secGroupNames []nova.SecurityGroupName
+
 	secGroups, err := p.networkClient.ListSecurityGroupsV2()
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve security groups: %s", errorTitle(err.Error()))
+		return nil, fmt.Errorf("cannot retrieve security groups: %s", errorTitle(err.Error()))
 	}
 
 	if len(secGroups) == 0 {
-		return nil, &FatalError{fmt.Errorf("No secyrity groups found")}
+		return nil, &FatalError{errors.New("cannot find any security groups")}
 	}
 
 	for _, name := range names {
@@ -324,12 +311,9 @@ func (p *openstackProvider) findSecurityGroupNames(names []string) ([]nova.Secur
 			}
 		}
 		if !found {
-			return nil, &FatalError{fmt.Errorf("Security group %s not found", name)}
+			return nil, &FatalError{fmt.Errorf("cannot find security group %s", name)}
 		}
-
-		var secGroupName nova.SecurityGroupName
-		secGroupName.Name = name
-		secGroupNames = append(secGroupNames, secGroupName)
+		secGroupNames = append(secGroupNames, nova.SecurityGroupName{Name: name})
 	}
 	return secGroupNames, nil
 }
@@ -339,7 +323,7 @@ func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer, timeo
 	start := time.Now()
 	for {
 		if time.Since(start) > time.Duration(timeoutSeconds)*time.Second {
-			return &FatalError{fmt.Errorf("timeout reached checking status")}
+			return &FatalError{fmt.Errorf("cannot check status: timeout reached")}
 		}
 		server, err := p.computeClient.GetServer(s.d.Id)
 		// When the server info cannot be retrieved, wait 2 seconds to retry
@@ -349,20 +333,20 @@ func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer, timeo
 		}
 		if server.Status != nova.StatusBuild {
 			if server.Status != nova.StatusActive {
-				return &FatalError{fmt.Errorf("server status is not active: %s", server.Status)}
+				return &FatalError{fmt.Errorf("cannot use server: status is not active but %s", server.Status)}
 			}
 			break
 		}
 		time.Sleep(5 * time.Second)
 	}
-	debugf("server %s is running", s.d.Name)
+	debugf("Server %s is running", s.d.Name)
 	return nil
 }
 
 func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer, timeoutSeconds int) error {
 	server, err := p.computeClient.GetServer(s.d.Id)
 	if err != nil {
-		return fmt.Errorf("error retrieving server information: %s", errorTitle(err.Error()))
+		return fmt.Errorf("cannot retrieving server information: %s", errorTitle(err.Error()))
 	}
 	// The adreesses for a network is map of networks and list of ip adresses
 	// We are configuring just 1 network address for the network
@@ -384,7 +368,7 @@ func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer, timeoutS
 	start := time.Now()
 	for {
 		if time.Since(start) > time.Duration(timeoutSeconds)*time.Second {
-			return &FatalError{fmt.Errorf("failed to ssh to the allocated instance")}
+			return &FatalError{fmt.Errorf("cannot ssh to the allocated instance")}
 		}
 
 		_, err = ssh.Dial("tcp", addr, config)
@@ -394,7 +378,7 @@ func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer, timeoutS
 
 		time.Sleep(2 * time.Second)
 	}
-	debugf("connection to server %s is stablished", s.d.Name)
+	debugf("Connection to server %s established", s.d.Name)
 	return nil
 }
 
@@ -457,7 +441,7 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 
 	server, err := p.computeClient.RunServer(opts)
 	if err != nil {
-		return nil, fmt.Errorf("Could not create instance", errorTitle(err.Error()))
+		return nil, fmt.Errorf("cannot create instance %s", errorTitle(err.Error()))
 	}
 
 	s := &openstackServer{

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-goose/goose/v5/client"
+	gooseClient "github.com/go-goose/goose/v5/client"
 	"github.com/go-goose/goose/v5/glance"
 	"github.com/go-goose/goose/v5/identity"
 	"github.com/go-goose/goose/v5/neutron"
@@ -595,7 +595,7 @@ func (p *openstackProvider) checkKey() error {
 			authmode = identity.AuthUserPass
 		}
 
-		authClient := client.NewClient(cred, authmode, nil)
+		authClient := gooseClient.NewClient(cred, authmode, nil)
 		err = authClient.Authenticate()
 		if err != nil {
 			return &FatalError{fmt.Errorf("failed to authenticate: %s", errorTitle(err.Error()))}

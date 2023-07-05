@@ -244,7 +244,7 @@ func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, er
 
 	images, err := p.imageClient.ListImagesDetail()
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve images list: %s", errorTitle(err.Error()))
+		return nil, fmt.Errorf("cannot retrieve images list: %s", errorTitle(err.Error()))
 	}
 
 	for _, i := range images {
@@ -598,7 +598,7 @@ func (p *openstackProvider) checkKey() error {
 		authClient := gooseClient.NewClient(cred, authmode, nil)
 		err = authClient.Authenticate()
 		if err != nil {
-			return &FatalError{fmt.Errorf("failed to authenticate: %s", errorTitle(err.Error()))}
+			return &FatalError{fmt.Errorf("cannot authenticate: %s", errorTitle(err.Error()))}
 		}
 
 		// Create clients for the used modules

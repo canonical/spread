@@ -1,0 +1,51 @@
+project: spread
+
+backends:
+    openstack:
+        plan: m1.tiny
+        halt-timeout: 2h
+        systems:
+            - cirros-64:
+                  image: cirros-0.6.2-x86_64-disk
+                  groups:
+                        - default
+                  networks:
+                        - private
+            - cirros-64-wrong-network:
+                  image: cirros-0.6.2-x86_64-disk
+                  groups:
+                        - default
+                  networks:
+                        - noexist
+            - cirros-64-wrong-group:
+                  image: cirros-0.6.2-x86_64-disk
+                  groups:
+                        - noexist
+                  networks:
+                        - private
+            - cirros-64-wrong-image:
+                  image: noexist
+                  groups:
+                        - default
+                  networks:
+                        - private
+            - cirros-64-wrong-plan:
+                  image: cirros-0.6.2-x86_64-disk
+                  plan: noexist
+                  groups:
+                        - default
+                  networks: 
+                        - private
+
+
+path: /home/openstack
+
+restore: |
+    rm -rf /home/openstack
+
+suites:
+    checks/:
+        summary: Verification tasks.
+
+
+# vim:ts=4:sw=4:et

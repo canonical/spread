@@ -17,7 +17,7 @@ jobs:
 
       - name: Run tests
         run: |
-          spread google:
+          spread google:ubuntu-20.04-64: google:ubuntu-22.04-64-devstack:tests/openstack
 
       - name: Discard spread workers
         if: always()

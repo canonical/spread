@@ -1,0 +1,47 @@
+summary: Test the openstack backend.
+
+systems: [ubuntu-22.04-64-devstack]
+
+kill-timeout: 30m
+
+prepare: |
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
+
+    sudo -u stack -i /opt/stack/devstack/unstack.sh
+    sudo -u stack -i /opt/stack/devstack/stack.sh
+
+execute: |
+    # Check the instances which cannot be accessed are discarded
+    # The instance was created and the status has to be active to
+    # fail trying to access through ssh
+    spread openstack:cirros-64: -v -reuse -resend &> task.out || true
+    grep 'cannot stablish ssh connection to the openstach server' task.out
+
+    # Check that the server is discarded during the spread execution
+    test -z "$(openstack server list)"
+
+    # Check the error in case the network does not exist
+    spread openstack:cirros-64-wrong-network: -v -reuse -resend &> task.out || true
+    grep 'cannot find valid network with name noexist' task.out
+    test -z "$(openstack server list)"
+
+    # Check the error in case the group does not exist
+    spread openstack:cirros-64-wrong-group: -v -reuse -resend &> task.out || true
+    grep 'cannot find valid group with name noexist' task.out
+    test -z "$(openstack server list)"
+
+    # Check the error in case the image does not exist
+    spread openstack:cirros-64-wrong-image: -v -reuse -resend &> task.out || true
+    grep 'cannot find matching image for noexist' task.out
+    test -z "$(openstack server list)"
+
+    # Check the error in case the group does not exist
+    spread openstack:cirros-64-wrong-plan: -v -reuse -resend &> task.out  || true
+    grep 'cannot find valid flavor with name noexist' task.out
+    test -z "$(openstack server list)"
+
+debug: |
+    cat task.out || true

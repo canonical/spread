@@ -65,8 +65,8 @@ type Backend struct {
 	Storage  Size
 
 	// Only for Openstack so far
-	Network        string
-	SecurityGroups []string `yaml:"security-groups"`
+	Networks []string
+	Groups   []string
 
 	Systems SystemsMap
 
@@ -127,8 +127,8 @@ type System struct {
 	Storage Size
 
 	// Only for Openstack so far
-	Network        string
-	SecurityGroups []string `yaml:"security-groups"`
+	Networks []string
+	Groups   []string
 
 	// Only for Google so far.
 	SecureBoot bool `yaml:"secure-boot"`
@@ -571,11 +571,11 @@ func Load(path string) (*Project, error) {
 			if system.Plan == "" {
 				system.Plan = backend.Plan
 			}
-			if system.Network == "" {
-				system.Network = backend.Network
+			if len(system.Networks) == 0 {
+				system.Networks = backend.Networks
 			}
-			if len(system.SecurityGroups) == 0 {
-				system.SecurityGroups = backend.SecurityGroups
+			if len(system.Groups) == 0 {
+				system.Groups = backend.Groups
 			}
 			if err := checkEnv(system, &system.Environment); err != nil {
 				return nil, err

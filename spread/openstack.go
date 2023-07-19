@@ -59,12 +59,12 @@ type openstackServer struct {
 }
 
 type openstackServerData struct {
-	Id      string
-	Name    string
-	Flavor  string    `json:"machineType"`
-	Network string    `json:"network"`
-	Status  string    `yaml:"-"`
-	Created time.Time `json:"creationTimestamp"`
+	Id       string
+	Name     string
+	Flavor   string    `json:"machineType"`
+	Networks []string  `json:"network"`
+	Status   string    `yaml:"-"`
+	Created  time.Time `json:"creationTimestamp"`
 
 	Labels map[string]string `yaml:"-"`
 }
@@ -198,7 +198,11 @@ func findErrorTitle(node *html.Node) string {
 
 // error messages returned by openstack api are html
 // which contain title and details related to the error
-func errorTitle(msg string) string {
+func errorTitle(err error) string {
+	printf(fmt.Sprintf("%T\n", err))	
+	printf(fmt.Sprintf("%v\n", err))
+	printf(fmt.Sprintf("%s\n", err))
+	msg := err.Error()
 	node, err := html.Parse(strings.NewReader(msg))
 	if err != nil {
 		return ""
@@ -209,7 +213,7 @@ func errorTitle(msg string) string {
 func (p *openstackProvider) findFlavor(flavorName string) (*nova.Entity, error) {
 	flavors, err := p.computeClient.ListFlavors()
 	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve flavors list: %s", errorTitle(err.Error()))
+		return nil, fmt.Errorf("cannot retrieve flavors list: %s", errorTitle(err))
 	}
 
 	for _, f := range flavors {
@@ -221,20 +225,33 @@ func (p *openstackProvider) findFlavor(flavorName string) (*nova.Entity, error) 
 	return nil, fmt.Errorf("cannot find specified flavor: %s", flavorName)
 }
 
-func (p *openstackProvider) findNetwork(name string) (*neutron.NetworkV2, error) {
+func (p *openstackProvider) findFirstNetwork() (*neutron.NetworkV2, error) {
 	networks, err := p.networkClient.ListNetworksV2()
 	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve networks list: %s", errorTitle(err.Error()))
+		return nil, fmt.Errorf("cannot retrieve networks list: %s", errorTitle(err))
 	}
-
 	// When there are not networks defined, the first network which is not external
 	// is returned (external networks could not be allowed to request)
 	for _, net := range networks {
-		if (name == "" && net.External == false) || (name != "" && name == net.Name) {
+		if net.External == false {
 			return &net, nil
 		}
 	}
 	return nil, &FatalError{errors.New("cannot find valid network to create floating IP")}
+}
+
+func (p *openstackProvider) findNetwork(name string) (*neutron.NetworkV2, error) {
+	networks, err := p.networkClient.ListNetworksV2()
+	if err != nil {
+		return nil, fmt.Errorf("cannot retrieve networks list: %s", errorTitle(err))
+	}
+
+	for _, net := range networks {
+		if name != "" && name == net.Name {
+			return &net, nil
+		}
+	}
+	return nil, &FatalError{fmt.Errorf("cannot find valid network with name %s", name)}
 }
 
 func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, error) {
@@ -244,7 +261,7 @@ func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, er
 
 	images, err := p.imageClient.ListImagesDetail()
 	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve images list: %s", errorTitle(err.Error()))
+		return nil, fmt.Errorf("cannot retrieve images list: %s", errorTitle(err))
 	}
 
 	for _, i := range images {
@@ -281,7 +298,7 @@ func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, er
 func (p *openstackProvider) findAvailabilityZone() (*nova.AvailabilityZone, error) {
 	zones, err := p.computeClient.ListAvailabilityZones()
 	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve availability zones: %s", errorTitle(err.Error()))
+		return nil, fmt.Errorf("cannot retrieve availability zones: %s", errorTitle(err))
 	}
 
 	if len(zones) == 0 {
@@ -295,7 +312,7 @@ func (p *openstackProvider) findSecurityGroupNames(names []string) ([]nova.Secur
 
 	secGroups, err := p.networkClient.ListSecurityGroupsV2()
 	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve security groups: %s", errorTitle(err.Error()))
+		return nil, fmt.Errorf("cannot retrieve security groups: %s", errorTitle(err))
 	}
 
 	if len(secGroups) == 0 {
@@ -346,11 +363,12 @@ func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer, timeo
 func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer, timeoutSeconds int) error {
 	server, err := p.computeClient.GetServer(s.d.Id)
 	if err != nil {
-		return fmt.Errorf("cannot retrieving server information: %s", errorTitle(err.Error()))
+		return fmt.Errorf("cannot retrieving server information: %s", errorTitle(err))
 	}
 	// The adreesses for a network is map of networks and list of ip adresses
 	// We are configuring just 1 network address for the network
-	s.address = server.Addresses[s.d.Network][0].Address
+	// To get the address is used the first network
+	s.address = server.Addresses[s.d.Networks[0]][0].Address
 
 	config := &ssh.ClientConfig{
 		User:            "root",
@@ -395,9 +413,21 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		return nil, err
 	}
 
-	network, err := p.findNetwork(system.Network)
-	if err != nil {
-		return nil, err
+	networks := []nova.ServerNetworks{}
+	if len(system.Networks) == 0 {
+		net, err := p.findFirstNetwork()
+		if err != nil {
+			return nil, err
+		}		
+		networks = []nova.ServerNetworks{{NetworkId: net.Id}}
+	} 
+
+	for _, netName := range system.Networks {
+		net, err := p.findNetwork(netName)
+		if err != nil {
+			return nil, err
+		}
+		networks = append(networks, nova.ServerNetworks{NetworkId: net.Id})
 	}
 
 	image, err := p.findImage(system.Image)
@@ -426,13 +456,13 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		FlavorId:         flavor.Id,
 		ImageId:          image.Id,
 		AvailabilityZone: availabilityZone.Name,
-		Networks:         []nova.ServerNetworks{{NetworkId: network.Id}},
+		Networks:         networks,
 		Metadata:         tags,
 		UserData:         []byte(cloudconfig),
 	}
 
-	if len(system.SecurityGroups) > 0 {
-		sgNames, err := p.findSecurityGroupNames(system.SecurityGroups)
+	if len(system.Groups) > 0 {
+		sgNames, err := p.findSecurityGroupNames(system.Groups)
 		if err != nil {
 			return nil, err
 		}
@@ -441,7 +471,7 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 
 	server, err := p.computeClient.RunServer(opts)
 	if err != nil {
-		return nil, fmt.Errorf("cannot create instance %s", errorTitle(err.Error()))
+		return nil, fmt.Errorf("cannot create instance %s", errorTitle(err))
 	}
 
 	s := &openstackServer{
@@ -450,7 +480,6 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 			Id:      server.Id,
 			Name:    name,
 			Flavor:  flavor.Name,
-			Network: network.Name,
 			Status:  openstackProvisioning,
 			Created: time.Now(),
 		},
@@ -487,7 +516,7 @@ func (p *openstackProvider) list() ([]*openstackServer, error) {
 	servers, err := p.computeClient.ListServersDetail(filter)
 
 	if err != nil {
-		return nil, fmt.Errorf("cannot list openstack instances: %s", errorTitle(err.Error()))
+		return nil, fmt.Errorf("cannot list openstack instances: %s", errorTitle(err))
 	}
 
 	var instances []*openstackServer
@@ -512,7 +541,7 @@ func (p *openstackProvider) list() ([]*openstackServer, error) {
 func (p *openstackProvider) removeMachine(ctx context.Context, s *openstackServer) error {
 	err := p.computeClient.DeleteServer(s.d.Id)
 	if err != nil {
-		return fmt.Errorf("cannot remove openstack instance: %s", errorTitle(err.Error()))
+		return fmt.Errorf("cannot remove openstack instance: %s", errorTitle(err))
 	}
 	return err
 }
@@ -598,7 +627,7 @@ func (p *openstackProvider) checkKey() error {
 		authClient := gooseClient.NewClient(cred, authmode, nil)
 		err = authClient.Authenticate()
 		if err != nil {
-			return &FatalError{fmt.Errorf("cannot authenticate: %s", errorTitle(err.Error()))}
+			return &FatalError{fmt.Errorf("cannot authenticate: %s", errorTitle(err))}
 		}
 
 		// Create clients for the used modules

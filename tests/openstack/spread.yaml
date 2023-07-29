@@ -3,7 +3,7 @@ project: spread
 backends:
     openstack:
         plan: m1.tiny
-        halt-timeout: 2h
+        halt-timeout: 1s
         systems:
             - cirros-64:
                   image: cirros-0.6.2-x86_64-disk

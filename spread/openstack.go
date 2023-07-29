@@ -181,15 +181,15 @@ func openstackName() string {
 	return strings.ToLower(strings.Replace(time.Now().UTC().Format(openstackNameLayout), ".", "-", 1))
 }
 
-func finderrorMsg(node *html.Node) string {
+func findHTMLErrorMsg(node *html.Node) string {
 	if node.Type == html.ElementNode && node.Data == "title" {
 		return node.FirstChild.Data
 	}
 
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		title := finderrorMsg(child)
+		title := findHTMLErrorMsg(child)
 		if title != "" {
-			return title
+			return strings.TrimSpace(title)
 		}
 	}
 
@@ -198,13 +198,43 @@ func finderrorMsg(node *html.Node) string {
 
 // error messages returned by openstack api are html
 // which contain title and details related to the error
-func errorMsg(err error) string {
-	msg := err.Error()
-	node, err := html.Parse(strings.NewReader(msg))
+func getHTMLErrorMsg(errMsg string) string {
+	node, err := html.Parse(strings.NewReader(errMsg))
 	if err != nil {
 		return ""
 	}
-	return finderrorMsg(node)
+
+	return findHTMLErrorMsg(node)
+}
+
+// some error error messages triggered by nova are string like:
+// line1...n is a low level description about the error
+// line n+1 contains the error cause and the error info following the format
+// caused by: <error_cause> ; error info: <json_data>
+func getCausedByErrorMsg(errMsg string) string {
+	for _, line := range strings.Split(strings.TrimSuffix(errMsg, "\n"), "\n") {
+		if strings.HasPrefix(line, "caused by:") {
+			errorCause := strings.Split(line, "; error info:")[0]
+			return strings.TrimSpace(strings.TrimPrefix(errorCause, "caused by:"))
+		}
+	}
+	return ""
+}
+
+func errorMsg(osErr error) string {
+	msg := osErr.Error()
+
+	htmlErrorMsg := getHTMLErrorMsg(msg)
+	if htmlErrorMsg != "" {
+		return htmlErrorMsg
+	}
+
+	causedByErrorMsg := getCausedByErrorMsg(msg)
+	if causedByErrorMsg != "" {
+		return causedByErrorMsg
+	}
+
+	return msg
 }
 
 func (p *openstackProvider) findFlavor(flavorName string) (*nova.Entity, error) {
@@ -415,9 +445,9 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		net, err := p.findFirstNetwork()
 		if err != nil {
 			return nil, err
-		}		
+		}
 		networks = []nova.ServerNetworks{{NetworkId: net.Id}}
-	} 
+	}
 
 	for _, netName := range system.Networks {
 		net, err := p.findNetwork(netName)
@@ -468,6 +498,7 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 
 	server, err := p.computeClient.RunServer(opts)
 	if err != nil {
+		errorMsg(err)
 		return nil, fmt.Errorf("cannot create instance %s", errorMsg(err))
 	}
 

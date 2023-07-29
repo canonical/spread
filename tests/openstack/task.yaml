@@ -43,5 +43,18 @@ execute: |
     grep 'cannot find valid flavor with name noexist' task.out
     test -z "$(openstack server list)"
 
+    # Check errors with environment variables
+    OS_REGION_NAME=wrong spread openstack:cirros-64: -v -reuse -resend &> task.out  || true
+    grep 'cannot authenticate: invalid region "wrong"' task.out
+    OS_PASSWORD=wrong spread openstack:cirros-64: -v -reuse -resend &> task.out  || true
+    grep 'cannot authenticate: requesting token: Unauthorised URL' task.out
+    OS_USERNAME=wrong  spread openstack:cirros-64: -v -reuse -resend &> task.out  || true
+    grep 'cannot authenticate: requesting token: Unauthorised URL' task.out
+
+    # trigger 1 instance and check it can be listed
+    test "0" = "$(spread -gc | grep -c "Checking openstack instance")"
+    spread openstack:cirros-64: &>/dev/null &
+    test "1" = "$(spread -gc | grep -c "Checking openstack instance")"
+
 debug: |
     cat task.out || true

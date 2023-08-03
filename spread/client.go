@@ -22,6 +22,8 @@ import (
 	"syscall"
 )
 
+var sshDial = ssh.Dial
+
 type Client struct {
 	server Server
 	sshc   *ssh.Client
@@ -44,7 +46,7 @@ func Dial(server Server, username, password string) (*Client, error) {
 	if !strings.Contains(addr, ":") {
 		addr += ":22"
 	}
-	sshc, err := ssh.Dial("tcp", addr, config)
+	sshc, err := sshDial("tcp", addr, config)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect to %s: %v", server, err)
 	}
@@ -72,7 +74,7 @@ func (c *Client) ResetJob() {
 	c.SetJob("")
 }
 
-func (c *Client) dialOnReboot(prevUptime time.Time) error {
+func (c *Client) dialOnReboot(prevBootID string) error {
 	// First wait until SSH isn't working anymore.
 	timeout := time.After(c.killTimeout)
 	relog := time.NewTicker(c.warnTimeout)
@@ -82,7 +84,6 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 
 	waitConfig := *c.config
 	waitConfig.Timeout = 5 * time.Second
-	uptimeChanged := 3 * time.Second
 
 	for {
 		// Try to connect to the rebooting system, note that
@@ -91,15 +92,13 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 		// before the code times out.
 		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
 		if err == nil {
-			// once successfully connected, check uptime to
+			// once successfully connected, check boot_id to
 			// see if the reboot actually happend
 			c.sshc.Close()
 			c.sshc = sshc
-			currUptime, err := c.getUptime()
+			curBootID, err := c.getBootID()
 			if err == nil {
-				uptimeDelta := currUptime.Sub(prevUptime)
-				if uptimeDelta > uptimeChanged {
-					// Reboot done
+				if curBootID != prevBootID {
 					return nil
 				}
 			}
@@ -292,31 +291,26 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 		rebootKey = rerr.Key
 		output = append(output, '\n')
 
-		uptime, err := c.getUptime()
+		bootID, err := c.getBootID()
 		if err != nil {
 			return nil, err
 		}
 		c.Run("reboot", "", nil)
 
-		if err := c.dialOnReboot(uptime); err != nil {
+		if err := c.dialOnReboot(bootID); err != nil {
 			return nil, err
 		}
 	}
 	panic("unreachable")
 }
 
-func (c *Client) getUptime() (time.Time, error) {
-	uptime, err := c.Output("date -u -d \"$(cut -f1 -d. /proc/uptime) seconds ago\" +\"%Y-%m-%dT%H:%M:%SZ\"", "", nil)
+func (c *Client) getBootID() (string, error) {
+	rawBootID, err := c.Output("cat /proc/sys/kernel/random/boot_id", "", nil)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("cannot obtain the remote system uptime: %v", err)
+		return "", fmt.Errorf("cannot obtain the remote system boot_id: %v", err)
 	}
 
-	parsedUptime, err := time.Parse(time.RFC3339, string(uptime))
-	if err != nil {
-		return time.Time{}, fmt.Errorf("cannot parse the remote system uptime: %q", uptime)
-	}
-
-	return parsedUptime, nil
+	return string(bytes.TrimSpace(rawBootID)), nil
 }
 
 var toBashRC = map[string]bool{
@@ -366,6 +360,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	// We also run it in a subshell, see
 	//  https://github.com/snapcore/spread/pull/67
 	buf.WriteString(rc(true, "MATCH() ( { set +xu; } 2> /dev/null; [ ${#@} -gt 0 ] || { echo \"error: missing regexp argument\"; return 1; }; local stdin=\"$(cat)\"; grep -q -E \"$@\" <<< \"$stdin\" || { res=$?; echo \"grep error: pattern not found, got:\n$stdin\">&2; if [ $res != 1 ]; then echo \"unexpected grep exit status: $res\"; fi; return 1; }; )\n"))
+	buf.WriteString(rc(true, "NOMATCH() ( { set +xu; } 2> /dev/null; [ ${#@} -gt 0 ] || { echo \"error: missing regexp argument\"; return 1; }; local stdin=\"$(cat)\"; if echo \"$stdin\" | grep -q -E \"$@\"; then echo \"NOMATCH pattern='$@' found in:\n$stdin\">&2; return 1; fi; )\n"))
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
 	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\n")
@@ -581,9 +576,7 @@ func (c *Client) Send(from, to string, include, exclude []string) error {
 	for _, pattern := range exclude {
 		args = append(args, "--exclude="+pattern)
 	}
-	for _, pattern := range include {
-		args = append(args, pattern)
-	}
+	args = append(args, include...)
 
 	var stderr bytes.Buffer
 
@@ -795,6 +788,7 @@ func (s *localScript) run() (stdout, stderr []byte, err error) {
 	buf.WriteString("FATAL() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<FATAL>' || echo \"<FATAL $@>\"; exit 213; }\n")
 	buf.WriteString("ERROR() { { set +xu; } 2> /dev/null; [ -z \"$1\" ] && echo '<ERROR>' || echo \"<ERROR $@>\"; exit 213; }\n")
 	buf.WriteString("MATCH() { { set +xu; } 2> /dev/null; local stdin=$(cat); echo $stdin | grep -q -E \"$@\" || { echo \"error: pattern not found on stdin:\\n$stdin\">&2; return 1; }; }\n")
+	buf.WriteString("NOMATCH() { { set +xu; } 2> /dev/null; local stdin=$(cat); if echo $stdin | grep -q -E \"$@\"; then echo \"NOMATCH pattern='$@' found in:\n$stdin\">&2; return 1; fi }\n")
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
 	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\n")

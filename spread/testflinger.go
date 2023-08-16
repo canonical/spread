@@ -1,277 +1,310 @@
 package spread
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
-	"os"
-	"os/exec"
-	"strings"
+	"math/rand"
+	"net"
+	"net/http"
 	"time"
 
 	"golang.org/x/net/context"
+
+	"github.com/niemeyer/pretty"
 )
 
 func TestFlinger(p *Project, b *Backend, o *Options) Provider {
-	return &tfProvider{p, b, o}
+	return &TestFlingerProvider{p, b, o, &http.Client{}}
 }
 
-type tfProvider struct {
+type TestFlingerProvider struct {
 	project *Project
 	backend *Backend
 	options *Options
+
+	client *http.Client
 }
 
-type tfServer struct {
-	p *tfProvider
-	d tfServerData
+type TestFlingerServer struct {
+	p *TestFlingerProvider
+	d TestFlingerServerData
 
 	system  *System
 	address string
 }
 
-type tfServerData struct {
+type TestFlingerServerData struct {
 	Name  string
 	JobId string
 }
 
-type tfFile struct {
-	Queue          string              `yaml:"job_queue"`
-	ProvisionDdata *tfProvisioningData `yaml:"provision_data"`
-	TestData       *tfTestData         `yaml:"test_data"`
-	ReserveData    *tfReserveData      `yaml:"reserve_data"`
+type TestFlingerJobData struct {
+	Queue          string                      `json:"job_queue"`
+	ProvisionDdata TestFlingerProvisioningData `json:"provision_data"`
+	AllocateData   TestFlingerAllocateData     `json:"allocate_data"`
 }
 
-var (
-	tfconfigfile = "testflinger.conf."
-	tfuser       = "ubuntu"
-	tfpassword   = "ubuntu"
-	tfpolltime   = 10
+type TestFlingerProvisioningData struct {
+	Url string `json:"url"`
+}
+
+type TestFlingerAllocateData struct {
+	Allocate bool `json:"allocate"`
+}
+
+type TestFlingerJobResponse struct {
+	JobId string `json:"job_id"`
+}
+
+type TestFlingerDeviceInfo struct {
+	DeviceIP string `json:"device_ip"`
+}
+
+type TestFlingerResultResponse struct {
+	JobState   string                `json:"job_state"`
+	DeviceInfo TestFlingerDeviceInfo `json:"device_info"`
+}
+
+type TestFlingerActionData struct {
+	Action string `json:"action"`
+}
+
+const (
+	ALLOCATED = "Allocated"
+	CANCELLED = "cancelled"
+	COMPLETE  = "complete"
+	COMPLETED = "completed"
 )
 
-type tfReserveData struct {
-	SSHKeys []string `yaml:"ssh_keys"`
-}
-
-type tfTestData struct {
-	TestCommands []string `yaml:"test_cmds"`
-}
-
-type tfProvisioningData struct {
-	Url string
-}
-
-func (s *tfServer) String() string {
+func (s *TestFlingerServer) String() string {
 	return fmt.Sprintf("%s (%s)", s.system, s.d.Name)
 }
 
-func (s *tfServer) Label() string {
+func (s *TestFlingerServer) Label() string {
 	return s.d.Name
 }
 
-func (s *tfServer) Provider() Provider {
+func (s *TestFlingerServer) Provider() Provider {
 	return s.p
 }
 
-func (s *tfServer) Address() string {
+func (s *TestFlingerServer) Address() string {
 	return s.address
 }
 
-func (s *tfServer) System() *System {
+func (s *TestFlingerServer) System() *System {
 	return s.system
 }
 
-func (s *tfServer) ReuseData() interface{} {
+func (s *TestFlingerServer) ReuseData() interface{} {
 	return &s.d
 }
 
-func (s *tfServer) Discard(ctx context.Context) error {
-	output, err := exec.Command("testflinger-cli", "cancel", s.d.JobId).CombinedOutput()
+func (s *TestFlingerServer) Discard(ctx context.Context) error {
+	data := &TestFlingerActionData{
+		Action: "cancel",
+	}
+	err := s.p.do("POST", "/job/"+s.d.JobId+"/action", data, nil)
 	if err != nil {
-		return fmt.Errorf("cannot discard testflinger reservation: %v", outputErr(output, err))
+		return fmt.Errorf("Error discarding job: %v: ", err)
 	}
 	return nil
 }
 
-func (p *tfProvider) Backend() *Backend {
+func (p *TestFlingerProvider) Backend() *Backend {
 	return p.backend
 }
 
-func (p *tfProvider) GarbageCollect() error {
+func (p *TestFlingerProvider) GarbageCollect() error {
 	return nil
 }
 
-func (p *tfProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {
-	s := &tfServer{
+func (p *TestFlingerProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {
+	s := &TestFlingerServer{
 		p:       p,
 		system:  system,
 		address: rsystem.Address,
 	}
 	err := rsystem.UnmarshalData(&s.d)
 	if err != nil {
-		return nil, fmt.Errorf("cannot unmarshal testflinger reuse data: %v", err)
+		return nil, fmt.Errorf("cannot unmarshal TestFlinger reuse data: %v", err)
 	}
 	return s, nil
 }
 
-func (p *tfProvider) Allocate(ctx context.Context, system *System) (Server, error) {
-	image := system.Image
-	name := tfName(system)
-
-	key := ""
-	if p.backend.Key != "" {
-		key = p.backend.Key
+func (p *TestFlingerProvider) Allocate(ctx context.Context, system *System) (Server, error) {
+	s, err := p.requestDevice(ctx, system)
+	if err != nil {
+		return nil, err
 	}
+	err = p.waitDeviceBoot(ctx, s)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
 
-	file := &tfFile{
-		Queue: name,
-		ProvisionDdata: &tfProvisioningData{
+func (p *TestFlingerProvider) requestDevice(ctx context.Context, system *System) (*TestFlingerServer, error) {
+	image := system.Image
+	queue := TestFlingerQueue(system)
+
+	data := &TestFlingerJobData{
+		Queue: queue,
+		ProvisionDdata: TestFlingerProvisioningData{
 			Url: image,
 		},
-		TestData: &tfTestData{
-			TestCommands: []string{"ssh $DEVICE_IP 'cat /proc/cpuinfo'",
-				"ssh $DEVICE_IP 'echo \"ubuntu:ubuntu\" | sudo chpasswd'",
-				"ssh $DEVICE_IP 'echo \"ubuntu ALL=(ALL) NOPASSWD:ALL\" | sudo tee /etc/sudoers.d/create-user-ubuntu'"},
-		},
-		ReserveData: &tfReserveData{
-			SSHKeys: []string{key},
+		AllocateData: TestFlingerAllocateData{
+			Allocate: true,
 		},
 	}
 
-	d, err := yaml.Marshal(file)
-	if err != nil {
-		return nil, fmt.Errorf("error: %v", err)
-	}
-
-	tmpfile, err := ioutil.TempFile(".", tfconfigfile)
-	if err != nil {
-		return nil, fmt.Errorf("Error creating temporal file: %v", err)
-	}
-	defer os.Remove(tmpfile.Name())
-
-	if _, err := tmpfile.Write(d); err != nil {
-		return nil, fmt.Errorf("Error writing temporal file: %v", err)
-	}
-	if err := tmpfile.Close(); err != nil {
-		return nil, fmt.Errorf("Error closing temporal file: %v", err)
-	}
+	var jobRes TestFlingerJobResponse
+	err := p.do("POST", "/job", data, &jobRes)
 
 	// First step is to get the job_id running the submit command
 	jobId := ""
-
-	out, err := exec.Command("/snap/bin/testflinger-cli", "submit", tmpfile.Name()).Output()
 	if err != nil {
-		printf("Output running submit command %s", out)
-		return nil, fmt.Errorf("Error running command: %v: ", err)
+		return nil, fmt.Errorf("Error creating job: %v: ", err)
 	}
-	lines := strings.Split(string(out), "\n")
-
-	for _, line := range lines {
-		if strings.HasPrefix(line, "job_id:") {
-			parts := strings.Split(line, ":")
-			if len(parts) == 2 {
-				jobId = strings.TrimSpace(parts[1])
-				printf("JobId created for testflinger job: %s", jobId)
-				break
-			} else {
-				return nil, fmt.Errorf("JobId not found")
-			}
-		}
+	if jobRes.JobId != "" {
+		jobId = jobRes.JobId
+		printf("TestFlinger job %s created for system %s", jobId, system.Name)
+	} else {
+		return nil, fmt.Errorf("Failed to retrieve job id")
 	}
 
-	s := &tfServer{
+	s := &TestFlingerServer{
 		p: p,
-		d: tfServerData{
-			Name:  name,
+		d: TestFlingerServerData{
+			Name:  system.Name,
 			JobId: jobId,
 		},
 		system: system,
 	}
+	return s, nil
+}
 
-	// Second step is to wait until the ip device reserved
-	printf("Waiting for testflinger %s to have an address...", name)
-
-	timeout := time.After(30 * time.Minute)
-	warn := time.NewTicker(1 * time.Minute)
+func (p *TestFlingerProvider) waitDeviceBoot(ctx context.Context, s *TestFlingerServer) error {
+	printf("Waiting for TestFlinger %s to have an address...", s.d.Name)
+	wait_timeout := s.system.WaitTimeout.Duration
+	timeout := time.NewTicker(15 * time.Minute)
+	if wait_timeout != 0 {
+		timeout = time.NewTicker(wait_timeout)
+	}
+	warn := time.NewTicker(3 * time.Minute)
 	retry := time.NewTicker(15 * time.Second)
 	defer retry.Stop()
 	for {
-		cmd := exec.Command("/snap/bin/testflinger-cli", "status", jobId)
-		out, err := cmd.Output()
+		var resRes TestFlingerResultResponse
+		err := p.do("GET", "/result/"+s.d.JobId, nil, &resRes)
+
 		if err != nil {
-			printf("Output running status command %s", out)
-			return nil, fmt.Errorf("Error running command: %v", err)
+			return fmt.Errorf("Error requesting job status: %v", err)
 		}
-		line := strings.Split(string(out), "\n")[0]
-		state := strings.TrimSpace(line)
-
-		if state == "reserve" {
-			printf("System already reserved, detecting ip...")
-			break
+		state := ""
+		if resRes.JobState != "" {
+			state = resRes.JobState
+		} else {
+			return fmt.Errorf("Failed to retrieve job state")
 		}
 
-		if state == "complete" {
-			return nil, fmt.Errorf("System already in complete state")
-		}
-
-		select {
-		case <-retry.C:
-		case <-warn.C:
-			printf("Warning, system already on %s state", state)
-		case <-timeout:
-			s.Discard(ctx)
-			return nil, fmt.Errorf("System not reserved")
-		}
-
-	}
-
-	// wait until the ip is published (poll buffers 10 seconds until it outputs all the data)
-	time.Sleep(time.Duration(tfpolltime) * time.Second)
-
-	// third step is to get the user and ip to connect to the device
-	timeout = time.After(2 * time.Minute)
-	retry = time.NewTicker(time.Duration(tfpolltime) * time.Second)
-	for {
-		out, err = exec.Command("/snap/bin/testflinger-cli", "poll", "-o", jobId).Output()
-		if err != nil {
-			return nil, fmt.Errorf("Error running command: %v", err)
-		}
-		lines = strings.Split(string(out), "\n")
-
-		for _, line := range lines {
-			if strings.HasPrefix(line, "You can now connect to") {
-				parts := strings.Split(line, "@")
-				if len(parts) == 2 {
-					s.address = strings.TrimSpace(parts[1])
-					printf("Allocated device with ip %s", s.address)
-					return s, nil
-				} else {
-					s.Discard(ctx)
-					return nil, fmt.Errorf("ip address not found")
+		// allocated stated means the ip for the device available
+		if state == ALLOCATED {
+			if resRes.DeviceInfo.DeviceIP != "" {
+				s.address = resRes.DeviceInfo.DeviceIP
+				if net.ParseIP(s.address) == nil {
+					return fmt.Errorf("Wrong ip format %s: ", s.address)
 				}
+				printf("Allocated device with ip %s", s.address)
+				return nil
 			}
 		}
 
+		// The job_id is not active anymore
+		if state == CANCELLED || state == COMPLETE || state == COMPLETED {
+			return fmt.Errorf("Job state is either cancelled or completed")
+		}
+		
 		select {
 		case <-retry.C:
-		case <-timeout:
+		case <-warn.C:
+			printf("Job %s for device % s is in state %s", s.d.JobId, s.d.Name, state)
+		case <-timeout.C:
 			s.Discard(ctx)
-			return nil, fmt.Errorf("Ip not published")
+			return fmt.Errorf("Wait timeout reached, job discarded")
 		}
 	}
 
-	return nil, fmt.Errorf("ip address not found")
+	return fmt.Errorf("ip address not found")
 }
 
-func tfName(system *System) string {
+func TestFlingerQueue(system *System) string {
 	if system.Queue != "" {
 		return system.Queue
 	}
-
-	parts := strings.Split(system.Name, "-")
-	if len(parts) > 1 {
-		return parts[0]
-	} else {
-		return system.Name
-	}
+	return system.Name
 }
+
+func (p *TestFlingerProvider) do(method, subpath string, params interface{}, result interface{}) error {
+	var data []byte
+	var err error
+
+	if params != nil {
+		data, err = json.Marshal(params)
+		if err != nil {
+			return fmt.Errorf("cannot marshal TestFlinger request parameters: %s", err)
+		}
+	}
+
+	url := "https://testflinger.canonical.com/v1"
+	url += subpath
+
+	// Repeat on 500s. Note that Google's 500s may come in late, as a marshaled error
+	// under a different code. See the INTERNAL handling at the end below.
+	var resp *http.Response
+	var req *http.Request
+	var delays = rand.Perm(10)
+	for i := 0; i < 10; i++ {
+		req, err = http.NewRequest(method, url, bytes.NewBuffer(data))
+		debugf("TestFlinger request URL: %s", req.URL)
+		if err != nil {
+			return &FatalError{fmt.Errorf("cannot create HTTP request: %v", err)}
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err = p.client.Do(req)
+		if err == nil && 500 <= resp.StatusCode && resp.StatusCode < 600 {
+			time.Sleep(time.Duration(delays[i]) * 250 * time.Millisecond)
+			continue
+		}
+		
+		if err != nil {
+			return fmt.Errorf("cannot perform TestFlinger request: %v", err)
+		}
+
+		data, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("cannot read TestFlinger response: %v", err)
+		}
+
+		if result != nil {
+			// Unmarshal even on errors, so the call site has a chance to inspect the data on errors.
+			err = json.Unmarshal(data, result)
+			if err != nil && resp.StatusCode == 404 {
+				return errTestFlingerNotFound
+			}
+		}
+
+		break
+	}
+
+	if err != nil {
+		info := pretty.Sprintf("Request:\n-----\n%# v\n-----\nResponse:\n-----\n%s\n-----\n", params, data)
+		return fmt.Errorf("cannot decode TestFlinger response (status %d): %s\n%s", resp.StatusCode, err, info)
+	}
+
+	return nil
+}
+
+var errTestFlingerNotFound = fmt.Errorf("not found")

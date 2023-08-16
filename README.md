@@ -29,6 +29,7 @@ Spread
 [AdHoc backend](#adhoc)  
 [More on parallelism](#parallelism)  
 [Repacking and delta uploads](#repacking)  
+[GitHub Action](#github-action)
 
 <a name="why"/>
 
@@ -1175,3 +1176,30 @@ prepare: |
 
 The `rename` and `exclude` settings used above ensure that the tarball that goes
 into `repack` looks like the one offered by GitHub.
+
+<a name="github-action"/>
+
+## GitHub action
+
+To facilitate using Spread within GitHub workflows, this repository offers a
+custom GitHub action to install and configure Spread on a GitHub runner.
+
+### Usage
+
+```yaml
+- uses: snapcore/spread@master
+```
+
+#### Inputs
+
+##### `ref`
+
+The branch, tag or commit sha of the Spread repository is to be checked out and
+from where the Spread binary will be built. The default value is `master`.
+
+```yaml
+- uses: snapcore/spread@master
+  with:
+    ref: master
+```
+

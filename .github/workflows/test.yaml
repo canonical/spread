@@ -42,3 +42,4 @@ jobs:
         run: |
           echo "Spread path: ${{ steps.install-spread.outputs.path }}"
           spread -list
+

@@ -12,7 +12,7 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - run: echo "CHECKOUT_PATH=_spread-${{ github.job	 }}" >> $GITHUB_ENV
+    - run: echo "CHECKOUT_PATH=_spread-${{ github.job }}" >> $GITHUB_ENV
       shell: bash
 
     - uses: actions/checkout@v3
@@ -33,3 +33,4 @@ runs:
     - id: get-path
       run: echo "spread-path=$(which spread)" >> $GITHUB_OUTPUT
       shell: bash
+

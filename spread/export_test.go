@@ -37,4 +37,16 @@ func MockSshDial(f func(network, addr string, config *ssh.ClientConfig) (*ssh.Cl
 	}
 }
 
-var QemuCmd = qemuCmd
+func MockTimeNow(f func() time.Time) (restore func()) {
+	oldTimeNow := timeNow
+	timeNow = f
+	return func() {
+		timeNow = oldTimeNow
+	}
+}
+
+var (
+	QemuCmd = qemuCmd
+
+	OpenstackName = openstackName
+)

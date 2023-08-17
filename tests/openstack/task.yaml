@@ -21,6 +21,12 @@ execute: |
     grep 'cannot stablish ssh connection to the openstach server' task.out
 
     # Check that the server is discarded during the spread execution
+    for i in $(seq 10); do
+        if [ -z "$(openstack server list)" ]; then
+            break
+        fi
+        sleep 1
+    done
     test -z "$(openstack server list)"
 
     # Check the error in case the network does not exist
@@ -47,9 +53,11 @@ execute: |
     OS_REGION_NAME=wrong spread openstack:cirros-64: -v -reuse -resend &> task.out  || true
     grep 'cannot authenticate: invalid region "wrong"' task.out
     OS_PASSWORD=wrong spread openstack:cirros-64: -v -reuse -resend &> task.out  || true
-    grep 'cannot authenticate: requesting token: Unauthorised URL' task.out
-    OS_USERNAME=wrong  spread openstack:cirros-64: -v -reuse -resend &> task.out  || true
-    grep 'cannot authenticate: requesting token: Unauthorised URL' task.out
+    grep 'cannot authenticate:.*returned unexpected status: 401' task.out
+    OS_USERNAME=wrong spread openstack:cirros-64: -v -reuse -resend &> task.out  || true
+    grep 'cannot authenticate:.*returned unexpected status: 401' task.out
+    OS_IDENTITY_API_VERSION=2 spread openstack:cirros-64: -v -reuse -resend &> task.out  || true
+    grep -E 'cannot authenticate:.*returned unexpected status: 404' task.out
 
     # trigger 1 instance and check it can be listed and the garbage collect works
     test "0" = "$(spread -gc | grep -c "Checking openstack instance")"

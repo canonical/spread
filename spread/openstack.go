@@ -16,7 +16,6 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/context"
-	"golang.org/x/net/html"
 )
 
 func Openstack(p *Project, b *Backend, o *Options) Provider {
@@ -187,53 +186,29 @@ func openstackName() string {
 	return strings.ToLower(strings.Replace(timeNow().UTC().Format(openstackNameLayout), ".", "-", 1))
 }
 
-func findHTMLErrorMsg(node *html.Node) string {
-	if node.Type == html.ElementNode && node.Data == "title" {
-		return node.FirstChild.Data
-	}
-
-	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		title := findHTMLErrorMsg(child)
-		if title != "" {
-			return strings.TrimSpace(title)
-		}
-	}
-
-	return ""
-}
-
-// error messages returned by openstack api are html
-// which contain title and details related to the error
-func getHTMLErrorMsg(errMsg string) string {
-	node, err := html.Parse(strings.NewReader(errMsg))
-	if err != nil {
-		return ""
-	}
-
-	return findHTMLErrorMsg(node)
-}
-
-// some error error messages triggered by nova are string like:
-// line1...n is a low level description about the error
-// line n+1 contains the error cause and the error info following the format
+// Error messages triggered by modules are string like:
+// line 1...n is a high level description about the error like:
+// caused by: <highlevel_cause>
+// line n+1 contains the error cause and the error info following the formats:
 // caused by: <error_cause> ; error info: <json_data>
+// caused by: <error_cause> ; error info: <html_data>
 func getCausedByErrorMsg(errMsg string) string {
+	error_msg := ""
 	for _, line := range strings.Split(strings.TrimSuffix(errMsg, "\n"), "\n") {
 		if strings.HasPrefix(line, "caused by:") {
-			errorCause := strings.Split(line, "; error info:")[0]
-			return strings.TrimSpace(strings.TrimPrefix(errorCause, "caused by:"))
+			error_parts := strings.Split(line, "; error info:")
+			// The algorithm returns the cause that has error info (which is the more precise)
+			// and otherwise the first cause which is a high level error.
+			if len(error_parts) > 1 || error_msg == "" {
+				error_msg = strings.TrimSpace(strings.TrimPrefix(error_parts[0], "caused by:"))
+			}
 		}
 	}
-	return ""
+	return error_msg
 }
 
 func errorMsg(osErr error) string {
 	msg := osErr.Error()
-
-	htmlErrorMsg := getHTMLErrorMsg(msg)
-	if htmlErrorMsg != "" {
-		return htmlErrorMsg
-	}
 
 	causedByErrorMsg := getCausedByErrorMsg(msg)
 	if causedByErrorMsg != "" {

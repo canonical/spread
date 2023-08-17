@@ -45,8 +45,4 @@ func MockTimeNow(f func() time.Time) (restore func()) {
 	}
 }
 
-var (
-	QemuCmd = qemuCmd
-
-	OpenstackName = openstackName
-)
+var QemuCmd = qemuCmd

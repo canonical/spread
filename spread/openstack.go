@@ -29,6 +29,10 @@ func Openstack(p *Project, b *Backend, o *Options) Provider {
 	}
 }
 
+type glanceImageClient interface {
+	ListImagesDetail() ([]glance.ImageDetail, error)
+}
+
 type openstackProvider struct {
 	project *Project
 	backend *Backend
@@ -40,7 +44,7 @@ type openstackProvider struct {
 	region        string
 	computeClient *nova.Client
 	networkClient *neutron.Client
-	imageClient   *glance.Client
+	imageClient   glanceImageClient
 
 	mu sync.Mutex
 

@@ -32,12 +32,12 @@ func (s *openstackSuite) TestTrivial(c *C) {
 
 func (s *openstackSuite) TestOpenstackName(c *C) {
 	restore := spread.MockTimeNow(func() time.Time {
-		return time.Date(2007, 8, 22, 11, 59, 58, 999, time.UTC)
+		return time.Date(2007, 8, 22, 11, 59, 58, 987654321, time.UTC)
 	})
 	defer restore()
 
 	name := spread.OpenstackName()
-	c.Check(name, Equals, "aug221159-000000")
+	c.Check(name, Equals, "aug221159-987654")
 }
 
 type fakeGlanceImageClient struct {

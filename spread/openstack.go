@@ -164,6 +164,7 @@ runcmd:
   - pkill -o -HUP sshd || true
 `
 const openstackReadyMarker = "MACHINE-IS-READY"
+const openstackNameLayout = "Jan021504.000000"
 const openstackDefaultFlavor = "m1.medium"
 
 type openstackImage struct {
@@ -182,10 +183,7 @@ type openstackImagesCache struct {
 
 var timeNow = time.Now
 
-// XXX: add docstring
 func openstackName() string {
-	// XXX: granularity will be 1min?
-	const openstackNameLayout = "Jan021504.000000"
 	return strings.ToLower(strings.Replace(timeNow().UTC().Format(openstackNameLayout), ".", "-", 1))
 }
 
@@ -438,6 +436,7 @@ func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer, timeoutS
 func (p *openstackProvider) createMachine(ctx context.Context, system *System) (*openstackServer, error) {
 	debugf("Creating new openstack server for %s...", system.Name)
 
+	name := openstackName()
 	flavorName := openstackDefaultFlavor
 	if system.Plan != "" {
 		flavorName = system.Plan
@@ -485,7 +484,6 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		"password": p.options.Password,
 	}
 
-	name := openstackName()
 	opts := nova.RunServerOpts{
 		Name:             name,
 		FlavorId:         flavor.Id,

@@ -1,6 +1,7 @@
 package spread_test
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"time"
@@ -38,6 +39,37 @@ func (s *openstackSuite) TestOpenstackName(c *C) {
 
 	name := spread.OpenstackName()
 	c.Check(name, Equals, "aug221159-987654")
+}
+
+var opstErr1 = errors.New(`caused by: requesting token failed
+caused by: Resource at https://keystone.bos01.canonistack.canonical.com:5000/v3/tokens not found
+caused by: request (https://keystone.bos01.canonistack.canonical.com:5000/v3/tokens) returned unexpected status: 404; error info: <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<title>404 Not Found</title>
+<h1>Not Found</h1>
+<p>The requested URL was not found on the server.  If you entered the URL manually please check your spelling and try again.</p>`)
+
+var opstErr2 = errors.New(`caused by: requesting token failed
+caused by: request (https://keystone.bos01.canonistack.canonical.com:5000/v3/tokens) returned unexpected status: 503; error info: <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<html><head>
+<title>503 Service Unavailable</title>
+</head><body>
+<h1>Service Unavailable</h1>
+<p>The server is temporarily unable to service your
+request due to maintenance downtime or capacity
+problems. Please try again later.</p>
+<hr>
+<address>Apache/2.4.29 (Ubuntu) Server at 10.48.7.10 Port 5000</address>
+</body></html>`)
+
+func (s *openstackSuite) TestErrorMsg(c *C) {
+	msg1 := spread.ErrorMsg(opstErr1)
+	c.Check(msg1, Equals, `request (https://keystone.bos01.canonistack.canonical.com:5000/v3/tokens) returned unexpected status: 404`)
+
+	msg2 := spread.ErrorMsg(opstErr2)
+	c.Check(msg2, Equals, `request (https://keystone.bos01.canonistack.canonical.com:5000/v3/tokens) returned unexpected status: 503`)
+
+	msg3 := spread.ErrorMsg(errors.New("other error"))
+	c.Check(msg3, Equals, `other error`)
 }
 
 type fakeGlanceImageClient struct {

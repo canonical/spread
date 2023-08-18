@@ -6,6 +6,7 @@ import (
 
 var (
 	OpenstackName = openstackName
+	ErrorMsg      = errorMsg
 )
 
 type (

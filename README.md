@@ -923,6 +923,11 @@ backends:
             # Extended syntax:
             - another-system:
                 image: some-other-image
+                networks:
+                    - network_external
+                    - network_pvn
+                groups:
+                    - group_external
 
 ```
 

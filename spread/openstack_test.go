@@ -131,20 +131,63 @@ func makeGlanceImageDetails(imgs []string) []glance.ImageDetail {
 	return out
 }
 
-func (s *openstackFindImageSuite) TestOpenstackFindImageHappy(c *C) {
+var fakeOpenstackImageListMadeUp = []string{
+	"ubuntu-22.04",
+	"ubuntu-20.04",
+	"fedora-38",
+}
+
+func (s *openstackFindImageSuite) TestOpenstackFindImage(c *C) {
 	for _, tc := range []struct {
 		imageName       string
 		availableImages []string
 		expectFind      bool
 	}{
-		{"ubuntu-22.04", []string{"fedora-35", "tumbleweed-1"}, false},
-		{"ubuntu-22.04", []string{"fedora-35", "ubuntu-22.04"}, true},
+		{"ubuntu-14.04", fakeOpenstackImageListMadeUp, false},
+		{"ubuntu-22.04", fakeOpenstackImageListMadeUp, true},
 	} {
 		s.fakeImageClient.res = makeGlanceImageDetails(tc.availableImages)
 		idt, err := s.opst.FindImage(tc.imageName)
 		if tc.expectFind {
 			c.Check(err, IsNil, Commentf("%s", tc))
 			c.Check(idt.Name, Equals, tc.imageName)
+		} else {
+
+			c.Check(err, ErrorMatches, `cannot find matching image for `+tc.imageName, Commentf("%s", tc))
+		}
+	}
+}
+
+var fakeOpenstackImageList = []string{
+	// from real "openstack image list" output but put here unordered
+	"auto-sync/ubuntu-bionic-18.04-amd64-server-20210928-disk1.img",
+	"auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+	"auto-sync/ubuntu-bionic-18.04-amd64-server-20210614-disk1.img",
+	// made-up: contains search
+	"auto-sync/ubuntu-22.04-something",
+	// made-up
+	"fedora-35",
+	"tumbleweed-1",
+}
+
+func (s *openstackFindImageSuite) TestOpenstackFindImageComplex(c *C) {
+	for _, tc := range []struct {
+		imageName         string
+		availableImages   []string
+		expectedImageName string
+	}{
+		// trivial
+		{"fedora-35", fakeOpenstackImageList, "fedora-35"},
+		// simple string match of name
+		{"ubuntu-22.04", fakeOpenstackImageList, "auto-sync/ubuntu-22.04-something"},
+		// complex sorting based on date of the images
+		{"ubuntu-bionic-18.04-amd64", fakeOpenstackImageList, "auto-sync/ubuntu-bionic-18.04-amd64-server-20210928-disk1.img"},
+	} {
+		s.fakeImageClient.res = makeGlanceImageDetails(tc.availableImages)
+		idt, err := s.opst.FindImage(tc.imageName)
+		if tc.expectedImageName != "" {
+			c.Check(err, IsNil, Commentf("%s", tc))
+			c.Check(idt.Name, Equals, tc.expectedImageName)
 		} else {
 
 			c.Check(err, ErrorMatches, `cannot find matching image for `+tc.imageName, Commentf("%s", tc))

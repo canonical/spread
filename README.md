@@ -857,14 +857,14 @@ _$PROJECT/spread.yaml_
 backends:
     google:
         key: $(HOST:echo $GOOGLE_JSON_FILENAME)
-    location: yourproject/southamerica-east1-a
+	location: yourproject/southamerica-east1-a
         systems:
             - ubuntu-16.04
 
-        # Extended syntax:
-        - another-system:
-            image: some-other-image
-        workers: 3
+	    # Extended syntax:
+	    - another-system:
+	        image: some-other-image
+		workers: 3
 ```
 
 With these settings the Google backend in Spread will pick credentials from

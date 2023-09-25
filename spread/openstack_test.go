@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"regexp"
 	"time"
 
 	"github.com/go-goose/goose/v5/glance"
@@ -121,12 +122,21 @@ func uuid() string {
 	return string(b)
 }
 
+var fakeImageDetailsDateRegex = regexp.MustCompile(`.*-([0-9]+)-.*`)
+
 func makeGlanceImageDetails(imgs []string) []glance.ImageDetail {
 	out := make([]glance.ImageDetail, len(imgs))
 	for i, name := range imgs {
-		// XXX: is this correct? the id is just a uuid?
+		var created string
+
 		id := uuid()
-		out[i] = glance.ImageDetail{Id: id, Name: name}
+		match := fakeImageDetailsDateRegex.FindStringSubmatch(name)
+		if match != nil {
+			if t, err := time.Parse("20060102", match[1]); err == nil {
+				created = t.Format(time.RFC3339)
+			}
+		}
+		out[i] = glance.ImageDetail{Id: id, Name: name, Created: created}
 	}
 	return out
 }
@@ -181,7 +191,7 @@ func (s *openstackFindImageSuite) TestOpenstackFindImageComplex(c *C) {
 		// simple string match of name
 		{"ubuntu-22.04", fakeOpenstackImageList, "auto-sync/ubuntu-22.04-something"},
 		// complex sorting based on date of the images
-		{"ubuntu-bionic-18.04-amd64", fakeOpenstackImageList, "auto-sync/ubuntu-bionic-18.04-amd64-server-20210928-disk1.img"},
+		{"ubuntu-bionic-18.04-amd64", fakeOpenstackImageList, "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img"},
 	} {
 		s.fakeImageClient.res = makeGlanceImageDetails(tc.availableImages)
 		idt, err := s.opst.FindImage(tc.imageName)

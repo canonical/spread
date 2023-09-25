@@ -376,7 +376,11 @@ func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer, timeoutS
 	// The adreesses for a network is map of networks and list of ip adresses
 	// We are configuring just 1 network address for the network
 	// To get the address is used the first network
-	s.address = server.Addresses[s.d.Networks[0]][0].Address
+	if len(server.Addresses) > 0 && len(s.d.Networks) > 0 {
+		s.address = server.Addresses[s.d.Networks[0]][0].Address
+	} else {
+		return fmt.Errorf("cannot retrieve server address")
+	}
 
 	config := &ssh.ClientConfig{
 		User:            "root",

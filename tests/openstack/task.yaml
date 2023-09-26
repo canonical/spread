@@ -63,14 +63,14 @@ execute: |
     test "0" = "$(spread -gc | grep -c "Checking openstack instance")"
     spread openstack:cirros-64: &>/dev/null &
     for _ in $(seq 10); do
-        if -n "$(openstack server list)"; then
+        if [ -n "$(openstack server list)" ]; then
             break
         fi
         sleep 1
     done
     test "1" = "$(spread -gc | grep -c "Checking openstack instance")"
     for _ in $(seq 5); do
-        if -z "$(openstack server list)"; then
+        if [ -z "$(openstack server list)" ]; then
             break
         fi
         sleep 1

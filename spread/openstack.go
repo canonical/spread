@@ -162,6 +162,12 @@ runcmd:
   - test -d /etc/ssh/sshd_config.d && echo 'PasswordAuthentication=yes' >> /etc/ssh/sshd_config.d/00-spread.conf
   - pkill -o -HUP sshd || true
 `
+
+// TODO: The go openstack nova client does not expose an API for access
+// of the serial port so unlike in the google backend we cannot use the
+// "ready-marker" on the serial port yet to see when the boot is finished
+//
+// const openstackReadyMarker = "MACHINE-IS-READY"
 const openstackNameLayout = "Jan021504.000000"
 const openstackDefaultFlavor = "m1.medium"
 

@@ -369,6 +369,7 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 			Terms:   toTerms(item.Description),
 		})
 	}
+	cache.ready = true
 
 	return cache.images, err
 }

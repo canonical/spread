@@ -197,19 +197,22 @@ func openstackName() string {
 // line n+1 contains the error cause and the error info following the formats:
 // caused by: <error_cause> ; error info: <json_data>
 // caused by: <error_cause> ; error info: <html_data>
+//
+// This code will find the *last* "caused by:" line as it generally tells
+// the most details.
+// TODO: check if the above idea works well in practise, otherwise switch
+// to e.g. firstLine
 func getCausedByErrorMsg(errMsg string) string {
-	error_msg := ""
-	for _, line := range strings.Split(strings.TrimSuffix(errMsg, "\n"), "\n") {
-		if strings.HasPrefix(line, "caused by:") {
-			error_parts := strings.Split(line, "; error info:")
-			// The algorithm returns the cause that has error info (which is the more precise)
-			// and otherwise the first cause which is a high level error.
-			if len(error_parts) > 1 || error_msg == "" {
-				error_msg = strings.TrimSpace(strings.TrimPrefix(error_parts[0], "caused by:"))
-			}
-		}
+	debugf("Full openstack error message: %v", errMsg)
+
+	causedBy := strings.Split(errMsg, "caused by:")
+	if len(causedBy) == 0 {
+		return errMsg
 	}
-	return error_msg
+	lastCausedBy := causedBy[len(causedBy)-1]
+	firstErrLine := strings.SplitN(lastCausedBy, "\n", 2)[0]
+	stripErrPart := strings.SplitN(firstErrLine, "; error info:", 2)[0]
+	return strings.TrimSpace(stripErrPart)
 }
 
 func errorMsg(osErr error) string {

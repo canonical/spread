@@ -600,18 +600,6 @@ func (p *openstackProvider) GarbageCollect() error {
 	return nil
 }
 
-const (
-	openstackMissingProject = "MISSING-PROJECT"
-	openstackMissingRegion  = "MISSING-REGION"
-)
-
-func (p *openstackProvider) aRegion() string {
-	if len(p.backend.Location) > 0 {
-		return p.backend.Location
-	}
-	return openstackMissingRegion
-}
-
 func (p *openstackProvider) checkKey() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()

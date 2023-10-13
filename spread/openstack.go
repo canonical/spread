@@ -72,12 +72,6 @@ type openstackServerData struct {
 	Labels map[string]string `yaml:"-"`
 }
 
-func (d *openstackServerData) cleanup() {
-	if i := strings.LastIndex(d.Flavor, "/"); i >= 0 {
-		d.Flavor = d.Flavor[i+1:]
-	}
-}
-
 func (s *openstackServer) String() string {
 	if s.system == nil {
 		return s.d.Name

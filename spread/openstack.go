@@ -222,7 +222,7 @@ func (p *openstackProvider) findFirstNetwork() (*neutron.NetworkV2, error) {
 	// When there are not networks defined, the first network which is not external
 	// is returned (external networks could not be allowed to request)
 	for _, net := range networks {
-		if net.External == false {
+		if !net.External {
 			return &net, nil
 		}
 	}

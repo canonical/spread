@@ -268,7 +268,6 @@ func (p *openstackProvider) findNetwork(name string) (*neutron.NetworkV2, error)
 }
 
 func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, error) {
-	var sameImage glance.ImageDetail
 	var lastImage glance.ImageDetail
 	var lastCreatedDate time.Time
 
@@ -277,12 +276,28 @@ func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, er
 		return nil, fmt.Errorf("cannot retrieve images list: %s", errorMsg(err))
 	}
 
-	for _, i := range images {
-		if i.Name == imageName {
-			sameImage = i
-		} else if strings.Contains(i.Name, imageName) {
+	// In openstack there are no "project" specific images and no
+	// concept of a "family" so the lookup is similar but a bit
+	// simpler than in the google backend. Google checks for a)
+	// exact match, b) family match, c) term match, only (a), (c)
+	// are done here as there is no (b) in openstack. If multiple
+	// term matches are found the newest image is selected.
+	searchTerms := toTerms(imageName)
+	// First consider exact matches on name.
+	for _, image := range images {
+		// First consider exact matches on name.
+		if image.Name == imageName {
+			// return the image when it matchs exactly with the provided name
+			debugf("Name match: %#v matches %#v", imageName, image)
+			return &image, nil
+		}
+
+		// Otherwise use term matching.
+		imageTerms := toTerms(image.Name)
+		if containsTerms(imageTerms, searchTerms) {
+			debugf("Terms match: %#v matches %#v", imageName, image)
 			// Check if the creation date for the current image is after the previous selected one
-			currCreatedDate, err := time.Parse(time.RFC3339, i.Created)
+			currCreatedDate, err := time.Parse(time.RFC3339, image.Created)
 			// When the creation date is not set or it cannot be parsed, it is considered as created just now
 			if err != nil {
 				currCreatedDate = time.Time{}
@@ -290,15 +305,11 @@ func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, er
 
 			// Save the image when either it is the first match or it is newer than the previous match
 			if lastImage.Id == "" || currCreatedDate.After(lastCreatedDate) {
-				lastImage = i
+				debugf("Newer terms match found: %#v", image)
+				lastImage = image
 				lastCreatedDate = currCreatedDate
 			}
 		}
-	}
-
-	// return the image when it matchs exactly with the provided name
-	if sameImage.Id != "" {
-		return &sameImage, nil
 	}
 
 	if lastImage.Id != "" {

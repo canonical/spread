@@ -192,6 +192,8 @@ func (s *openstackFindImageSuite) TestOpenstackFindImageComplex(c *C) {
 		{"ubuntu-22.04", fakeOpenstackImageList, "auto-sync/ubuntu-22.04-something"},
 		// complex sorting based on date of the images
 		{"ubuntu-bionic-18.04-amd64", fakeOpenstackImageList, "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img"},
+		// term matching is more flexible than simple substring matching
+		{"ubuntu-18.04-server", fakeOpenstackImageList, "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img"},
 	} {
 		s.fakeImageClient.res = makeGlanceImageDetails(tc.availableImages)
 		idt, err := s.opst.FindImage(tc.imageName)

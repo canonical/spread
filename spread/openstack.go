@@ -23,8 +23,6 @@ func Openstack(p *Project, b *Backend, o *Options) Provider {
 		project: p,
 		backend: b,
 		options: o,
-
-		imagesCache: make(map[string]*openstackImagesCache),
 	}
 }
 
@@ -49,8 +47,6 @@ type openstackProvider struct {
 
 	keyChecked bool
 	keyErr     error
-
-	imagesCache map[string]*openstackImagesCache
 }
 
 type openstackServer struct {
@@ -165,20 +161,6 @@ runcmd:
 const openstackNameLayout = "Jan021504.000000"
 const openstackDefaultFlavor = "m1.medium"
 
-type openstackImage struct {
-	Project string
-	Name    string
-	Family  string
-	Terms   []string
-}
-
-type openstackImagesCache struct {
-	mu     sync.Mutex
-	ready  bool
-	images []openstackImage
-	err    error
-}
-
 var timeNow = time.Now
 
 func openstackName() string {
@@ -268,6 +250,8 @@ func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, er
 	var lastImage glance.ImageDetail
 	var lastCreatedDate time.Time
 
+	// TODO: consider using an image cache just like the google backend
+	// (https://github.com/snapcore/spread/pull/175 needs to be fixed first)
 	images, err := p.imageClient.ListImagesDetail()
 	if err != nil {
 		return nil, fmt.Errorf("cannot retrieve images list: %s", errorMsg(err))

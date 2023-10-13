@@ -35,9 +35,6 @@ type openstackProvider struct {
 	backend *Backend
 	options *Options
 
-	openstackProject          string
-	openstackAvailabilityZone string
-
 	region        string
 	computeClient *nova.Client
 	networkClient *neutron.Client

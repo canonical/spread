@@ -505,13 +505,13 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		return nil, &FatalError{fmt.Errorf("cannot allocate new openstack server %s: %v", s, err)}
 	}
 
-	// Connect through ssh to the
+	// Connect through ssh to the instance
 	err = p.waitServerCompleteSetup(s, 240)
 	if err != nil {
 		if p.removeMachine(ctx, s) != nil {
 			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) openstack server %s: %v", s, err)}
 		}
-		return nil, &FatalError{fmt.Errorf("cannot stablish ssh connection to the openstach server %s: %v", s, err)}
+		return nil, &FatalError{fmt.Errorf("cannot establish ssh connection to the openstach server %s: %v", s, err)}
 	}
 
 	return s, nil

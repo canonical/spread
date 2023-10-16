@@ -496,7 +496,6 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 	}
 
 	// First we need to wait until the image is active and there is no erros during the spawning process
-	// The timeout for this process is 180 seconds
 	err = p.waitServerCompleteBuilding(s, 120)
 	if err != nil {
 		if p.removeMachine(ctx, s) != nil {

@@ -59,7 +59,7 @@ type Backend struct {
 	// Only for qemu so far.
 	Memory Size
 
-	// Only for Linode and Google so far.
+	// Only for Linode, Google, Openstack so far.
 	Plan     string
 	Location string
 	Storage  Size

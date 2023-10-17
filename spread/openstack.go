@@ -337,32 +337,35 @@ func (p *openstackProvider) findSecurityGroupNames(names []string) ([]nova.Secur
 	return secGroupNames, nil
 }
 
-func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer, timeoutSeconds int) error {
+func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer) error {
+	timeout := time.After(2 * time.Minute)
+	retry := time.NewTicker(5 * time.Second)
+	defer retry.Stop()
+
 	// Wait until the server is actually running
-	start := time.Now()
 	for {
-		if time.Since(start) > time.Duration(timeoutSeconds)*time.Second {
+		select {
+		case <-timeout:
 			return &FatalError{fmt.Errorf("cannot check status: timeout reached")}
-		}
-		server, err := p.computeClient.GetServer(s.d.Id)
-		// When the server info cannot be retrieved, wait 2 seconds to retry
-		if err != nil {
-			time.Sleep(2 * time.Second)
-			continue
-		}
-		if server.Status != nova.StatusBuild {
-			if server.Status != nova.StatusActive {
-				return &FatalError{fmt.Errorf("cannot use server: status is not active but %s", server.Status)}
+		case <-retry.C:
+			server, err := p.computeClient.GetServer(s.d.Id)
+			if err != nil {
+				debugf("cannot get server info: %v", err)
+				continue
 			}
-			break
+			if server.Status != nova.StatusBuild {
+				if server.Status != nova.StatusActive {
+					return &FatalError{fmt.Errorf("cannot use server: status is not active but %s", server.Status)}
+				}
+				debugf("Server %s is running", s.d.Name)
+				return nil
+			}
+
 		}
-		time.Sleep(5 * time.Second)
 	}
-	debugf("Server %s is running", s.d.Name)
-	return nil
 }
 
-func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer, timeoutSeconds int) error {
+func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer) error {
 	server, err := p.computeClient.GetServer(s.d.Id)
 	if err != nil {
 		return fmt.Errorf("cannot retrieving server information: %s", errorMsg(err))
@@ -389,21 +392,22 @@ func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer, timeoutS
 
 	// Iterate until the ssh connection to the host can be stablished
 	// In openstack the client cannot access to the serial console of the instance
-	start := time.Now()
+	timeout := time.After(5 * time.Minute)
+	retry := time.NewTicker(5 * time.Second)
+	defer retry.Stop()
+
 	for {
-		if time.Since(start) > time.Duration(timeoutSeconds)*time.Second {
+		select {
+		case <-timeout:
 			return &FatalError{fmt.Errorf("cannot ssh to the allocated instance")}
+		case <-retry.C:
+			_, err = ssh.Dial("tcp", addr, config)
+			if err == nil {
+				debugf("Connection to server %s established", s.d.Name)
+				return nil
+			}
 		}
-
-		_, err = ssh.Dial("tcp", addr, config)
-		if err == nil {
-			break
-		}
-
-		time.Sleep(2 * time.Second)
 	}
-	debugf("Connection to server %s established", s.d.Name)
-	return nil
 }
 
 func (p *openstackProvider) createMachine(ctx context.Context, system *System) (*openstackServer, error) {
@@ -496,8 +500,7 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 	}
 
 	// First we need to wait until the image is active and there is no erros during the spawning process
-	err = p.waitServerCompleteBuilding(s, 120)
-	if err != nil {
+	if err = p.waitServerCompleteBuilding(s); err != nil {
 		if p.removeMachine(ctx, s) != nil {
 			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) new openstack server %s: %v", s, err)}
 		}
@@ -505,8 +508,7 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 	}
 
 	// Connect through ssh to the instance
-	err = p.waitServerCompleteSetup(s, 240)
-	if err != nil {
+	if err = p.waitServerCompleteSetup(s); err != nil {
 		if p.removeMachine(ctx, s) != nil {
 			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) openstack server %s: %v", s, err)}
 		}

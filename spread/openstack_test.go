@@ -104,7 +104,7 @@ func (s *openstackFindImageSuite) TestOpenstackFindImageNotFound(c *C) {
 	}
 
 	_, err := s.opst.FindImage("ubuntu-22.04-64")
-	c.Check(err, ErrorMatches, `cannot find matching image for ubuntu-22.04-64`)
+	c.Check(err, ErrorMatches, `cannot find matching image for "ubuntu-22.04-64"`)
 }
 
 func (s *openstackFindImageSuite) TestOpenstackFindImageErrors(c *C) {
@@ -163,7 +163,7 @@ func (s *openstackFindImageSuite) TestOpenstackFindImage(c *C) {
 			c.Check(idt.Name, Equals, tc.imageName)
 		} else {
 
-			c.Check(err, ErrorMatches, `cannot find matching image for `+tc.imageName, Commentf("%s", tc))
+			c.Check(err, ErrorMatches, fmt.Sprintf(`cannot find matching image for %q`, tc.imageName), Commentf("%s", tc))
 		}
 	}
 }

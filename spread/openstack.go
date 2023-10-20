@@ -215,7 +215,7 @@ func (p *openstackProvider) findFlavor(flavorName string) (*nova.Entity, error) 
 		}
 	}
 
-	return nil, &FatalError{fmt.Errorf("cannot find valid flavor with name %s", flavorName)}
+	return nil, &FatalError{fmt.Errorf("cannot find valid flavor with name %q", flavorName)}
 }
 
 func (p *openstackProvider) findFirstNetwork() (*neutron.NetworkV2, error) {
@@ -244,7 +244,7 @@ func (p *openstackProvider) findNetwork(name string) (*neutron.NetworkV2, error)
 			return &net, nil
 		}
 	}
-	return nil, &FatalError{fmt.Errorf("cannot find valid network with name %s", name)}
+	return nil, &FatalError{fmt.Errorf("cannot find valid network with name %q", name)}
 }
 
 func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, error) {
@@ -298,7 +298,7 @@ func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, er
 		return &lastImage, nil
 	}
 
-	return nil, &FatalError{fmt.Errorf("cannot find matching image for %s", imageName)}
+	return nil, &FatalError{fmt.Errorf("cannot find matching image for %q", imageName)}
 }
 
 func (p *openstackProvider) findAvailabilityZone() (*nova.AvailabilityZone, error) {
@@ -334,7 +334,7 @@ func (p *openstackProvider) findSecurityGroupNames(names []string) ([]nova.Secur
 			}
 		}
 		if !found {
-			return nil, &FatalError{fmt.Errorf("cannot find valid group with name %s", name)}
+			return nil, &FatalError{fmt.Errorf("cannot find valid group with name %q", name)}
 		}
 		secGroupNames = append(secGroupNames, nova.SecurityGroupName{Name: name})
 	}

@@ -62,15 +62,15 @@ problems. Please try again later.</p>
 <address>Apache/2.4.29 (Ubuntu) Server at 10.48.7.10 Port 5000</address>
 </body></html>`)
 
-func (s *openstackSuite) TestErrorMsg(c *C) {
-	msg1 := spread.ErrorMsg(opstErr1)
-	c.Check(msg1, Equals, `request (https://keystone.bos01.canonistack.canonical.com:5000/v3/tokens) returned unexpected status: 404`)
+func (s *openstackSuite) TestOpenstackError(c *C) {
+	err1 := spread.NewOpenstackError(opstErr1)
+	c.Check(err1.Error(), Equals, `request (https://keystone.bos01.canonistack.canonical.com:5000/v3/tokens) returned unexpected status: 404`)
 
-	msg2 := spread.ErrorMsg(opstErr2)
-	c.Check(msg2, Equals, `request (https://keystone.bos01.canonistack.canonical.com:5000/v3/tokens) returned unexpected status: 503`)
+	err2 := spread.NewOpenstackError(opstErr2)
+	c.Check(err2.Error(), Equals, `request (https://keystone.bos01.canonistack.canonical.com:5000/v3/tokens) returned unexpected status: 503`)
 
-	msg3 := spread.ErrorMsg(errors.New("other error"))
-	c.Check(msg3, Equals, `other error`)
+	err3 := spread.NewOpenstackError(errors.New("other error"))
+	c.Check(err3.Error(), Equals, `other error`)
 }
 
 type fakeGlanceImageClient struct {

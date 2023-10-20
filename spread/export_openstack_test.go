@@ -6,7 +6,6 @@ import (
 
 var (
 	OpenstackName = openstackName
-	ErrorMsg      = errorMsg
 )
 
 type (
@@ -24,4 +23,8 @@ func MockOpenstackImageClient(opst *OpenstackProvider, newIC glanceImageClient) 
 
 func (opst *OpenstackProvider) FindImage(name string) (*glance.ImageDetail, error) {
 	return opst.findImage(name)
+}
+
+func NewOpenstackError(gooseError error) error {
+	return &openstackError{gooseError}
 }

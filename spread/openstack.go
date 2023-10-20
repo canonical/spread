@@ -164,6 +164,10 @@ func openstackName() string {
 	return strings.ToLower(strings.Replace(timeNow().UTC().Format(openstackNameLayout), ".", "-", 1))
 }
 
+type openstackError struct {
+	gooseError error
+}
+
 // Error messages triggered by modules are string like:
 // line 1...n is a high level description about the error like:
 // caused by: <highlevel_cause>
@@ -175,11 +179,11 @@ func openstackName() string {
 // the most details.
 // TODO: check if the above idea works well in practise, otherwise switch
 // to e.g. firstLine
-func getCausedByErrorMsg(errMsg string) string {
+func (e *openstackError) cause(errMsg string) string {
 	debugf("Full openstack error message: %v", errMsg)
 
 	causedBy := strings.Split(errMsg, "caused by:")
-	if len(causedBy) == 0 {
+	if len(causedBy) <= 1 {
 		return errMsg
 	}
 	lastCausedBy := causedBy[len(causedBy)-1]
@@ -188,10 +192,10 @@ func getCausedByErrorMsg(errMsg string) string {
 	return strings.TrimSpace(stripErrPart)
 }
 
-func errorMsg(osErr error) string {
-	msg := osErr.Error()
+func (e *openstackError) Error() string {
+	msg := e.gooseError.Error()
 
-	causedByErrorMsg := getCausedByErrorMsg(msg)
+	causedByErrorMsg := e.cause(msg)
 	if causedByErrorMsg != "" {
 		return causedByErrorMsg
 	}
@@ -202,7 +206,7 @@ func errorMsg(osErr error) string {
 func (p *openstackProvider) findFlavor(flavorName string) (*nova.Entity, error) {
 	flavors, err := p.computeClient.ListFlavors()
 	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve flavors list: %s", errorMsg(err))
+		return nil, fmt.Errorf("cannot retrieve flavors list: %v", &openstackError{err})
 	}
 
 	for _, f := range flavors {
@@ -217,7 +221,7 @@ func (p *openstackProvider) findFlavor(flavorName string) (*nova.Entity, error) 
 func (p *openstackProvider) findFirstNetwork() (*neutron.NetworkV2, error) {
 	networks, err := p.networkClient.ListNetworksV2()
 	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve networks list: %s", errorMsg(err))
+		return nil, fmt.Errorf("cannot retrieve networks list: %v", &openstackError{err})
 	}
 	// When there are not networks defined, the first network which is not external
 	// is returned (external networks could not be allowed to request)
@@ -232,7 +236,7 @@ func (p *openstackProvider) findFirstNetwork() (*neutron.NetworkV2, error) {
 func (p *openstackProvider) findNetwork(name string) (*neutron.NetworkV2, error) {
 	networks, err := p.networkClient.ListNetworksV2()
 	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve networks list: %s", errorMsg(err))
+		return nil, fmt.Errorf("cannot retrieve networks list: %v", &openstackError{err})
 	}
 
 	for _, net := range networks {
@@ -251,7 +255,7 @@ func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, er
 	// (https://github.com/snapcore/spread/pull/175 needs to be fixed first)
 	images, err := p.imageClient.ListImagesDetail()
 	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve images list: %s", errorMsg(err))
+		return nil, fmt.Errorf("cannot retrieve images list: %v", &openstackError{err})
 	}
 
 	// In openstack there are no "project" specific images and no
@@ -300,7 +304,7 @@ func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, er
 func (p *openstackProvider) findAvailabilityZone() (*nova.AvailabilityZone, error) {
 	zones, err := p.computeClient.ListAvailabilityZones()
 	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve availability zones: %s", errorMsg(err))
+		return nil, fmt.Errorf("cannot retrieve availability zones: %v", &openstackError{err})
 	}
 
 	if len(zones) == 0 {
@@ -314,7 +318,7 @@ func (p *openstackProvider) findSecurityGroupNames(names []string) ([]nova.Secur
 
 	secGroups, err := p.networkClient.ListSecurityGroupsV2()
 	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve security groups: %s", errorMsg(err))
+		return nil, fmt.Errorf("cannot retrieve security groups: %v", &openstackError{err})
 	}
 
 	if len(secGroups) == 0 {
@@ -368,7 +372,7 @@ func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer) error
 func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer) error {
 	server, err := p.computeClient.GetServer(s.d.Id)
 	if err != nil {
-		return fmt.Errorf("cannot retrieving server information: %s", errorMsg(err))
+		return fmt.Errorf("cannot retrieving server information: %v", &openstackError{err})
 	}
 	// The adreesses for a network is map of networks and list of ip adresses
 	// We are configuring just 1 network address for the network
@@ -481,8 +485,7 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 
 	server, err := p.computeClient.RunServer(opts)
 	if err != nil {
-		errorMsg(err)
-		return nil, fmt.Errorf("cannot create instance %s", errorMsg(err))
+		return nil, fmt.Errorf("cannot create instance: %v", &openstackError{err})
 	}
 
 	s := &openstackServer{
@@ -525,7 +528,7 @@ func (p *openstackProvider) list() ([]*openstackServer, error) {
 	servers, err := p.computeClient.ListServersDetail(filter)
 
 	if err != nil {
-		return nil, fmt.Errorf("cannot list openstack instances: %s", errorMsg(err))
+		return nil, fmt.Errorf("cannot list openstack instances: %v", &openstackError{err})
 	}
 
 	var instances []*openstackServer
@@ -550,7 +553,7 @@ func (p *openstackProvider) list() ([]*openstackServer, error) {
 func (p *openstackProvider) removeMachine(ctx context.Context, s *openstackServer) error {
 	err := p.computeClient.DeleteServer(s.d.Id)
 	if err != nil {
-		return fmt.Errorf("cannot remove openstack instance: %s", errorMsg(err))
+		return fmt.Errorf("cannot remove openstack instance: %v", &openstackError{err})
 	}
 	return err
 }
@@ -624,7 +627,7 @@ func (p *openstackProvider) checkKey() error {
 		authClient := gooseClient.NewClient(cred, authmode, nil)
 		err = authClient.Authenticate()
 		if err != nil {
-			return &FatalError{fmt.Errorf("cannot authenticate: %s", errorMsg(err))}
+			return &FatalError{fmt.Errorf("cannot authenticate: %v", &openstackError{err})}
 		}
 
 		// Create clients for the used modules

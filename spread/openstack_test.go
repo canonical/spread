@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/go-goose/goose/v5/glance"
+	"github.com/go-goose/goose/v5/nova"
+	"golang.org/x/crypto/ssh"
 
 	"github.com/snapcore/spread/spread"
 
@@ -82,10 +84,44 @@ func (ic *fakeGlanceImageClient) ListImagesDetail() ([]glance.ImageDetail, error
 	return ic.res, ic.err
 }
 
+type fakeNovaComputeClient struct {
+	listFlavors           func() ([]nova.Entity, error)
+	listAvailabilityZones func() ([]nova.AvailabilityZone, error)
+	getServer             func(serverId string) (*nova.ServerDetail, error)
+	listServersDetail     func(filter *nova.Filter) ([]nova.ServerDetail, error)
+	runServer             func(opts nova.RunServerOpts) (*nova.Entity, error)
+	deleteServer          func(serverId string) error
+}
+
+func (cc *fakeNovaComputeClient) ListFlavors() ([]nova.Entity, error) {
+	return cc.listFlavors()
+}
+
+func (cc *fakeNovaComputeClient) ListAvailabilityZones() ([]nova.AvailabilityZone, error) {
+	return cc.listAvailabilityZones()
+}
+
+func (cc *fakeNovaComputeClient) GetServer(serverId string) (*nova.ServerDetail, error) {
+	return cc.getServer(serverId)
+}
+
+func (cc *fakeNovaComputeClient) ListServersDetail(filter *nova.Filter) ([]nova.ServerDetail, error) {
+	return cc.listServersDetail(filter)
+}
+
+func (cc *fakeNovaComputeClient) RunServer(opts nova.RunServerOpts) (*nova.Entity, error) {
+	return cc.runServer(opts)
+}
+
+func (cc *fakeNovaComputeClient) DeleteServer(serverId string) error {
+	return cc.deleteServer(serverId)
+}
+
 type openstackFindImageSuite struct {
 	opst *spread.OpenstackProvider
 
-	fakeImageClient *fakeGlanceImageClient
+	fakeImageClient   *fakeGlanceImageClient
+	fakeComputeClient *fakeNovaComputeClient
 }
 
 var _ = Suite(&openstackFindImageSuite{})
@@ -94,8 +130,10 @@ func (s *openstackFindImageSuite) SetUpTest(c *C) {
 	s.opst = newOpenstack()
 	c.Assert(s.opst, NotNil)
 	s.fakeImageClient = &fakeGlanceImageClient{}
+	s.fakeComputeClient = &fakeNovaComputeClient{}
 
 	spread.MockOpenstackImageClient(s.opst, s.fakeImageClient)
+	spread.MockOpenstackComputeClient(s.opst, s.fakeComputeClient)
 }
 
 func (s *openstackFindImageSuite) TestOpenstackFindImageNotFound(c *C) {
@@ -205,4 +243,181 @@ func (s *openstackFindImageSuite) TestOpenstackFindImageComplex(c *C) {
 			c.Check(err, ErrorMatches, `cannot find matching image for `+tc.imageName, Commentf("%s", tc))
 		}
 	}
+}
+
+func (s *openstackFindImageSuite) TestOpenstackWaitServerCompleteBuildingHappy(c *C) {
+	serverData := spread.OpenstackServerData{
+		Id: "test-id",
+	}
+
+	count := 0
+	s.fakeComputeClient.getServer = func(serverId string) (*nova.ServerDetail, error) {
+		count++
+		c.Check(serverId, Equals, serverData.Id)
+		switch count {
+		case 1:
+			return nil, errors.New("bad id")
+		case 2:
+			server := nova.ServerDetail{
+				Id:     serverId,
+				Status: nova.StatusActive,
+			}
+			return &server, nil
+		}
+		c.Fatalf("should not reach here")
+		return nil, nil
+	}
+
+	restore := spread.MockOpenstackBuildingTimeout(100*time.Millisecond, 1*time.Nanosecond)
+	defer restore()
+
+	err := s.opst.WaitServerCompleteBuilding(serverData)
+	c.Check(err, IsNil)
+	c.Check(count, Equals, 2)
+}
+
+func (s *openstackFindImageSuite) TestOpenstackWaitServerCompleteBuildingBadStatus(c *C) {
+	serverData := spread.OpenstackServerData{
+		Id: "test-id",
+	}
+
+	count := 0
+	s.fakeComputeClient.getServer = func(serverId string) (*nova.ServerDetail, error) {
+		count++
+		c.Check(serverId, Equals, serverData.Id)
+		switch count {
+		case 1:
+			return nil, errors.New("bad id")
+		case 2:
+			server := nova.ServerDetail{
+				Id:     serverId,
+				Status: nova.StatusError,
+			}
+			return &server, nil
+		}
+		return nil, nil
+	}
+
+	restore := spread.MockOpenstackBuildingTimeout(100*time.Millisecond, 1*time.Nanosecond)
+	defer restore()
+
+	err := s.opst.WaitServerCompleteBuilding(serverData)
+	c.Check(err, ErrorMatches, "cannot use server: status is not active but ERROR")
+	c.Check(count, Equals, 2)
+}
+
+func (s *openstackFindImageSuite) TestOpenstackWaitServerCompleteBuildingTimeout(c *C) {
+	s.fakeComputeClient.getServer = func(serverId string) (*nova.ServerDetail, error) {
+		return nil, nil
+	}
+
+	restore := spread.MockOpenstackBuildingTimeout(1*time.Nanosecond, 1*time.Hour)
+	defer restore()
+
+	err := s.opst.WaitServerCompleteBuilding(spread.OpenstackServerData{})
+	c.Check(err, ErrorMatches, "cannot check status: timeout reached")
+}
+
+func (s *openstackFindImageSuite) TestOpenstackWaitServerCompleteSetupHappy(c *C) {
+	serverData := spread.OpenstackServerData{
+		Id:       "test-id",
+		Networks: []string{"net-1"},
+	}
+
+	count := 0
+	spread.MockSshDial(func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
+		count++
+		switch count {
+		case 1:
+			return nil, errors.New("connection error")
+		case 2:
+			return &ssh.Client{}, nil
+		}
+		c.Fatalf("should not reach here")
+		return nil, nil
+	})
+
+	s.fakeComputeClient.getServer = func(serverId string) (*nova.ServerDetail, error) {
+		c.Check(serverId, Equals, serverData.Id)
+		server := nova.ServerDetail{
+			Id:     serverId,
+			Status: nova.StatusActive,
+			Addresses: map[string][]nova.IPAddress{
+				"net-1": {{Address: "10.0.0.1"}},
+			},
+		}
+		return &server, nil
+	}
+
+	restore := spread.MockOpenstackSetupTimeout(100*time.Millisecond, 1*time.Nanosecond)
+	defer restore()
+
+	err := s.opst.WaitServerCompleteSetup(serverData)
+	c.Check(err, IsNil)
+	c.Check(count, Equals, 2)
+}
+
+func (s *openstackFindImageSuite) TestOpenstackWaitServerCompleteSetupTimeout(c *C) {
+	serverData := spread.OpenstackServerData{
+		Id:       "test-id",
+		Networks: []string{"net-1"},
+	}
+
+	spread.MockSshDial(func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
+		return nil, errors.New("connection error")
+	})
+	s.fakeComputeClient.getServer = func(serverId string) (*nova.ServerDetail, error) {
+		c.Check(serverId, Equals, serverData.Id)
+		server := nova.ServerDetail{
+			Id:     serverId,
+			Status: nova.StatusActive,
+			Addresses: map[string][]nova.IPAddress{
+				"net-1": {{Address: "10.0.0.1"}},
+			},
+		}
+		return &server, nil
+	}
+
+	restore := spread.MockOpenstackSetupTimeout(1*time.Nanosecond, 1*time.Hour)
+	defer restore()
+
+	err := s.opst.WaitServerCompleteSetup(serverData)
+	c.Check(err, ErrorMatches, "cannot ssh to the allocated instance: timeout reached")
+}
+
+func (s *openstackFindImageSuite) TestOpenstackWaitServerCompleteSetupBadAddress(c *C) {
+	serverData := spread.OpenstackServerData{
+		Id:       "test-id",
+		Networks: []string{"net-1"},
+	}
+
+	spread.MockSshDial(func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
+		return nil, errors.New("connection error")
+	})
+	s.fakeComputeClient.getServer = func(serverId string) (*nova.ServerDetail, error) {
+		c.Check(serverId, Equals, serverData.Id)
+		server := nova.ServerDetail{
+			Id:        serverId,
+			Status:    nova.StatusActive,
+			Addresses: map[string][]nova.IPAddress{},
+		}
+		return &server, nil
+	}
+
+	err := s.opst.WaitServerCompleteSetup(serverData)
+	c.Check(err, ErrorMatches, "cannot retrieve server address")
+}
+
+func (s *openstackFindImageSuite) TestOpenstackWaitServerCompleteSetupBadServerId(c *C) {
+	serverData := spread.OpenstackServerData{
+		Id: "test-id",
+	}
+
+	s.fakeComputeClient.getServer = func(serverId string) (*nova.ServerDetail, error) {
+		c.Check(serverId, Equals, serverData.Id)
+		return nil, errors.New("cannot get server")
+	}
+
+	err := s.opst.WaitServerCompleteSetup(serverData)
+	c.Check(err, ErrorMatches, "cannot retrieving server information: cannot get server")
 }

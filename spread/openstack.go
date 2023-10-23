@@ -30,13 +30,22 @@ type glanceImageClient interface {
 	ListImagesDetail() ([]glance.ImageDetail, error)
 }
 
+type novaComputeClient interface {
+	ListFlavors() ([]nova.Entity, error)
+	ListAvailabilityZones() ([]nova.AvailabilityZone, error)
+	GetServer(serverId string) (*nova.ServerDetail, error)
+	ListServersDetail(filter *nova.Filter) ([]nova.ServerDetail, error)
+	RunServer(opts nova.RunServerOpts) (*nova.Entity, error)
+	DeleteServer(serverId string) error
+}
+
 type openstackProvider struct {
 	project *Project
 	backend *Backend
 	options *Options
 
 	region        string
-	computeClient *nova.Client
+	computeClient novaComputeClient
 	networkClient *neutron.Client
 	imageClient   glanceImageClient
 
@@ -341,9 +350,12 @@ func (p *openstackProvider) findSecurityGroupNames(names []string) ([]nova.Secur
 	return secGroupNames, nil
 }
 
+var openstackBuildingTimeout = 2 * time.Minute
+var openstackBuildingRetry = 5 * time.Second
+
 func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer) error {
-	timeout := time.After(2 * time.Minute)
-	retry := time.NewTicker(5 * time.Second)
+	timeout := time.After(openstackBuildingTimeout)
+	retry := time.NewTicker(openstackBuildingRetry)
 	defer retry.Stop()
 
 	// Wait until the server is actually running
@@ -368,6 +380,9 @@ func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer) error
 		}
 	}
 }
+
+var openstackSetupTimeout = 5 * time.Minute
+var openstackSetupRetry = 5 * time.Second
 
 func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer) error {
 	server, err := p.computeClient.GetServer(s.d.Id)
@@ -396,16 +411,16 @@ func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer) error {
 
 	// Iterate until the ssh connection to the host can be stablished
 	// In openstack the client cannot access to the serial console of the instance
-	timeout := time.After(5 * time.Minute)
-	retry := time.NewTicker(5 * time.Second)
+	timeout := time.After(openstackSetupTimeout)
+	retry := time.NewTicker(openstackSetupRetry)
 	defer retry.Stop()
 
 	for {
 		select {
 		case <-timeout:
-			return &FatalError{fmt.Errorf("cannot ssh to the allocated instance")}
+			return &FatalError{fmt.Errorf("cannot ssh to the allocated instance: timeout reached")}
 		case <-retry.C:
-			_, err = ssh.Dial("tcp", addr, config)
+			_, err = sshDial("tcp", addr, config)
 			if err == nil {
 				debugf("Connection to server %s established", s.d.Name)
 				return nil

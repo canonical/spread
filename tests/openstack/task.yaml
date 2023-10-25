@@ -31,22 +31,22 @@ execute: |
 
     # Check the error in case the network does not exist
     spread openstack:cirros-64-wrong-network: -v -reuse -resend &> task.out || true
-    grep 'cannot find valid network with name noexist' task.out
+    grep 'cannot find valid network with name "noexist"' task.out
     test -z "$(openstack server list)"
 
     # Check the error in case the group does not exist
     spread openstack:cirros-64-wrong-group: -v -reuse -resend &> task.out || true
-    grep 'cannot find valid group with name noexist' task.out
+    grep 'cannot find valid group with name "noexist"' task.out
     test -z "$(openstack server list)"
 
     # Check the error in case the image does not exist
     spread openstack:cirros-64-wrong-image: -v -reuse -resend &> task.out || true
-    grep 'cannot find matching image for noexist' task.out
+    grep 'cannot find matching image for "noexist"' task.out
     test -z "$(openstack server list)"
 
     # Check the error in case the group does not exist
     spread openstack:cirros-64-wrong-plan: -v -reuse -resend &> task.out  || true
-    grep 'cannot find valid flavor with name noexist' task.out
+    grep 'cannot find valid flavor with name "noexist"' task.out
     test -z "$(openstack server list)"
 
     # Check errors with environment variables

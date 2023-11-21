@@ -558,6 +558,7 @@ func (p *openstackProvider) list() ([]*openstackServer, error) {
 				Id:      s.Id,
 				Name:    s.Name,
 				Created: createdTime,
+				Labels:  s.Metadata,
 			}
 			instances = append(instances, &openstackServer{p: p, d: d})
 		}

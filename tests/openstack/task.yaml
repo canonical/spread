@@ -62,13 +62,33 @@ execute: |
     # trigger 1 instance and check it can be listed and the garbage collect works
     test "0" = "$(spread -gc | grep -c "Checking openstack instance")"
     spread openstack:cirros-64: &>/dev/null &
+
     for _ in $(seq 10); do
         if [ -n "$(openstack server list)" ]; then
             break
         fi
         sleep 1
     done
-    test "1" = "$(spread -gc | grep -c "Checking openstack instance")"
+
+    # first check that the halt-timeout tag from the instance is used
+    # properties just can be set when the server is in ACTIVE status
+    SERVER_ID="$(openstack server list -f value | head -n1 | awk '{ print $1 }')"
+    test -n "$SERVER_ID"
+    for _ in $(seq 20); do
+        if openstack server show "$SERVER_ID" -f shell | MATCH 'status="ACTIVE"'; then
+            break
+        fi
+        sleep 1
+    done
+    openstack server show "$SERVER_ID" -f shell | MATCH 'status="ACTIVE"'
+    openstack server set --property halt-timeout=1h "$SERVER_ID"
+    test "0" = "$(spread -gc | grep -c 'exceeds halt-timeout')"
+    test "1" = "$(spread -gc | grep -c 'Checking openstack instance')"
+    openstack server unset --property halt-timeout "$SERVER_ID"
+
+    # then check the backend halt-timeout tag from the instance is used
+    # the halt-timeout is set to 1s for the backend in the spread.yaml
+    test "1" = "$(spread -gc | grep -c 'exceeds halt-timeout')"
     for _ in $(seq 5); do
         if [ -z "$(openstack server list)" ]; then
             break

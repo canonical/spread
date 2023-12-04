@@ -1,18 +1,24 @@
 package spread
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	gooseClient "github.com/go-goose/goose/v5/client"
+	goosehttp "github.com/go-goose/goose/v5/http"
+
 	"github.com/go-goose/goose/v5/glance"
 	"github.com/go-goose/goose/v5/identity"
 	"github.com/go-goose/goose/v5/neutron"
 	"github.com/go-goose/goose/v5/nova"
+
+	"github.com/gorilla/websocket"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/context"
@@ -36,7 +42,7 @@ type novaComputeClient interface {
 	GetServer(serverId string) (*nova.ServerDetail, error)
 	ListServersDetail(filter *nova.Filter) ([]nova.ServerDetail, error)
 	RunServer(opts nova.RunServerOpts) (*nova.Entity, error)
-	DeleteServer(serverId string) error
+	DeleteServer(serverId string) error	
 }
 
 type openstackProvider struct {
@@ -45,6 +51,7 @@ type openstackProvider struct {
 	options *Options
 
 	region        string
+	osClient    gooseClient.Client
 	computeClient novaComputeClient
 	networkClient *neutron.Client
 	imageClient   glanceImageClient
@@ -157,13 +164,14 @@ runcmd:
   - test -d /etc/ssh/sshd_config.d && echo 'PermitRootLogin=yes' > /etc/ssh/sshd_config.d/00-spread.conf
   - test -d /etc/ssh/sshd_config.d && echo 'PasswordAuthentication=yes' >> /etc/ssh/sshd_config.d/00-spread.conf
   - pkill -o -HUP sshd || true
+  - echo '` + openstackReadyMarker + `' > /dev/ttyS0
 `
 
 // TODO: The go openstack nova client does not expose an API for access
 // of the serial port so unlike in the google backend we cannot use the
 // "ready-marker" on the serial port yet to see when the boot is finished
 //
-// const openstackReadyMarker = "MACHINE-IS-READY"
+const openstackReadyMarker = "MACHINE-IS-READY"
 const openstackNameLayout = "Jan021504.000000"
 const openstackDefaultFlavor = "m1.medium"
 
@@ -384,7 +392,7 @@ func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer) error
 var openstackSetupTimeout = 5 * time.Minute
 var openstackSetupRetry = 5 * time.Second
 
-func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer) error {
+func (p *openstackProvider) waitServerCompleteSetupSSH(s *openstackServer) error {
 	server, err := p.computeClient.GetServer(s.d.Id)
 	if err != nil {
 		return fmt.Errorf("cannot retrieving server information: %v", &openstackError{err})
@@ -427,6 +435,93 @@ func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer) error {
 			}
 		}
 	}
+}
+
+func (p *openstackProvider) getSerialConsoleWebSocket(s *openstackServer) (string, error) {
+	url := fmt.Sprintf("servers/%s/action", s.d.Id)
+
+	var req struct {
+		OsGetSerialConsole struct {
+			Type string `json:"type"`
+		} `json:"os-getSerialConsole"`
+	}
+	req.OsGetSerialConsole.Type = "serial"
+
+	var resp struct {
+		Serial string `json:"serial"`
+	}
+
+	requestData := goosehttp.RequestData{ReqValue: req, RespValue: &resp, ExpectedStatus: []int{http.StatusOK}}
+	timeout := time.After(20 * time.Second)
+	retry := time.NewTicker(4 * time.Second)
+	defer retry.Stop()
+
+	for {
+		err := p.osClient.SendRequest("POST", "compute", "v2", url, &requestData)
+		if err != nil {
+			return "", fmt.Errorf("failed to retrieve the serial console web socket for server %s: %s", s.d.Id, err)
+		}
+		if strings.HasPrefix(resp.Serial, "ws://") {
+			return resp.Serial, nil
+		}
+		select {
+		case <-retry.C:
+		case <-timeout:
+			return "", fmt.Errorf("the serial console web socket has not the expected format: %s", resp.Serial)
+		}
+	}
+
+	return resp.Serial, nil
+}
+
+func (p *openstackProvider) waitServerCompleteSetupSerial(s *openstackServer, serialWS string) error {
+printf("Waiting for %s to boot at %s...", s, s.address)
+
+	timeout := time.After(3 * time.Minute)
+	relog := time.NewTicker(60 * time.Second)
+	defer relog.Stop()
+	retry := time.NewTicker(5 * time.Second)
+	defer retry.Stop()
+
+	var err error
+	var marker = []byte(openstackReadyMarker)
+
+	c, resp, err := websocket.DefaultDialer.Dial(serialWS, nil);
+	if err != nil {
+    return fmt.Errorf("Serial console handshake failed with status %d", resp.StatusCode)
+  }
+  defer c.Close()
+
+  printf("----------serial----------")
+	for {
+		_, message, err := c.ReadMessage()
+		printf(string(message))
+    if err != nil {
+      printf("error retrieving serial console from instance: %s", s.d.Id)
+    }
+
+		if bytes.Contains(message, marker) {
+			return nil
+		}
+
+		select {
+		case <-retry.C:
+			debugf("Server %s is taking a while to boot...", s)
+		case <-relog.C:
+			printf("Server %s is taking a while to boot...", s)
+		case <-timeout:
+			return fmt.Errorf("cannot find ready marker in console output for %s", s)
+		}
+	}
+	panic("unreachable")
+}
+
+func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer) error {
+	serialWS, err := p.getSerialConsoleWebSocket(s)
+	if err != nil {
+			return p.waitServerCompleteSetupSSH(s)
+	}
+  return p.waitServerCompleteSetupSerial(s, serialWS)
 }
 
 func (p *openstackProvider) createMachine(ctx context.Context, system *System) (*openstackServer, error) {
@@ -648,6 +743,7 @@ func (p *openstackProvider) checkKey() error {
 
 		// Create clients for the used modules
 		p.region = cred.Region
+		p.osClient = authClient
 		p.computeClient = nova.New(authClient)
 		p.networkClient = neutron.New(authClient)
 		p.imageClient = glance.New(authClient)

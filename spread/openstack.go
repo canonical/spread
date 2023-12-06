@@ -1,7 +1,6 @@
 package spread
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"net/http"
@@ -17,8 +16,6 @@ import (
 	"github.com/go-goose/goose/v5/identity"
 	"github.com/go-goose/goose/v5/neutron"
 	"github.com/go-goose/goose/v5/nova"
-
-	"github.com/gorilla/websocket"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/context"
@@ -389,23 +386,7 @@ func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer) error
 	}
 }
 
-var openstackSetupTimeout = 5 * time.Minute
-var openstackSetupRetry = 5 * time.Second
-
 func (p *openstackProvider) waitServerCompleteSetupSSH(s *openstackServer) error {
-	server, err := p.computeClient.GetServer(s.d.Id)
-	if err != nil {
-		return fmt.Errorf("cannot retrieving server information: %v", &openstackError{err})
-	}
-	// The adreesses for a network is map of networks and list of ip adresses
-	// We are configuring just 1 network address for the network
-	// To get the address is used the first network
-	if len(server.Addresses) > 0 && len(s.d.Networks) > 0 {
-		s.address = server.Addresses[s.d.Networks[0]][0].Address
-	} else {
-		return fmt.Errorf("cannot retrieve server address")
-	}
-
 	config := &ssh.ClientConfig{
 		User:            "root",
 		Auth:            []ssh.AuthMethod{ssh.Password(p.options.Password)},
@@ -419,8 +400,8 @@ func (p *openstackProvider) waitServerCompleteSetupSSH(s *openstackServer) error
 
 	// Iterate until the ssh connection to the host can be stablished
 	// In openstack the client cannot access to the serial console of the instance
-	timeout := time.After(openstackSetupTimeout)
-	retry := time.NewTicker(openstackSetupRetry)
+	timeout := time.After(1 * time.Minute)
+	retry := time.NewTicker(5 * time.Second)
 	defer retry.Stop()
 
 	for {
@@ -428,7 +409,7 @@ func (p *openstackProvider) waitServerCompleteSetupSSH(s *openstackServer) error
 		case <-timeout:
 			return &FatalError{fmt.Errorf("cannot ssh to the allocated instance: timeout reached")}
 		case <-retry.C:
-			_, err = sshDial("tcp", addr, config)
+			_, err := sshDial("tcp", addr, config)
 			if err == nil {
 				debugf("Connection to server %s established", s.d.Name)
 				return nil
@@ -437,70 +418,54 @@ func (p *openstackProvider) waitServerCompleteSetupSSH(s *openstackServer) error
 	}
 }
 
-func (p *openstackProvider) getSerialConsoleWebSocket(s *openstackServer) (string, error) {
+func (p *openstackProvider) getSerialConsoleOutput(s *openstackServer) (string, error) {
 	url := fmt.Sprintf("servers/%s/action", s.d.Id)
 
 	var req struct {
-		OsGetSerialConsole struct {
-			Type string `json:"type"`
-		} `json:"os-getSerialConsole"`
+		OsGetSerialConsole struct {} `json:"os-getConsoleOutput"`
 	}
-	req.OsGetSerialConsole.Type = "serial"
-
 	var resp struct {
-		Serial string `json:"serial"`
+		Output string `json:"output"`
 	}
 
 	requestData := goosehttp.RequestData{ReqValue: req, RespValue: &resp, ExpectedStatus: []int{http.StatusOK}}
-	timeout := time.After(20 * time.Second)
-	retry := time.NewTicker(4 * time.Second)
+	timeout := time.After(30 * time.Second)
+	retry := time.NewTicker(5 * time.Second)
 	defer retry.Stop()
 
 	for {
 		err := p.osClient.SendRequest("POST", "compute", "v2", url, &requestData)
 		if err != nil {
-			return "", fmt.Errorf("failed to retrieve the serial console web socket for server %s: %s", s.d.Id, err)
+			return "", fmt.Errorf("failed to retrieve the serial console for server %s: %s", s.d.Id, err)
 		}
-		if strings.HasPrefix(resp.Serial, "ws://") {
-			return resp.Serial, nil
+		if len(resp.Output) > 0 {
+			return resp.Output, nil
 		}
 		select {
 		case <-retry.C:
 		case <-timeout:
-			return "", fmt.Errorf("the serial console web socket has not the expected format: %s", resp.Serial)
+			return "", fmt.Errorf("the serial console for server %s could not be retrieved", s.d.Id)
 		}
 	}
 
-	return resp.Serial, nil
+	return resp.Output, nil
 }
 
-func (p *openstackProvider) waitServerCompleteSetupSerial(s *openstackServer, serialWS string) error {
-printf("Waiting for %s to boot at %s...", s, s.address)
-
-	timeout := time.After(3 * time.Minute)
+func (p *openstackProvider) waitServerCompleteSetupSerial(s *openstackServer) error {
+	timeout := time.After(2 * time.Minute)
 	relog := time.NewTicker(60 * time.Second)
 	defer relog.Stop()
 	retry := time.NewTicker(5 * time.Second)
 	defer retry.Stop()
 
-	var err error
-	var marker = []byte(openstackReadyMarker)
-
-	c, resp, err := websocket.DefaultDialer.Dial(serialWS, nil);
-	if err != nil {
-    return fmt.Errorf("Serial console handshake failed with status %d", resp.StatusCode)
-  }
-  defer c.Close()
-
-  printf("----------serial----------")
+	var marker = openstackReadyMarker
 	for {
-		_, message, err := c.ReadMessage()
-		printf(string(message))
+		resp, err := p.getSerialConsoleOutput(s)
     if err != nil {
-      printf("error retrieving serial console from instance: %s", s.d.Id)
+      debugf("Error retrieving serial console from instance: %s", s.d.Id)
     }
 
-		if bytes.Contains(message, marker) {
+		if strings.Contains(resp, marker) {
 			return nil
 		}
 
@@ -516,12 +481,61 @@ printf("Waiting for %s to boot at %s...", s, s.address)
 	panic("unreachable")
 }
 
-func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer) error {
-	serialWS, err := p.getSerialConsoleWebSocket(s)
-	if err != nil {
-			return p.waitServerCompleteSetupSSH(s)
+func (p *openstackProvider) waitServerIP(s *openstackServer) error {
+	timeout := time.After(30 * time.Second)
+	retry := time.NewTicker(5 * time.Second)
+	defer retry.Stop()
+
+	for {
+		server, err := p.computeClient.GetServer(s.d.Id)
+		if err != nil {
+			debugf("cannot retrieving server information: %v", &openstackError{err})
+		}
+		// The adreesses for a network is map of networks and list of ip adresses
+		// We are configuring just 1 network address for the network
+		// To get the address is used the first network
+
+		if len(server.Addresses) > 0 {
+			if len(s.d.Networks) > 0 {
+				s.address = server.Addresses[s.d.Networks[0]][0].Address
+			} else {
+				// When no network selected, the we use the first ip in adreesses
+				for _, net_val := range server.Addresses { 
+    			if len(net_val[0].Address) > 0 {
+						s.address = net_val[0].Address
+						break			
+					}
+				}
+				
+			}
+			return nil
+		}
+
+		select {
+		case <-retry.C:
+			debugf("Server %s is taking a while to get IP address...", s)
+		case <-timeout:
+			return fmt.Errorf("cannot retrieve server address")
+		}
 	}
-  return p.waitServerCompleteSetupSerial(s, serialWS)
+}
+
+func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer) error {
+  err := p.waitServerIP(s)
+  if err != nil {
+  	return fmt.Errorf("Cannot connect to server %s: %s", s.d.Id, err)
+  }
+
+  printf("Waiting for %s to boot at %s...", s, s.address)
+	err = p.waitServerCompleteSetupSerial(s)
+	if err != nil {
+		printf("Error rerieving serial console: %s", err)
+		err = p.waitServerCompleteSetupSSH(s)
+		if err != nil {
+			return fmt.Errorf("Cannot connect to server %s: %s", s.d.Id, err)
+		}
+	}
+	return nil
 }
 
 func (p *openstackProvider) createMachine(ctx context.Context, system *System) (*openstackServer, error) {

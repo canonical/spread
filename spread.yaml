@@ -8,7 +8,7 @@
 project: spread
 
 environment:
-    GOVERSION: 1.20
+    GOVERSION: 1.13.8
     GOHOME: /home/test
     GOPATH: $GOHOME
     PATH: $GOHOME/bin:$PATH
@@ -84,9 +84,7 @@ prepare: |
             dpkg -i tests/cache/go_$GOVERSION-*.deb
         fi
         go get ./cmd/spread
-        go install ./cmd/spread
-        command -v spread
-    fi    
+    fi
 
     # Cache is only available if SEND_CACHE=1 is set, follow the steps:
     # - Create dest dir: > mkdir tests/cache/lxd-ubuntu-16.04

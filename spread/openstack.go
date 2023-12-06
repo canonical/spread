@@ -433,7 +433,7 @@ func (p *openstackProvider) getSerialConsoleOutput(s *openstackServer) (string, 
 	for {
 		err := p.osClient.SendRequest("POST", "compute", "v2", url, &requestData)
 		if err != nil {
-			return "", fmt.Errorf("failed to retrieve the serial console for server %s: %s", s.d.Id, err)
+			debugf("failed to retrieve the serial console for server %s: %s", s.d.Id, err)
 		}
 		if len(resp.Output) > 0 {
 			return resp.Output, nil
@@ -441,7 +441,7 @@ func (p *openstackProvider) getSerialConsoleOutput(s *openstackServer) (string, 
 		select {
 		case <-retry.C:
 		case <-timeout:
-			return "", fmt.Errorf("the serial console for server %s could not be retrieved", s.d.Id)
+			return "", fmt.Errorf("the serial console for server %s could not be retrieved: timeout reached", s.d.Id)
 		}
 	}
 
@@ -449,7 +449,7 @@ func (p *openstackProvider) getSerialConsoleOutput(s *openstackServer) (string, 
 }
 
 func (p *openstackProvider) waitServerCompleteSetupSerial(s *openstackServer) error {
-	timeout := time.After(2 * time.Minute)
+	timeout := time.After(3 * time.Minute)
 	relog := time.NewTicker(60 * time.Second)
 	defer relog.Stop()
 	retry := time.NewTicker(5 * time.Second)
@@ -471,7 +471,7 @@ func (p *openstackProvider) waitServerCompleteSetupSerial(s *openstackServer) er
 		case <-relog.C:
 			printf("Server %s is taking a while to boot...", s)
 		case <-timeout:
-			return &FatalError{fmt.Errorf("cannot find ready marker in console output for %s", s)}
+			return &FatalError{fmt.Errorf("cannot find ready marker in console output for %s: timeout reached", s)}
 		}
 	}
 	panic("unreachable")
@@ -491,7 +491,7 @@ func (p *openstackProvider) waitServerIP(s *openstackServer) error {
 		// We are configuring just 1 network address for the network
 		// To get the address is used the first network
 
-		if len(server.Addresses) > 0 {
+		if server.Addresses != nil && len(server.Addresses) > 0 {
 			if len(s.d.Networks) > 0 {
 				s.address = server.Addresses[s.d.Networks[0]][0].Address
 			} else {

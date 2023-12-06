@@ -355,12 +355,9 @@ func (p *openstackProvider) findSecurityGroupNames(names []string) ([]nova.Secur
 	return secGroupNames, nil
 }
 
-var openstackBuildingTimeout = 2 * time.Minute
-var openstackBuildingRetry = 5 * time.Second
-
 func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer) error {
-	timeout := time.After(openstackBuildingTimeout)
-	retry := time.NewTicker(openstackBuildingRetry)
+	timeout := time.After(2 * time.Minute)
+	retry := time.NewTicker(5 * time.Second)
 	defer retry.Stop()
 
 	// Wait until the server is actually running
@@ -475,7 +472,7 @@ func (p *openstackProvider) waitServerCompleteSetupSerial(s *openstackServer) er
 		case <-relog.C:
 			printf("Server %s is taking a while to boot...", s)
 		case <-timeout:
-			return fmt.Errorf("cannot find ready marker in console output for %s", s)
+			return &FatalError{fmt.Errorf("cannot find ready marker in console output for %s", s)}
 		}
 	}
 	panic("unreachable")
@@ -503,7 +500,7 @@ func (p *openstackProvider) waitServerIP(s *openstackServer) error {
 				for _, net_val := range server.Addresses { 
     			if len(net_val[0].Address) > 0 {
 						s.address = net_val[0].Address
-						break			
+						break
 					}
 				}
 				
@@ -515,7 +512,7 @@ func (p *openstackProvider) waitServerIP(s *openstackServer) error {
 		case <-retry.C:
 			debugf("Server %s is taking a while to get IP address...", s)
 		case <-timeout:
-			return fmt.Errorf("cannot retrieve server address")
+			return &FatalError{fmt.Errorf("cannot retrieve server address")}
 		}
 	}
 }
@@ -523,13 +520,15 @@ func (p *openstackProvider) waitServerIP(s *openstackServer) error {
 func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer) error {
   err := p.waitServerIP(s)
   if err != nil {
-  	return fmt.Errorf("Cannot connect to server %s: %s", s.d.Id, err)
+  	return err
   }
 
   printf("Waiting for %s to boot at %s...", s, s.address)
 	err = p.waitServerCompleteSetupSerial(s)
 	if err != nil {
-		printf("Error rerieving serial console: %s", err)
+		if errors.As(err, &FatalError{}) {
+			return err
+		}
 		err = p.waitServerCompleteSetupSSH(s)
 		if err != nil {
 			return fmt.Errorf("Cannot connect to server %s: %s", s.d.Id, err)

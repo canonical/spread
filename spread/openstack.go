@@ -397,7 +397,7 @@ func (p *openstackProvider) waitServerCompleteSetupSSH(s *openstackServer) error
 
 	// Iterate until the ssh connection to the host can be stablished
 	// In openstack the client cannot access to the serial console of the instance
-	timeout := time.After(1 * time.Minute)
+	timeout := time.After(2 * time.Minute)
 	retry := time.NewTicker(5 * time.Second)
 	defer retry.Stop()
 
@@ -459,7 +459,7 @@ func (p *openstackProvider) waitServerCompleteSetupSerial(s *openstackServer) er
 	for {
 		resp, err := p.getSerialConsoleOutput(s)
     if err != nil {
-      debugf("Error retrieving serial console from instance: %s", s.d.Id)
+      return fmt.Errorf("Error retrieving serial console from instance: %s", s.d.Id)
     }
 
 		if strings.Contains(resp, marker) {
@@ -468,7 +468,6 @@ func (p *openstackProvider) waitServerCompleteSetupSerial(s *openstackServer) er
 
 		select {
 		case <-retry.C:
-			debugf("Server %s is taking a while to boot...", s)
 		case <-relog.C:
 			printf("Server %s is taking a while to boot...", s)
 		case <-timeout:
@@ -529,6 +528,8 @@ func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer) error {
 		if errors.As(err, &FatalError{}) {
 			return err
 		}
+		// It is important to try ssh connection because serial console could
+		// be disabled in the nova configuration
 		err = p.waitServerCompleteSetupSSH(s)
 		if err != nil {
 			return fmt.Errorf("Cannot connect to server %s: %s", s.d.Id, err)

@@ -8,6 +8,8 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"os"
+	"regexp"
 	"time"
 
 	"golang.org/x/net/context"
@@ -27,23 +29,26 @@ type TestFlingerProvider struct {
 	client *http.Client
 }
 
-type TestFlingerServer struct {
+type TestFlingerJob struct {
 	p *TestFlingerProvider
-	d TestFlingerServerData
+	d TestFlingerJobData
 
 	system  *System
 	address string
 }
 
-type TestFlingerServerData struct {
-	Name  string
-	JobId string
+type TestFlingerJobData struct {
+	Name 	  string
+	JobId 	  string    `json:"job_id"`
+	CreatedAt time.Time `json:"created_at"`
+	JobState  string    `json:"job_state"`
 }
 
-type TestFlingerJobData struct {
+type TestFlingerRequestData struct {
 	Queue          string                      `json:"job_queue"`
 	ProvisionDdata TestFlingerProvisioningData `json:"provision_data"`
 	AllocateData   TestFlingerAllocateData     `json:"allocate_data"`
+	Tags           []string   				   `json:"tags"`
 }
 
 type TestFlingerProvisioningData struct {
@@ -72,37 +77,37 @@ type TestFlingerActionData struct {
 }
 
 const (
-	ALLOCATED = "Allocated"
+	ALLOCATED = "allocated"
 	CANCELLED = "cancelled"
 	COMPLETE  = "complete"
 	COMPLETED = "completed"
 )
 
-func (s *TestFlingerServer) String() string {
+func (s *TestFlingerJob) String() string {
 	return fmt.Sprintf("%s (%s)", s.system, s.d.Name)
 }
 
-func (s *TestFlingerServer) Label() string {
+func (s *TestFlingerJob) Label() string {
 	return s.d.Name
 }
 
-func (s *TestFlingerServer) Provider() Provider {
+func (s *TestFlingerJob) Provider() Provider {
 	return s.p
 }
 
-func (s *TestFlingerServer) Address() string {
+func (s *TestFlingerJob) Address() string {
 	return s.address
 }
 
-func (s *TestFlingerServer) System() *System {
+func (s *TestFlingerJob) System() *System {
 	return s.system
 }
 
-func (s *TestFlingerServer) ReuseData() interface{} {
+func (s *TestFlingerJob) ReuseData() interface{} {
 	return &s.d
 }
 
-func (s *TestFlingerServer) Discard(ctx context.Context) error {
+func (s *TestFlingerJob) Discard(ctx context.Context) error {
 	data := &TestFlingerActionData{
 		Action: "cancel",
 	}
@@ -113,16 +118,67 @@ func (s *TestFlingerServer) Discard(ctx context.Context) error {
 	return nil
 }
 
+var testFlingerJobIdExp = regexp.MustCompile("^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$")
+
+func (p *TestFlingerProvider) validJobId(jobId string) bool {
+	return testFlingerJobIdExp.MatchString(jobId)
+}
+
 func (p *TestFlingerProvider) Backend() *Backend {
 	return p.backend
 }
 
 func (p *TestFlingerProvider) GarbageCollect() error {
+	jobs, err := p.list()
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	haltTimeout := p.backend.HaltTimeout.Duration
+
+	// Iterate over all the running instances
+	for _, s := range jobs {
+		jobTimeout := haltTimeout
+		if jobTimeout == 0 {
+			continue
+		}
+		if s.d.JobState == CANCELLED || s.d.JobState == COMPLETE || s.d.JobState == COMPLETED {
+			continue
+		}
+		printf("Checking %s...", s.d.JobId)
+
+		runningTime := now.Sub(s.d.CreatedAt)
+		if runningTime > jobTimeout {
+			printf("Job %s exceeds halt-timeout. Shutting it down...", s.d.JobId)
+			err := s.Discard(context.Background())
+			if err != nil {
+				printf("WARNING: Cannot garbage collect %s: %v", s, err)
+			}
+		}
+	}
 	return nil
 }
 
+func (p *TestFlingerProvider) list() ([]*TestFlingerJob, error) {
+	debug("Listing available TestFlinger jobs...")
+
+	var result []TestFlingerJobData
+	err := p.do("GET", "/job/search?tags=spread&state=active", nil, &result)
+	if err != nil {
+		return nil, fmt.Errorf("cannot get instances list: %v", err)
+	}
+
+	jobs := make([]*TestFlingerJob, 0, len(result))
+	for _, d := range result {
+		jobs = append(jobs, &TestFlingerJob{p: p, d: d})
+	}
+
+	return jobs, nil
+}
+
 func (p *TestFlingerProvider) Reuse(ctx context.Context, rsystem *ReuseSystem, system *System) (Server, error) {
-	s := &TestFlingerServer{
+	s := &TestFlingerJob{
 		p:       p,
 		system:  system,
 		address: rsystem.Address,
@@ -146,11 +202,11 @@ func (p *TestFlingerProvider) Allocate(ctx context.Context, system *System) (Ser
 	return s, nil
 }
 
-func (p *TestFlingerProvider) requestDevice(ctx context.Context, system *System) (*TestFlingerServer, error) {
+func (p *TestFlingerProvider) requestDevice(ctx context.Context, system *System) (*TestFlingerJob, error) {
 	image := system.Image
 	queue := TestFlingerQueue(system)
 
-	data := &TestFlingerJobData{
+	data := &TestFlingerRequestData{
 		Queue: queue,
 		ProvisionDdata: TestFlingerProvisioningData{
 			Url: image,
@@ -158,6 +214,7 @@ func (p *TestFlingerProvider) requestDevice(ctx context.Context, system *System)
 		AllocateData: TestFlingerAllocateData{
 			Allocate: true,
 		},
+		Tags: []string{"spread"},
 	}
 
 	var jobRes TestFlingerJobResponse
@@ -168,16 +225,16 @@ func (p *TestFlingerProvider) requestDevice(ctx context.Context, system *System)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating job: %v: ", err)
 	}
-	if jobRes.JobId != "" {
+	if p.validJobId(jobRes.JobId) {
 		jobId = jobRes.JobId
 		printf("TestFlinger job %s created for system %s", jobId, system.Name)
 	} else {
-		return nil, fmt.Errorf("Failed to retrieve job id")
+		return nil, fmt.Errorf("Failed to retrieve job id: %s", jobRes.JobId)
 	}
 
-	s := &TestFlingerServer{
+	s := &TestFlingerJob{
 		p: p,
-		d: TestFlingerServerData{
+		d: TestFlingerJobData{
 			Name:  system.Name,
 			JobId: jobId,
 		},
@@ -186,7 +243,7 @@ func (p *TestFlingerProvider) requestDevice(ctx context.Context, system *System)
 	return s, nil
 }
 
-func (p *TestFlingerProvider) waitDeviceBoot(ctx context.Context, s *TestFlingerServer) error {
+func (p *TestFlingerProvider) waitDeviceBoot(ctx context.Context, s *TestFlingerJob) error {
 	printf("Waiting for TestFlinger %s to have an address...", s.d.Name)
 	wait_timeout := s.system.WaitTimeout.Duration
 	timeout := time.NewTicker(15 * time.Minute)
@@ -258,8 +315,15 @@ func (p *TestFlingerProvider) do(method, subpath string, params interface{}, res
 		}
 	}
 
-	url := "https://testflinger.canonical.com/v1"
-	url += subpath
+	url := os.Getenv("TF_ENDPOINT")
+	version := os.Getenv("TF_API_VERSION")
+    if len(url) == 0 {
+        url = "https://testflinger.canonical.com"
+    }
+    if len(version) == 0 {
+        version = "v1"
+    }
+    url += "/" + version + subpath
 
 	// Repeat on 500s. Note that Google's 500s may come in late, as a marshaled error
 	// under a different code. See the INTERNAL handling at the end below.
@@ -268,7 +332,6 @@ func (p *TestFlingerProvider) do(method, subpath string, params interface{}, res
 	var delays = rand.Perm(10)
 	for i := 0; i < 10; i++ {
 		req, err = http.NewRequest(method, url, bytes.NewBuffer(data))
-		debugf("TestFlinger request URL: %s", req.URL)
 		if err != nil {
 			return &FatalError{fmt.Errorf("cannot create HTTP request: %v", err)}
 		}
@@ -282,7 +345,7 @@ func (p *TestFlingerProvider) do(method, subpath string, params interface{}, res
 		if err != nil {
 			return fmt.Errorf("cannot perform TestFlinger request: %v", err)
 		}
-
+		
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("cannot read TestFlinger response: %v", err)
@@ -293,6 +356,9 @@ func (p *TestFlingerProvider) do(method, subpath string, params interface{}, res
 			err = json.Unmarshal(data, result)
 			if err != nil && resp.StatusCode == 404 {
 				return errTestFlingerNotFound
+			}
+			if err != nil {
+				return err
 			}
 		}
 

@@ -86,6 +86,9 @@ type Backend struct {
 	KillTimeout Timeout `yaml:"kill-timeout"`
 	HaltTimeout Timeout `yaml:"halt-timeout"`
 
+	// Only for Testflinger so far.
+	WaitTimeout Timeout `yaml:"wait-timeout"`
+
 	Priority OptionalInt
 	Manual   bool
 }
@@ -576,6 +579,9 @@ func Load(path string) (*Project, error) {
 			}
 			if system.Plan == "" {
 				system.Plan = backend.Plan
+			}
+			if system.WaitTimeout.Duration == 0 {
+				system.WaitTimeout = backend.WaitTimeout
 			}
 			if len(system.Networks) == 0 {
 				system.Networks = backend.Networks

@@ -29,6 +29,7 @@ debug: |
 execute: |
     start_mock(){
         python3 fake_testflinger.py "$1" &>mock.log &
+        sleep 1
     }
 
     stop_mock(){

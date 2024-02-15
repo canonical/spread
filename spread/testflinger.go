@@ -134,7 +134,7 @@ func (p *TestFlingerProvider) GarbageCollect() error {
 		return err
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	haltTimeout := p.backend.HaltTimeout.Duration
 
 	// Iterate over all the running instances

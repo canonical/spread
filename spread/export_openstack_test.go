@@ -1,8 +1,10 @@
 package spread
 
 import (
+	"context"
 	"time"
 
+	gooseClient "github.com/go-goose/goose/v5/client"
 	"github.com/go-goose/goose/v5/glance"
 )
 
@@ -32,25 +34,33 @@ func MockOpenstackComputeClient(opst *OpenstackProvider, newIC novaComputeClient
 	}
 }
 
-func MockOpenstackBuildingTimeout(timeout, retry time.Duration) (restore func()) {
-	oldTimeout := openstackBuildingTimeout
-	oldRetry := openstackBuildingRetry
-	openstackBuildingTimeout = timeout
-	openstackBuildingRetry = retry
+func MockOpenstackGooseClient(opst *OpenstackProvider, newC gooseClient.Client) (restore func()) {
+	oldOsClient := opst.osClient
+	opst.osClient = newC
 	return func() {
-		openstackBuildingTimeout = oldTimeout
-		openstackBuildingRetry = oldRetry
+		opst.osClient = oldOsClient
 	}
 }
 
-func MockOpenstackSetupTimeout(timeout, retry time.Duration) (restore func()) {
-	oldTimeout := openstackSetupTimeout
-	oldRetry := openstackSetupRetry
-	openstackSetupTimeout = timeout
-	openstackSetupRetry = retry
+func MockOpenstackProvisionTimeout(timeout, retry time.Duration) (restore func()) {
+	oldTimeout := openstackProvisionTimeout
+	oldRetry := openstackProvisionRetry
+	openstackProvisionTimeout = timeout
+	openstackProvisionRetry = retry
 	return func() {
-		openstackSetupTimeout = oldTimeout
-		openstackSetupRetry = oldRetry
+		openstackProvisionTimeout = oldTimeout
+		openstackProvisionRetry = oldRetry
+	}
+}
+
+func MockOpenstackServerBootTimeout(timeout, retry time.Duration) (restore func()) {
+	oldTimeout := openstackServerBootTimeout
+	oldRetry := openstackServerBootRetry
+	openstackServerBootTimeout = timeout
+	openstackServerBootRetry = retry
+	return func() {
+		openstackServerBootTimeout = oldTimeout
+		openstackServerBootRetry = oldRetry
 	}
 }
 
@@ -58,20 +68,20 @@ func (opst *OpenstackProvider) FindImage(name string) (*glance.ImageDetail, erro
 	return opst.findImage(name)
 }
 
-func (opst *openstackProvider) WaitServerCompleteBuilding(serverData OpenstackServerData) error {
+func (opst *openstackProvider) WaitProvision(ctx context.Context, serverData OpenstackServerData) error {
 	server := &openstackServer{
 		p: opst,
 		d: serverData,
 	}
-	return opst.waitServerCompleteBuilding(server)
+	return opst.waitProvision(ctx, server)
 }
 
-func (opst *openstackProvider) WaitServerCompleteSetup(serverData OpenstackServerData) error {
+func (opst *openstackProvider) WaitServerBoot(ctx context.Context, serverData OpenstackServerData) error {
 	server := &openstackServer{
 		p: opst,
 		d: serverData,
 	}
-	return opst.waitServerCompleteSetup(server)
+	return opst.waitServerBoot(ctx, server)
 }
 
 func NewOpenstackError(gooseError error) error {

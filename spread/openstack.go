@@ -39,7 +39,7 @@ type novaComputeClient interface {
 	GetServer(serverId string) (*nova.ServerDetail, error)
 	ListServersDetail(filter *nova.Filter) ([]nova.ServerDetail, error)
 	RunServer(opts nova.RunServerOpts) (*nova.Entity, error)
-	DeleteServer(serverId string) error	
+	DeleteServer(serverId string) error
 }
 
 type openstackProvider struct {
@@ -48,7 +48,7 @@ type openstackProvider struct {
 	options *Options
 
 	region        string
-	osClient    gooseClient.Client
+	osClient      gooseClient.Client
 	computeClient novaComputeClient
 	networkClient *neutron.Client
 	imageClient   glanceImageClient
@@ -164,10 +164,6 @@ runcmd:
   - echo '` + openstackReadyMarker + `' > /dev/ttyS0
 `
 
-// TODO: The go openstack nova client does not expose an API for access
-// of the serial port so unlike in the google backend we cannot use the
-// "ready-marker" on the serial port yet to see when the boot is finished
-//
 const openstackReadyMarker = "MACHINE-IS-READY"
 const openstackNameLayout = "Jan021504.000000"
 const openstackDefaultFlavor = "m1.medium"
@@ -355,35 +351,43 @@ func (p *openstackProvider) findSecurityGroupNames(names []string) ([]nova.Secur
 	return secGroupNames, nil
 }
 
-func (p *openstackProvider) waitServerCompleteBuilding(s *openstackServer) error {
-	timeout := time.After(2 * time.Minute)
-	retry := time.NewTicker(5 * time.Second)
+var openstackProvisionTimeout = 3 * time.Minute
+var openstackProvisionRetry = 5 * time.Second
+
+func (p *openstackProvider) waitProvision(ctx context.Context, s *openstackServer) error {
+	debugf("Waiting for %s to provision...", s)
+
+	timeout := time.After(openstackProvisionTimeout)
+	retry := time.NewTicker(openstackProvisionRetry)
 	defer retry.Stop()
 
-	// Wait until the server is actually running
 	for {
 		select {
 		case <-timeout:
-			return &FatalError{fmt.Errorf("cannot check status: timeout reached")}
+			return fmt.Errorf("timeout waiting for %s to provision", s)
+
 		case <-retry.C:
 			server, err := p.computeClient.GetServer(s.d.Id)
 			if err != nil {
-				debugf("cannot get server info: %v", err)
-				continue
+				return fmt.Errorf("cannot get server info: %v", &openstackError{err})
 			}
 			if server.Status != nova.StatusBuild {
 				if server.Status != nova.StatusActive {
-					return &FatalError{fmt.Errorf("cannot use server: status is not active but %s", server.Status)}
+					return fmt.Errorf("cannot use server: status is not active but %s", server.Status)
 				}
-				debugf("Server %s is running", s.d.Name)
 				return nil
 			}
-
+		case <-ctx.Done():
+			return fmt.Errorf("cannot wait for %s to provision: interrupted", s)
 		}
 	}
+	panic("unreachable")
 }
 
-func (p *openstackProvider) waitServerCompleteSetupSSH(s *openstackServer) error {
+var openstackServerBootTimeout = 3 * time.Minute
+var openstackServerBootRetry = 5 * time.Second
+
+func (p *openstackProvider) waitServerBootSSH(ctx context.Context, s *openstackServer) error {
 	config := &ssh.ClientConfig{
 		User:            "root",
 		Auth:            []ssh.AuthMethod{ssh.Password(p.options.Password)},
@@ -397,20 +401,22 @@ func (p *openstackProvider) waitServerCompleteSetupSSH(s *openstackServer) error
 
 	// Iterate until the ssh connection to the host can be stablished
 	// In openstack the client cannot access to the serial console of the instance
-	timeout := time.After(2 * time.Minute)
-	retry := time.NewTicker(5 * time.Second)
+	timeout := time.After(openstackServerBootTimeout)
+	retry := time.NewTicker(openstackServerBootRetry)
 	defer retry.Stop()
 
 	for {
 		select {
 		case <-timeout:
-			return &FatalError{fmt.Errorf("cannot ssh to the allocated instance: timeout reached")}
+			return fmt.Errorf("cannot ssh to the allocated instance: timeout reached")
 		case <-retry.C:
 			_, err := sshDial("tcp", addr, config)
 			if err == nil {
 				debugf("Connection to server %s established", s.d.Name)
 				return nil
 			}
+		case <-ctx.Done():
+			return fmt.Errorf("cannot wait for %s to boot: interrupted", s)
 		}
 	}
 }
@@ -419,48 +425,34 @@ func (p *openstackProvider) getSerialConsoleOutput(s *openstackServer) (string, 
 	url := fmt.Sprintf("servers/%s/action", s.d.Id)
 
 	var req struct {
-		OsGetSerialConsole struct {} `json:"os-getConsoleOutput"`
+		OsGetSerialConsole struct{} `json:"os-getConsoleOutput"`
 	}
 	var resp struct {
 		Output string `json:"output"`
 	}
-
 	requestData := goosehttp.RequestData{ReqValue: req, RespValue: &resp, ExpectedStatus: []int{http.StatusOK}}
-	timeout := time.After(30 * time.Second)
-	retry := time.NewTicker(5 * time.Second)
-	defer retry.Stop()
 
-	for {
-		err := p.osClient.SendRequest("POST", "compute", "v2", url, &requestData)
-		if err != nil {
-			debugf("failed to retrieve the serial console for server %s: %s", s.d.Id, err)
-		}
-		if len(resp.Output) > 0 {
-			return resp.Output, nil
-		}
-		select {
-		case <-retry.C:
-		case <-timeout:
-			return "", fmt.Errorf("the serial console for server %s could not be retrieved: timeout reached", s.d.Id)
-		}
+	err := p.osClient.SendRequest("POST", "compute", "v2", url, &requestData)
+	if err != nil {
+		return "", err
 	}
 
 	return resp.Output, nil
 }
 
-func (p *openstackProvider) waitServerCompleteSetupSerial(s *openstackServer) error {
-	timeout := time.After(3 * time.Minute)
+func (p *openstackProvider) waitServerBootSerial(ctx context.Context, s *openstackServer) error {
+	timeout := time.After(openstackServerBootTimeout)
 	relog := time.NewTicker(60 * time.Second)
 	defer relog.Stop()
-	retry := time.NewTicker(5 * time.Second)
+	retry := time.NewTicker(openstackServerBootRetry)
 	defer retry.Stop()
 
 	var marker = openstackReadyMarker
 	for {
 		resp, err := p.getSerialConsoleOutput(s)
-    if err != nil {
-      return fmt.Errorf("Error retrieving serial console from instance: %s", s.d.Id)
-    }
+		if err != nil {
+			return fmt.Errorf("cannot get console output for %s: %v", s, err)
+		}
 
 		if strings.Contains(resp, marker) {
 			return nil
@@ -468,16 +460,37 @@ func (p *openstackProvider) waitServerCompleteSetupSerial(s *openstackServer) er
 
 		select {
 		case <-retry.C:
+			debugf("Server %s is taking a while to boot...", s)
 		case <-relog.C:
 			printf("Server %s is taking a while to boot...", s)
 		case <-timeout:
 			return &FatalError{fmt.Errorf("cannot find ready marker in console output for %s: timeout reached", s)}
+		case <-ctx.Done():
+			return &FatalError{fmt.Errorf("cannot wait for %s to boot: interrupted", s)}
 		}
 	}
 	panic("unreachable")
 }
 
-func (p *openstackProvider) waitServerIP(s *openstackServer) error {
+func (p *openstackProvider) waitServerBoot(ctx context.Context, s *openstackServer) error {
+	printf("Waiting for %s to boot at %s...", s, s.address)
+	err := p.waitServerBootSerial(ctx, s)
+	if err != nil {
+		var fatalErr *FatalError
+		if errors.As(err, &fatalErr) {
+			return err
+		}
+		// It is important to try ssh connection because serial console could
+		// be disabled in the nova configuration
+		err = p.waitServerBootSSH(ctx, s)
+		if err != nil {
+			return fmt.Errorf("cannot connect to server %s: %v", s, err)
+		}
+	}
+	return nil
+}
+
+func (p *openstackProvider) address(ctx context.Context, s *openstackServer) (string, error) {
 	timeout := time.After(30 * time.Second)
 	retry := time.NewTicker(5 * time.Second)
 	defer retry.Stop()
@@ -485,57 +498,33 @@ func (p *openstackProvider) waitServerIP(s *openstackServer) error {
 	for {
 		server, err := p.computeClient.GetServer(s.d.Id)
 		if err != nil {
-			debugf("cannot retrieving server information: %v", &openstackError{err})
+			return "", fmt.Errorf("cannot get IP address for Openstack server %s: %v", s, &openstackError{err})
 		}
-		// The adreesses for a network is map of networks and list of ip adresses
+		// The addresses for a network is map of networks to a list of ip adresses
 		// We are configuring just 1 network address for the network
 		// To get the address is used the first network
 
-		if server.Addresses != nil && len(server.Addresses) > 0 {
+		if len(server.Addresses) > 0 {
 			if len(s.d.Networks) > 0 {
-				s.address = server.Addresses[s.d.Networks[0]][0].Address
-			} else {
-				// When no network selected, the we use the first ip in adreesses
-				for _, net_val := range server.Addresses { 
-    			if len(net_val[0].Address) > 0 {
-						s.address = net_val[0].Address
-						break
-					}
-				}
-				
+				return server.Addresses[s.d.Networks[0]][0].Address, nil
 			}
-			return nil
+			// When no network selected, the we use the first ip in addresses
+			for _, net_val := range server.Addresses {
+				if len(net_val[0].Address) > 0 {
+					return net_val[0].Address, nil
+				}
+			}
 		}
 
 		select {
 		case <-retry.C:
 			debugf("Server %s is taking a while to get IP address...", s)
 		case <-timeout:
-			return &FatalError{fmt.Errorf("cannot retrieve server address")}
+			return "", fmt.Errorf("timeout waiting for Openstack server %s IP address", s)
+		case <-ctx.Done():
+			return "", fmt.Errorf("cannot wait for %s IP address: interrupted", s)
 		}
 	}
-}
-
-func (p *openstackProvider) waitServerCompleteSetup(s *openstackServer) error {
-  err := p.waitServerIP(s)
-  if err != nil {
-  	return err
-  }
-
-  printf("Waiting for %s to boot at %s...", s, s.address)
-	err = p.waitServerCompleteSetupSerial(s)
-	if err != nil {
-		if errors.As(err, &FatalError{}) {
-			return err
-		}
-		// It is important to try ssh connection because serial console could
-		// be disabled in the nova configuration
-		err = p.waitServerCompleteSetupSSH(s)
-		if err != nil {
-			return fmt.Errorf("Cannot connect to server %s: %s", s.d.Id, err)
-		}
-	}
-	return nil
 }
 
 func (p *openstackProvider) createMachine(ctx context.Context, system *System) (*openstackServer, error) {
@@ -626,20 +615,19 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		system: system,
 	}
 
-	// First we need to wait until the image is active and there is no erros during the spawning process
-	if err = p.waitServerCompleteBuilding(s); err != nil {
-		if p.removeMachine(ctx, s) != nil {
-			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) new openstack server %s: %v", s, err)}
-		}
-		return nil, &FatalError{fmt.Errorf("cannot allocate new openstack server %s: %v", s, err)}
+	err = p.waitProvision(ctx, s)
+	if err == nil {
+		s.address, err = p.address(ctx, s)
 	}
-
-	// Connect through ssh to the instance
-	if err = p.waitServerCompleteSetup(s); err != nil {
+	if err == nil {
+		err = p.waitServerBoot(ctx, s)
+	}
+	// TODO: do we need to drop cloud-init script?
+	if err != nil {
 		if p.removeMachine(ctx, s) != nil {
-			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) openstack server %s: %v", s, err)}
+			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) new Openstack server %s: %v", s, err)}
 		}
-		return nil, &FatalError{fmt.Errorf("cannot establish ssh connection to the openstack server %s: %v", s, err)}
+		return nil, &FatalError{fmt.Errorf("cannot allocate new Openstack server %s: %v", s, err)}
 	}
 
 	return s, nil

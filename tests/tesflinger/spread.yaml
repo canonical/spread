@@ -9,10 +9,18 @@ backends:
         systems:
             - ubuntu-core-22-rpi4:
                 queue: rpi4b
-                image: https://storage.googleapis.com/snapd-spread-tests/images/pi4-22-stable-snapd_beta/pi.img.xz
+                image: https://url/pi.img.xz
                 workers: 1
                 username: ubuntu
                 password: ubuntu
+
+            - ubuntu-core-22-64:
+                queue: x64
+                image: jammy
+                workers: 1
+                username: ubuntu
+                password: ubuntu
+
 
 environment:
     GOPATH: /gopath

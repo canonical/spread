@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"time"
@@ -52,7 +53,8 @@ type TestFlingerRequestData struct {
 }
 
 type TestFlingerProvisioningData struct {
-	Url string `json:"url"`
+	Url    string `json:"url,omitempty"`
+	Distro string `json:"distro,omitempty"`
 }
 
 type TestFlingerAllocateData struct {
@@ -206,11 +208,17 @@ func (p *TestFlingerProvider) requestDevice(ctx context.Context, system *System)
 	image := system.Image
 	queue := TestFlingerQueue(system)
 
+	pdata := TestFlingerProvisioningData{Url: image,}
+	// In case the image is a url, then the provisioning data is used with url,
+	// otherwise it is used with distro
+	_, err := url.ParseRequestURI(image)
+	if err != nil {
+		pdata = TestFlingerProvisioningData{Distro: image,}
+	}
+
 	data := &TestFlingerRequestData{
 		Queue: queue,
-		ProvisionDdata: TestFlingerProvisioningData{
-			Url: image,
-		},
+		ProvisionDdata: pdata,
 		AllocateData: TestFlingerAllocateData{
 			Allocate: true,
 		},
@@ -218,7 +226,7 @@ func (p *TestFlingerProvider) requestDevice(ctx context.Context, system *System)
 	}
 
 	var jobRes TestFlingerJobResponse
-	err := p.do("POST", "/job", data, &jobRes)
+	err = p.do("POST", "/job", data, &jobRes)
 
 	// First step is to get the job_id running the submit command
 	jobId := ""

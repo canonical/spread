@@ -41,28 +41,34 @@ execute: |
         fi
     }
 
-    # Basic scenario
+    # Basic scenario rpi4 with url
     start_mock 00000000-0000-0000-0000-000000000001
-    ! spread -reuse -resend &> /tmp/task.out
+    ! spread -reuse -resend testflinger:ubuntu-core-22-rpi4: &> /tmp/task.out
     cat /tmp/task.out | grep 'TestFlinger job 00000000-0000-0000-0000-000000000001 created for'
     cat /tmp/task.out | grep 'Waiting for TestFlinger ubuntu-core-22-rpi4 to have an address...'
     cat /tmp/task.out | grep 'Allocated device with ip 127.0.0.1'
     cat /tmp/task.out | grep 'unable to authenticate'
     test "$(jq -r '.job_queue' job_00000000-0000-0000-0000-000000000001.data)" = "rpi4b"
     test "$(jq -r '.action' action_00000000-0000-0000-0000-000000000001.data)" = "cancel"
+    test "$(jq -r '.provision_data.url' job_00000000-0000-0000-0000-000000000001.data)" = "https://url/pi.img.xz"
+    test -z "$(jq -r '.provision_data | keys[]' job_00000000-0000-0000-0000-000000000001.data | grep distro)"
     stop_mock
 
-    # Cancelled scenario
+    # Cancel scenario with distro
     start_mock 00000000-0000-0000-0000-000000000002
-    ! spread -reuse -resend &> /tmp/task.out
+    ! spread -reuse -resend testflinger:ubuntu-core-22-64: &> /tmp/task.out
     cat /tmp/task.out | grep 'TestFlinger job 00000000-0000-0000-0000-000000000002 created for'
-    cat /tmp/task.out | grep 'Waiting for TestFlinger ubuntu-core-22-rpi4 to have an address...'
+    cat /tmp/task.out | grep 'Waiting for TestFlinger ubuntu-core-22-64 to have an address...'
     cat /tmp/task.out | grep 'Job state is either cancelled or completed'
+    test "$(jq -r '.job_queue' job_00000000-0000-0000-0000-000000000002.data)" = "x64"
+    test "$(jq -r '.provision_data.distro' job_00000000-0000-0000-0000-000000000002.data)" = "jammy"
+    test -z "$(jq -r '.provision_data | keys[]' job_00000000-0000-0000-0000-000000000002.data | grep url)"
+    ! test -f action_00000000-0000-0000-0000-000000000002.data
     stop_mock
 
     # Complete scenario
     start_mock 00000000-0000-0000-0000-000000000003
-    ! spread -reuse -resend &> /tmp/task.out
+    ! spread -reuse -resend testflinger:ubuntu-core-22-rpi4: &> /tmp/task.out
     cat /tmp/task.out | grep 'TestFlinger job 00000000-0000-0000-0000-000000000003 created for'
     cat /tmp/task.out | grep 'Waiting for TestFlinger ubuntu-core-22-rpi4 to have an address...'
     cat /tmp/task.out | grep 'Job state is either cancelled or completed'

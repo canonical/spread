@@ -443,9 +443,14 @@ func (p *lxdProvider) address(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for _, addr := range sjson.State.Network["eth0"].Addresses {
-		if addr.Family == "inet" && addr.Address != "" {
-			return addr.Address, nil
+	for intf, network := range sjson.State.Network {
+		if intf == "lo" {
+			continue
+		}
+		for _, addr := range network.Addresses {
+			if addr.Family == "inet" && addr.Address != "" {
+				return addr.Address, nil
+			}
 		}
 	}
 	return "", &lxdNoAddrError{name}

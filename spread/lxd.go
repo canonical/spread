@@ -475,13 +475,12 @@ func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
 
 	debugf("lxd list output: %# v\n", sjsons)
 
-	if len(sjsons) == 0 {
-		return nil, &lxdNoServerError{name}
+	for _, server := range sjsons {
+		if server.Name == name {
+			return server, nil
+		}
 	}
-	if sjsons[0].Name != name {
-		return nil, fmt.Errorf("lxd returned invalid JSON listing for %q: %s", name, outputErr(output, nil))
-	}
-	return sjsons[0], nil
+	return nil, &lxdNoServerError{name}
 }
 
 func (p *lxdProvider) tuneSSH(name string) error {

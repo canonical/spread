@@ -18,7 +18,7 @@ execute: |
     # The instance was created and the status has to be active to
     # fail trying to access through ssh
     spread openstack:cirros-64: -v -reuse -resend &> task.out || true
-    grep 'cannot establish ssh connection to the openstack server' task.out
+    grep 'cannot find ready marker in console output for .*: timeout reached' task.out
 
     # Check that the server is discarded during the spread execution
     for i in $(seq 10); do

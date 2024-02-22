@@ -369,7 +369,8 @@ func (p *openstackProvider) waitProvision(ctx context.Context, s *openstackServe
 		case <-retry.C:
 			server, err := p.computeClient.GetServer(s.d.Id)
 			if err != nil {
-				return fmt.Errorf("cannot get server info: %v", &openstackError{err})
+				debugf("cannot get server info: %v", &openstackError{err})
+				continue
 			}
 			if server.Status != nova.StatusBuild {
 				if server.Status != nova.StatusActive {
@@ -434,11 +435,13 @@ func (p *openstackProvider) getSerialConsoleOutput(s *openstackServer) (string, 
 
 	err := p.osClient.SendRequest("POST", "compute", "v2", url, &requestData)
 	if err != nil {
+		debugf("failed to retrieve the serial console for server %s: %v", s, err)
 		return "", err
 	}
-
 	return resp.Output, nil
 }
+
+var openstackSerialConsoleErr = fmt.Errorf("cannot get console output")
 
 func (p *openstackProvider) waitServerBootSerial(ctx context.Context, s *openstackServer) error {
 	timeout := time.After(openstackServerBootTimeout)
@@ -451,7 +454,7 @@ func (p *openstackProvider) waitServerBootSerial(ctx context.Context, s *opensta
 	for {
 		resp, err := p.getSerialConsoleOutput(s)
 		if err != nil {
-			return fmt.Errorf("cannot get console output for %s: %v", s, err)
+			return fmt.Errorf("%w: %v", openstackSerialConsoleErr, err)
 		}
 
 		if strings.Contains(resp, marker) {
@@ -464,9 +467,9 @@ func (p *openstackProvider) waitServerBootSerial(ctx context.Context, s *opensta
 		case <-relog.C:
 			printf("Server %s is taking a while to boot...", s)
 		case <-timeout:
-			return &FatalError{fmt.Errorf("cannot find ready marker in console output for %s: timeout reached", s)}
+			return fmt.Errorf("cannot find ready marker in console output for %s: timeout reached", s)
 		case <-ctx.Done():
-			return &FatalError{fmt.Errorf("cannot wait for %s to boot: interrupted", s)}
+			return fmt.Errorf("cannot wait for %s to boot: interrupted", s)
 		}
 	}
 	panic("unreachable")
@@ -476,8 +479,7 @@ func (p *openstackProvider) waitServerBoot(ctx context.Context, s *openstackServ
 	printf("Waiting for %s to boot at %s...", s, s.address)
 	err := p.waitServerBootSerial(ctx, s)
 	if err != nil {
-		var fatalErr *FatalError
-		if errors.As(err, &fatalErr) {
+		if !errors.Is(err, openstackSerialConsoleErr) {
 			return err
 		}
 		// It is important to try ssh connection because serial console could
@@ -622,7 +624,6 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 	if err == nil {
 		err = p.waitServerBoot(ctx, s)
 	}
-	// TODO: do we need to drop cloud-init script?
 	if err != nil {
 		if p.removeMachine(ctx, s) != nil {
 			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) new Openstack server %s: %v", s, err)}

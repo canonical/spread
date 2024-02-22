@@ -75,6 +75,10 @@ execute: |
     stop_mock
 
     # Garbage collection scenario
+    # Job 4: has to be deleted (it is active and halt-timeout exceeded)
+    # Job 5: has not to be deleted (it is active but halt-timeout not exceeded)
+    # Job 6: has not to be deleted (it is not active)
+    # Job 7: has not to be deleted (it is not active)
     start_mock 00000000-0000-0000-0000-000000000004
     spread -gc &> /tmp/task.out
     cat /tmp/task.out | grep 'Checking 00000000-0000-0000-0000-000000000004'

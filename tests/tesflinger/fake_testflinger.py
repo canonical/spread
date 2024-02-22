@@ -112,19 +112,61 @@ def mock_action_delete():
 
     return jsonify({})
 
+@app.route('/v1/job/00000000-0000-0000-0000-000000000004', methods=['GET'])
+def mock_job_tags_4():
+    return jsonify({
+      "allocate_data": {},
+      "allocation_timeout": 0,
+      "firmware_update_data": {},
+      "global_timeout": 0,
+      "job_id": "00000000-0000-0000-0000-000000000004",
+      "job_queue": "queue",
+      "name": "name",
+      "output_timeout": 0,
+      "parent_job_id": "job",
+      "provision_data": {},
+      "reserve_data": {},
+      "tags": ["spread", "halt-timeout=4h"],
+      "test_data": {}
+      })
+
 
 @app.route('/v1/job/00000000-0000-0000-0000-000000000005/action', methods=['POST'])
-def mock_action_error_1():
+def mock_action_error_5():
     abort(500)
 
+@app.route('/v1/job/00000000-0000-0000-0000-000000000005', methods=['GET'])
+def mock_job_tags_5():
+    return jsonify({
+      "allocate_data": {},
+      "allocation_timeout": 0,
+      "firmware_update_data": {},
+      "global_timeout": 0,
+      "job_id": "00000000-0000-0000-0000-000000000005",
+      "job_queue": "queue",
+      "name": "name",
+      "output_timeout": 0,
+      "parent_job_id": "job",
+      "provision_data": {},
+      "reserve_data": {},
+      "tags": ["spread", "halt-timeout=4h"],
+      "test_data": {}
+    })
 
 @app.route('/v1/job/00000000-0000-0000-0000-000000000006/action', methods=['POST'])
-def mock_action_error_2():
+def mock_action_error_6():
     abort(500)
 
+@app.route('/v1/job/00000000-0000-0000-0000-000000000006', methods=['GET'])
+def mock_job_error_6():
+    abort(500)
 
 @app.route('/v1/job/00000000-0000-0000-0000-000000000007/action', methods=['POST'])
-def mock_action_error_3():
+def mock_action_error_7():
+    abort(500)
+
+@app.route('/v1/job/00000000-0000-0000-0000-000000000007', methods=['GET'])
+def mock_job_error_7():
     abort(500)
 
 

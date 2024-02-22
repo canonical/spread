@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"golang.org/x/net/context"
@@ -63,6 +64,11 @@ type TestFlingerAllocateData struct {
 
 type TestFlingerJobResponse struct {
 	JobId string `json:"job_id"`
+}
+
+type TestFlingerJobInfoResponse struct {
+	JobId string  `json:"job_id"`
+	Tags []string `json:"tags"`
 }
 
 type TestFlingerDeviceInfo struct {
@@ -142,13 +148,32 @@ func (p *TestFlingerProvider) GarbageCollect() error {
 	// Iterate over all the running instances
 	for _, s := range jobs {
 		jobTimeout := haltTimeout
-		if jobTimeout == 0 {
-			continue
-		}
 		if s.d.JobState == CANCELLED || s.d.JobState == COMPLETE || s.d.JobState == COMPLETED {
 			continue
 		}
 		printf("Checking %s...", s.d.JobId)
+
+		var result TestFlingerJobInfoResponse
+		err := p.do("GET", "/job/" + s.d.JobId , nil, &result)
+		if err != nil {
+			return fmt.Errorf("cannot get instance info: %v", err)
+		}
+
+		// Use specific job timeout if a tag is set with halt-timeout=TIMEOUT
+		for _, tag := range result.Tags {
+			if strings.HasPrefix(tag, "halt-timeout=") {
+				value := strings.SplitAfter(tag, "=")[1]
+				d, err := time.ParseDuration(strings.TrimSpace(value))
+				if err != nil {
+					printf("WARNING: Ignoring bad TestFlinger job %s halt-timeout tag: %q", s.d.JobId, value)
+				} else {
+					jobTimeout = d
+				}
+			}
+		}
+		if jobTimeout == 0 {
+			continue
+		}
 
 		runningTime := now.Sub(s.d.CreatedAt)
 		if runningTime > jobTimeout {
@@ -222,7 +247,10 @@ func (p *TestFlingerProvider) requestDevice(ctx context.Context, system *System)
 		AllocateData: TestFlingerAllocateData{
 			Allocate: true,
 		},
-		Tags: []string{"spread"},
+		// Tags used are:
+		// 1. spread which is used to find the spread active jobs
+		// 2. halt-timeout=DURATION which is used to determine when a running job has to be cancelled
+		Tags: []string{"spread", "halt-timeout=" + p.backend.HaltTimeout.Duration.String()},
 	}
 
 	var jobRes TestFlingerJobResponse

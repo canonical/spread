@@ -16,22 +16,22 @@ backends:
                   groups:
                         - default
                   networks:
-                        - noexist
+                        - invalid
             - cirros-64-wrong-group:
                   image: cirros-0.6.2-x86_64-disk
                   groups:
-                        - noexist
+                        - invalid
                   networks:
                         - private
             - cirros-64-wrong-image:
-                  image: noexist
+                  image: invalid
                   groups:
                         - default
                   networks:
                         - private
             - cirros-64-wrong-plan:
                   image: cirros-0.6.2-x86_64-disk
-                  plan: noexist
+                  plan: invalid
                   groups:
                         - default
                   networks: 

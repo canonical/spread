@@ -40,8 +40,6 @@ exclude:
     - .spread-reuse.yaml
     - tests/.spread-reuse.yaml
     - $CACHE_DISABLED
-    - "*.snap"
-
 
 
 path: /home/test/src/github.com/snapcore/spread

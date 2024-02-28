@@ -385,8 +385,9 @@ func (p *openstackProvider) waitProvision(ctx context.Context, s *openstackServe
 	panic("unreachable")
 }
 
-var openstackServerBootTimeout = 3 * time.Minute
+var openstackServerBootTimeout = 2 * time.Minute
 var openstackServerBootRetry = 5 * time.Second
+var openstackSerialOutputTimeout = 30 * time.Second
 
 func (p *openstackProvider) waitServerBootSSH(ctx context.Context, s *openstackServer) error {
 	config := &ssh.ClientConfig{
@@ -432,20 +433,32 @@ func (p *openstackProvider) getSerialConsoleOutput(s *openstackServer) (string, 
 		Output string `json:"output"`
 	}
 	requestData := goosehttp.RequestData{ReqValue: req, RespValue: &resp, ExpectedStatus: []int{http.StatusOK}}
+	timeout := time.After(30 * time.Second)
+	retry := time.NewTicker(openstackServerBootRetry)
+	defer retry.Stop()
 
-	err := p.osClient.SendRequest("POST", "compute", "v2", url, &requestData)
-	if err != nil {
-		debugf("failed to retrieve the serial console for server %s: %v", s, err)
-		return "", err
+	for {
+		err := p.osClient.SendRequest("POST", "compute", "v2", url, &requestData)
+		if err != nil {
+			debugf("failed to retrieve the serial console for server %s: %s", s.d.Id, err)
+		}
+		if len(resp.Output) > 0 {
+			return resp.Output, nil
+		}
+		select {
+		case <-retry.C:
+		case <-timeout:
+			return "", fmt.Errorf("the serial console for server %s could not be retrieved: timeout reached", s.d.Id)
+		}
 	}
 	return resp.Output, nil
 }
 
-var openstackSerialConsoleErr = fmt.Errorf("cannot get console output")
+type OpenstackSerialConsoleErr struct{ error }
 
 func (p *openstackProvider) waitServerBootSerial(ctx context.Context, s *openstackServer) error {
 	timeout := time.After(openstackServerBootTimeout)
-	relog := time.NewTicker(60 * time.Second)
+	relog := time.NewTicker(openstackSerialOutputTimeout)
 	defer relog.Stop()
 	retry := time.NewTicker(openstackServerBootRetry)
 	defer retry.Stop()
@@ -454,7 +467,7 @@ func (p *openstackProvider) waitServerBootSerial(ctx context.Context, s *opensta
 	for {
 		resp, err := p.getSerialConsoleOutput(s)
 		if err != nil {
-			return fmt.Errorf("%w: %v", openstackSerialConsoleErr, err)
+			return &OpenstackSerialConsoleErr{fmt.Errorf("cannot get console output")}
 		}
 
 		if strings.Contains(resp, marker) {
@@ -466,7 +479,7 @@ func (p *openstackProvider) waitServerBootSerial(ctx context.Context, s *opensta
 			debugf("Server %s is taking a while to boot...", s)
 		case <-relog.C:
 			printf("Server %s is taking a while to boot...", s)
-		case <-timeout:
+   	case <-timeout:
 			return fmt.Errorf("cannot find ready marker in console output for %s: timeout reached", s)
 		case <-ctx.Done():
 			return fmt.Errorf("cannot wait for %s to boot: interrupted", s)
@@ -479,9 +492,9 @@ func (p *openstackProvider) waitServerBoot(ctx context.Context, s *openstackServ
 	printf("Waiting for %s to boot at %s...", s, s.address)
 	err := p.waitServerBootSerial(ctx, s)
 	if err != nil {
-		if !errors.Is(err, openstackSerialConsoleErr) {
+		if errors.As(err, &OpenstackSerialConsoleErr{}) {
 			return err
-		}
+		}		
 		// It is important to try ssh connection because serial console could
 		// be disabled in the nova configuration
 		err = p.waitServerBootSSH(ctx, s)

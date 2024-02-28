@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	gooseClient "github.com/go-goose/goose/v5/client"
+	gooseclient "github.com/go-goose/goose/v5/client"
 	"github.com/go-goose/goose/v5/glance"
 )
 
@@ -34,7 +34,7 @@ func MockOpenstackComputeClient(opst *OpenstackProvider, newIC novaComputeClient
 	}
 }
 
-func MockOpenstackGooseClient(opst *OpenstackProvider, newC gooseClient.Client) (restore func()) {
+func MockOpenstackGooseClient(opst *OpenstackProvider, newC gooseclient.Client) (restore func()) {
 	oldOsClient := opst.osClient
 	opst.osClient = newC
 	return func() {

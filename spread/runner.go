@@ -78,6 +78,8 @@ func Start(project *Project, options *Options) (*Runner, error) {
 		switch backend.Type {
 		case "google":
 			r.providers[bname] = Google(project, backend, options)
+		case "openstack":
+			r.providers[bname] = Openstack(project, backend, options)
 		case "linode":
 			r.providers[bname] = Linode(project, backend, options)
 		case "lxd":
@@ -88,8 +90,6 @@ func Start(project *Project, options *Options) (*Runner, error) {
 			r.providers[bname] = AdHoc(project, backend, options)
 		case "humbox":
 			r.providers[bname] = Humbox(project, backend, options)
-		case "openstack":
-			r.providers[bname] = Openstack(project, backend, options)
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}

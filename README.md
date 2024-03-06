@@ -932,20 +932,54 @@ backends:
 ```
 
 The Openstack backend gets all the information to authenticate from the
-environment variables. The following variables have to be set:
+environment variables. These are the supported variables (in all cases at
+least one env var has to be set):
+
+The URL to authenticate against
 ```
 OS_AUTH_URL
+```
+
+The username to authenticate as
+```
+OS_USERNAME
+OS_ACCESS_KEY
+```
+
+The secrets to pass
+```
+OS_PASSWORD
+OS_SECRET_KEY
+```
+
+Region to send requests to
+```
+OS_REGION_NAME
+
+```
+
+The project name and ID for this connection
+```
+OS_TENANT_ID
 OS_PROJECT_ID
 OS_PROJECT_NAME
-OS_USER_DOMAIN_NAME
-OS_PROJECT_DOMAIN_ID (optional)
-OS_TENANT_ID
 OS_TENANT_NAME
-OS_USERNAME
-OS_PASSWORD
-OS_REGION_NAME
-OS_INTERFACE
+
+```
+
+The Keystone version
+```
+OS_AUTH_VERSION
 OS_IDENTITY_API_VERSION
+
+```
+
+The domain for authorization (new in keystone v3)
+```
+OS_DEFAULT_DOMAIN_NAME
+OS_PROJECT_DOMAIN_NAME
+OS_USER_DOMAIN_NAME
+
 ```
 
 You can set up those variables by sourcing the Openstack RC file. 

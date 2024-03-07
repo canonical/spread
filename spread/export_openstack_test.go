@@ -12,31 +12,28 @@ var (
 	OpenstackName = openstackName
 )
 
-type (
-	OpenstackProvider   = openstackProvider
-	GlanceImageClient   = glanceImageClient
-	OpenstackServerData = openstackServerData
-)
-
-func MockOpenstackImageClient(opst *OpenstackProvider, newIC glanceImageClient) (restore func()) {
+func MockOpenstackImageClient(p Provider, imageClient glanceImageClient) (restore func()) {
+	opst := p.(*openstackProvider)
 	oldGlanceImageClient := opst.imageClient
-	opst.imageClient = newIC
+	opst.imageClient = imageClient
 	return func() {
 		opst.imageClient = oldGlanceImageClient
 	}
 }
 
-func MockOpenstackComputeClient(opst *OpenstackProvider, newIC novaComputeClient) (restore func()) {
+func MockOpenstackComputeClient(p Provider, computeClient novaComputeClient) (restore func()) {
+	opst := p.(*openstackProvider)
 	oldNovaImageClient := opst.computeClient
-	opst.computeClient = newIC
+	opst.computeClient = computeClient
 	return func() {
 		opst.computeClient = oldNovaImageClient
 	}
 }
 
-func MockOpenstackGooseClient(opst *OpenstackProvider, newC gooseclient.Client) (restore func()) {
+func MockOpenstackGooseClient(p Provider, gooseClient gooseclient.Client) (restore func()) {
+	opst := p.(*openstackProvider)
 	oldOsClient := opst.osClient
-	opst.osClient = newC
+	opst.osClient = gooseClient
 	return func() {
 		opst.osClient = oldOsClient
 	}
@@ -64,22 +61,40 @@ func MockOpenstackServerBootTimeout(timeout, retry time.Duration) (restore func(
 	}
 }
 
-func (opst *OpenstackProvider) FindImage(name string) (*glance.ImageDetail, error) {
+func MockOpenstackSerialOutputTimeout(timeout time.Duration) (restore func()) {
+	oldTimeout := openstackSerialOutputTimeout
+	openstackSerialOutputTimeout = timeout
+	return func() {
+		openstackSerialOutputTimeout = oldTimeout
+	}
+}
+
+func OpenstackFindImage(p Provider, name string) (*glance.ImageDetail, error) {
+	opst := p.(*openstackProvider)
 	return opst.findImage(name)
 }
 
-func (opst *openstackProvider) WaitProvision(ctx context.Context, serverData OpenstackServerData) error {
+func OpenstackWaitProvision(p Provider, ctx context.Context, serverID, serverName string) error {
+	opst := p.(*openstackProvider)
 	server := &openstackServer{
 		p: opst,
-		d: serverData,
+		d: openstackServerData{
+			Id:   serverID,
+			Name: serverName,
+		},
 	}
 	return opst.waitProvision(ctx, server)
 }
 
-func (opst *openstackProvider) WaitServerBoot(ctx context.Context, serverData OpenstackServerData) error {
+func OpenstackWaitServerBoot(p Provider, ctx context.Context, serverID, serverName string, serverNetworks []string) error {
+	opst := p.(*openstackProvider)
 	server := &openstackServer{
 		p: opst,
-		d: serverData,
+		d: openstackServerData{
+			Id:       serverID,
+			Name:     serverName,
+			Networks: serverNetworks,
+		},
 	}
 	return opst.waitServerBoot(ctx, server)
 }

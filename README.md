@@ -913,6 +913,7 @@ _$PROJECT/spread.yaml_
 
 backends:
     openstack:
+        key: '$(HOST: echo "$SPREAD_OPENSTACK_ENV")'
         plan: cpu2-ram4-disk10
         halt-timeout: 2h
         systems:
@@ -981,6 +982,12 @@ OS_PROJECT_DOMAIN_NAME
 OS_USER_DOMAIN_NAME
 
 ```
+
+With the key setting the Openstack backend in Spread will pick the .env file
+with the credentials file pointed to in `$SPREAD_OPENSTACK_ENV` environment
+variable (we don't want that content inside `spread.yaml` itself).
+If no key is explicitly provided, Spread will attempt to use the environment
+variables described previously to authenticate.
 
 You can set up those variables by sourcing the Openstack RC file. 
 For more information about the environment setup please read 

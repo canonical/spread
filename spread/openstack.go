@@ -17,6 +17,7 @@ import (
 	"github.com/go-goose/goose/v5/neutron"
 	"github.com/go-goose/goose/v5/nova"
 
+	"github.com/joho/godotenv"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/context"
 )
@@ -739,6 +740,12 @@ func (p *openstackProvider) checkKey() error {
 	var err error
 
 	if err == nil && p.computeClient == nil {
+
+		// Load environment variables used to authenticate
+		if p.backend.Key != "" {
+				godotenv.Load(p.backend.Key)
+		}
+
 		// retrieve variables used to authenticate from the environment
 		cred, err := identity.CompleteCredentialsFromEnv()
 		if err != nil {

@@ -5,6 +5,7 @@ go 1.13
 require (
 	github.com/go-goose/goose v2.0.1+incompatible // indirect
 	github.com/go-goose/goose/v5 v5.0.0-20230421180421-abaee9096e3a
+	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e
 	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
 	golang.org/x/net v0.0.0-20211216030914-fe4d6282115f

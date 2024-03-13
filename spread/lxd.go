@@ -486,7 +486,15 @@ func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
 
 func (p *lxdProvider) tuneSSH(name string) error {
 	cmds := [][]string{
+		// Attempt to enable root login with a password through SSH, which is
+		// achieved in a different manner depending on the version of sshd in
+		// the system. Older versions of ssh used a single file.
 		{"sed", "-i", `s/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/`, "/etc/ssh/sshd_config"},
+		// While newer versions have configuration split into a bunch of drop-in
+		// configuration snippets, in which case we provide one that gets loaded
+		// before all others, as the first value observed in the configuration
+		// file prevails (see sshd_config(5)).
+		{"/bin/bash", "-c", `[ -d /etc/ssh/sshd_config.d ] && echo -e "PermitRootLogin yes\nPasswordAuthentication yes" > /etc/ssh/sshd_config.d/00-spread.conf`},
 		{"/bin/bash", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", p.options.Password)},
 		{"killall", "-HUP", "sshd"},
 	}

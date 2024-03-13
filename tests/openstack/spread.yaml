@@ -2,6 +2,7 @@ project: spread
 
 backends:
     openstack:
+        key: '$(HOST: echo "$SPREAD_OPENSTACK_ENV")'
         plan: m1.tiny
         halt-timeout: 1s
         systems:

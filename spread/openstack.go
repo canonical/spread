@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -752,11 +753,18 @@ func (p *openstackProvider) checkKey() error {
 			return &FatalError{fmt.Errorf("cannot retrieve credentials from env: %v", err)}
 		}
 
-		// Select the appropiate version of the UserPass authentication method
-		var authmode = identity.AuthUserPassV3
-		if cred.Version > 0 && cred.Version != 3 {
-			authmode = identity.AuthUserPass
-		}
+		// Select the appropiate authentication method
+		var authmode identity.AuthMode
+		if os.Getenv("OS_ACCESS_KEY") != "" && os.Getenv("OS_SECRET_KEY") != "" {
+			authmode = identity.AuthKeyPair
+		} else if os.Getenv("OS_USERNAME") != "" && os.Getenv("OS_PASSWORD") != "" {
+				authmode = identity.AuthUserPassV3
+				if cred.Version > 0 && cred.Version != 3 {
+					authmode = identity.AuthUserPass
+				}
+		} else {
+			return &FatalError{fmt.Errorf("cannot determine authentication method to use")}
+		}		  
 
 		authClient := gooseClient.NewClient(cred, authmode, nil)
 		err = authClient.Authenticate()

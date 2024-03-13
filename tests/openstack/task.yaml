@@ -21,6 +21,7 @@ execute: |
     # The instance was created and the status has to be active to
     # fail trying to access through ssh
     ! spread openstack:cirros-64: -v -reuse -resend &> task.out
+    grep 'Allocating openstack:cirros-64' task.out
     grep 'cannot find ready marker in console output for.*: timeout reached' task.out
 
     # Check that the server is discarded during the spread execution
@@ -31,6 +32,13 @@ execute: |
         sleep 1
     done
     test -z "$(openstack server list)"
+
+    # check the authentication method can be updated
+    echo -e "OS_ACCESS_KEY=test\nOS_SECRET_KEY=test" > test.env
+    ! SPREAD_OPENSTACK_ENV=test.env spread openstack:cirros-64: -v -reuse -resend &> task.out
+    grep 'Allocating openstack:cirros-64' task.out
+    grep 'cannot authenticate' task.out
+    rm test.env
 
     # Check the error in case the network does not exist
     ! spread openstack:cirros-64-wrong-network: -v -reuse -resend &> task.out

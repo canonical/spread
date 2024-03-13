@@ -1,4 +1,4 @@
 summary: Ensure it works.
 
 execute: |
-    echo WORKS
+    echo WORKS $SPREAD_SYSTEM

@@ -70,7 +70,12 @@ execute: |
     OS_IDENTITY_API_VERSION=2 spread openstack:cirros-64: -v -reuse -resend &> task.out  || true
     grep -E 'cannot authenticate:.*returned unexpected status: 404' task.out
 
-    # trigger 1 instance and check it can be listed and the garbage collect works
+    # Check garbage collection works
+    # Start 1 instace (halt-timeout for openstack backend in spread.yaml is 1s)
+    # Checks that the halt-timeout property set for the instance (through openstack command)
+    # overrides the halt-timeout property set for the backend in the spread.yaml
+    # Remove the halt-timeout property set for the instance and check the instance
+    # is removed when we do `spread -gc`
     test "0" = "$(spread -gc | grep -c "Checking openstack instance")"
     spread openstack:cirros-64: &>/dev/null &
 

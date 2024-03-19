@@ -82,6 +82,8 @@ func Start(project *Project, options *Options) (*Runner, error) {
 			r.providers[bname] = Linode(project, backend, options)
 		case "lxd":
 			r.providers[bname] = LXD(project, backend, options)
+		case "lxd-vm":
+			r.providers[bname] = LXDVM(project, backend, options)
 		case "qemu":
 			r.providers[bname] = QEMU(project, backend, options)
 		case "adhoc":

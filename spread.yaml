@@ -23,11 +23,6 @@ backends:
             - ubuntu-20.04-64:
                 image: ubuntu-2004-64-virt-enabled
                 workers: 1
-            - ubuntu-22.04-64-devstack:
-                image: ubuntu-jammy-devstack
-                plan: n2-standard-2
-                storage: 20G
-                workers: 1
 
     qemu:
         systems:
@@ -36,11 +31,9 @@ backends:
                 password: ubuntu
 
 exclude:
-    - .git
     - .spread-reuse.yaml
     - tests/.spread-reuse.yaml
     - $CACHE_DISABLED
-
 
 path: /home/test/src/github.com/snapcore/spread
 
@@ -49,16 +42,11 @@ suites:
         summary: Integration tests
 
 prepare: |
-    DEBS="git qemu-kvm tree"
+    DEBS="git qemu-kvm lxd tree"
     if ! dpkg -l $DEBS; then
         apt update
         apt install -y $DEBS
     fi
-
-    if ! snap list lxd; then
-        snap install lxd
-    fi
-
     # Cache is only available if SEND_CACHE=1 is set.
     mkdir -p tests/cache
 
@@ -90,8 +78,8 @@ prepare: |
     # - Export image: > lxc image export <IAMGE-ID> tests/cache/lxd-ubuntu-16.04
     # - Extract metadata: > cd tests/cache/lxd-ubuntu-16.04 && tar -xvf <METADATA-FILE>
     if [ -d tests/cache/lxd-ubuntu-16.04 ]; then
-        if ! lxd.lxc image list | grep '16\.04'; then
-            lxd.lxc image import tests/cache/lxd-ubuntu-16.04
+        if ! lxc image list | grep '16\.04'; then
+            lxc image import tests/cache/lxd-ubuntu-16.04
         fi
     fi
     # Start lxd instance

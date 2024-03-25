@@ -23,7 +23,7 @@ Spread
 [Fetching artifacts](#artifacts)  
 [LXD backend](#lxd)  
 [QEMU backend](#qemu)  
-[Google backend](#google)
+[Google backend](#google)  
 [Openstack backend](#openstack)  
 [Linode backend](#linode)  
 [AdHoc backend](#adhoc)  

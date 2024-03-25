@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	gooseClient "github.com/go-goose/goose/v5/client"
+	gooseclient "github.com/go-goose/goose/v5/client"
 	goosehttp "github.com/go-goose/goose/v5/http"
 
 	"github.com/go-goose/goose/v5/glance"
@@ -50,7 +50,7 @@ type openstackProvider struct {
 	options *Options
 
 	region        string
-	osClient      gooseClient.Client
+	osClient      gooseclient.Client
 	computeClient novaComputeClient
 	networkClient *neutron.Client
 	imageClient   glanceImageClient
@@ -766,7 +766,7 @@ func (p *openstackProvider) checkKey() error {
 			return &FatalError{fmt.Errorf("cannot determine authentication method to use")}
 		}
 
-		authClient := gooseClient.NewClient(cred, authmode, nil)
+		authClient := gooseclient.NewClient(cred, authmode, nil)
 		err = authClient.Authenticate()
 		if err != nil {
 			return &FatalError{fmt.Errorf("cannot authenticate: %v", &openstackError{err})}

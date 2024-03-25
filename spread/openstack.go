@@ -160,8 +160,8 @@ const openstackCloudInitScript = `
 runcmd:
   - echo root:%s | chpasswd
   - sed -i 's/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /etc/ssh/sshd_config
-  - test -d /etc/ssh/sshd_config.d && echo 'PermitRootLogin=yes' > /etc/ssh/sshd_config.d/00-spread.conf
-  - test -d /etc/ssh/sshd_config.d && echo 'PasswordAuthentication=yes' >> /etc/ssh/sshd_config.d/00-spread.conf
+  - sed -i 's/^\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/# COMMENTED OUT BY SPREAD: \0/' /etc/ssh/sshd_config.d/* || true
+  - test -d /etc/ssh/sshd_config.d && echo -e 'PermitRootLogin=yes\nPasswordAuthentication=yes' > /etc/ssh/sshd_config.d/00-spread.conf
   - pkill -o -HUP sshd || true
   - echo '` + openstackReadyMarker + `' > /dev/ttyS0
 `
@@ -744,7 +744,7 @@ func (p *openstackProvider) checkKey() error {
 
 		// Load environment variables used to authenticate
 		if p.backend.Key != "" {
-				godotenv.Load(p.backend.Key)
+			godotenv.Load(p.backend.Key)
 		}
 
 		// retrieve variables used to authenticate from the environment
@@ -758,13 +758,13 @@ func (p *openstackProvider) checkKey() error {
 		if os.Getenv("OS_ACCESS_KEY") != "" && os.Getenv("OS_SECRET_KEY") != "" {
 			authmode = identity.AuthKeyPair
 		} else if os.Getenv("OS_USERNAME") != "" && os.Getenv("OS_PASSWORD") != "" {
-				authmode = identity.AuthUserPassV3
-				if cred.Version > 0 && cred.Version != 3 {
-					authmode = identity.AuthUserPass
-				}
+			authmode = identity.AuthUserPassV3
+			if cred.Version > 0 && cred.Version != 3 {
+				authmode = identity.AuthUserPass
+			}
 		} else {
 			return &FatalError{fmt.Errorf("cannot determine authentication method to use")}
-		}		  
+		}
 
 		authClient := gooseClient.NewClient(cred, authmode, nil)
 		err = authClient.Authenticate()

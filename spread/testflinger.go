@@ -147,11 +147,12 @@ func (p *TestFlingerProvider) GarbageCollect() error {
 
 	// Iterate over all the running instances
 	for _, s := range jobs {
+		printf("Checking %s...", s.d.JobId)
+
 		jobTimeout := haltTimeout
 		if s.d.JobState == CANCELLED || s.d.JobState == COMPLETE || s.d.JobState == COMPLETED {
 			continue
 		}
-		printf("Checking %s...", s.d.JobId)
 
 		var result TestFlingerJobInfoResponse
 		err := p.do("GET", "/job/" + s.d.JobId , nil, &result)

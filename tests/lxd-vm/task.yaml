@@ -1,0 +1,16 @@
+summary: Test the lxd backend.
+
+prepare: |
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
+
+execute: |
+    spread -vv -reuse -resend &> task.out
+
+    grep 'lxd-vm:ubuntu-20.04:checks/main' task.out
+    grep '^WORKS$' task.out
+
+debug: |
+    cat task.out || true

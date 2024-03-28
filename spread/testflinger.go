@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -76,8 +77,12 @@ type TestFlingerDeviceInfo struct {
 }
 
 type TestFlingerResultResponse struct {
-	JobState   string                `json:"job_state"`
-	DeviceInfo TestFlingerDeviceInfo `json:"device_info"`
+	JobState        string                `json:"job_state"`
+	DeviceInfo      TestFlingerDeviceInfo `json:"device_info"`
+	ReserveOutput   string                `json:"reserve_output"`
+	AllocateOutput  string                `json:"allocate_output"`
+	SetupOutput     string                `json:"setup_output"`
+	ProvisionOutput string                `json:"provision_output"`
 }
 
 type TestFlingerActionData struct {
@@ -225,6 +230,10 @@ func (p *TestFlingerProvider) Allocate(ctx context.Context, system *System) (Ser
 	}
 	err = p.waitDeviceBoot(ctx, s)
 	if err != nil {
+		saveErr := p.saveJobOutput(ctx, s)
+		if saveErr != nil {
+			return nil, fmt.Errorf("Error saving job result output: %v", err)
+		}
 		return nil, err
 	}
 	return s, nil
@@ -332,6 +341,46 @@ func (p *TestFlingerProvider) waitDeviceBoot(ctx context.Context, s *TestFlinger
 	}
 
 	return fmt.Errorf("ip address not found")
+}
+
+func (p *TestFlingerProvider) saveJobOutput(ctx context.Context, s *TestFlingerJob) error {
+	var resRes TestFlingerResultResponse
+	err := p.do("GET", "/result/"+s.d.JobId, nil, &resRes)
+	if err != nil {
+		return fmt.Errorf("Error requesting result output for job: %v", err)
+	}
+
+	// Use the last part of the uuid to identify the file
+	uuidParts := strings.Split(s.d.JobId, "-")
+	outputFile := fmt.Sprintf(".spread-output.%s.log", uuidParts[len(uuidParts)-1])
+	path := filepath.Join(p.project.Path, outputFile)
+
+	// create hte output job file.
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("cannot create result output file: %v", err)
+	}
+	defer func() {
+		if err != nil {
+			f.Close()
+		}
+	}()
+
+	// Build the output to write the the file
+	var buffer bytes.Buffer
+    buffer.WriteString(resRes.ReserveOutput)
+    buffer.WriteString(resRes.AllocateOutput)
+    buffer.WriteString(resRes.SetupOutput)
+    buffer.WriteString(resRes.ProvisionOutput)
+
+    // write the output into the job file.
+	_, err = f.Write(buffer.Bytes())
+	if err != nil {
+		return fmt.Errorf("cannot write result output message: %v", err)
+	}
+
+	printf("Job %s result output saved to file %s", s.d.JobId, outputFile)
+	return nil
 }
 
 func TestFlingerQueue(system *System) string {

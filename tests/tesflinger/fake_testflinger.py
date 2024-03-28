@@ -65,7 +65,11 @@ def mock_result_error():
     if count_calls_result < 3:
         return jsonify({"job_state":"waiting"})
     else:
-        return jsonify({"job_state":"cancelled"})
+        return jsonify({"job_state":"cancelled", 
+            "allocate_output":"test_allocate", 
+            "provision_output":"test_provision", 
+            "reserve_output":"test_reserve", 
+            "setup_output":"test_setup"})
 
 
 # Complete scenario

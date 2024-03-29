@@ -3,7 +3,10 @@ project: spread
 backends:
     lxd-vm:
         systems:
-            - ubuntu-20.04
+          # list systems which are known to work as VMs, both 16.04 and 18.04 do
+          # not work at all, lxd-agent does not start, 22.04 requires a fix for
+          # SSH from https://github.com/snapcore/spread/pull/184 or a similar PR
+          - ubuntu-20.04
 
 path: /home/test
 

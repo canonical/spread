@@ -23,6 +23,7 @@ Spread
 [Disabling unless manually selected](#manual)  
 [Fetching artifacts](#artifacts)  
 [LXD backend](#lxd)  
+[LXD VM backend](#lxd-vm)  
 [QEMU backend](#qemu)  
 [Google backend](#google)  
 [Linode backend](#linode)  
@@ -805,6 +806,35 @@ backends:
 
 That's it. Have fun with your self-contained multi-system task runner.
 
+The LXD backend supports setting memory limit for the containers like so:
+
+```
+backends:
+    lxd:
+        memory: 1024M
+        systems:
+            - ubuntu-16.04:
+```
+
+<a name="lxd-vm"/>
+
+## LXD VM backend
+
+The LXD VM backend works very much the same as the LXD backend, but instead of
+containers it spins up LXD VMs.
+
+Assuming LXD was successfully installed and configured, setting up the backend
+in your project file is as trivial as:
+
+```
+backends:
+    lxd-vm:
+        systems:
+            - ubuntu-22.04
+```
+
+The image naming and resource limits rules are identical to the LXD backend. By
+default, each VM is created with a single CPU and 1GB memory limit.
 
 <a name="qemu"/>
 

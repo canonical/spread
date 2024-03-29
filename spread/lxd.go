@@ -19,13 +19,29 @@ import (
 )
 
 func LXD(p *Project, b *Backend, o *Options) Provider {
-	return &lxdProvider{p, b, o}
+	return &lxdProvider{
+		project: p,
+		backend: b,
+		options: o,
+		vm:      false,
+	}
+}
+
+func LXDVM(p *Project, b *Backend, o *Options) Provider {
+	return &lxdProvider{
+		project: p,
+		backend: b,
+		options: o,
+		vm:      true,
+	}
 }
 
 type lxdProvider struct {
 	project *Project
 	backend *Backend
 	options *Options
+
+	vm bool
 }
 
 type lxdServer struct {
@@ -111,6 +127,13 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 	if !p.options.Reuse {
 		args = append(args, "--ephemeral")
 	}
+	if p.vm {
+		args = append(args, "--vm")
+	}
+	if p.backend.Memory > 0 {
+		mem := int(p.backend.Memory / mb)
+		args = append(args, "-c", fmt.Sprintf("limits.memory=%dMiB", mem))
+	}
 	output, err := exec.Command("lxc", args...).CombinedOutput()
 	if err != nil {
 		err = outputErr(output, err)
@@ -129,7 +152,13 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 	}
 
 	printf("Waiting for lxd container %s to have an address...", name)
-	timeout := time.After(30 * time.Second)
+	maxTimeout := 30 * time.Second
+	if p.vm {
+		// VM may take considerably longer to start
+		// TODO: should this be configurable?
+		maxTimeout = 180 * time.Second
+	}
+	timeout := time.After(maxTimeout)
 	retry := time.NewTicker(1 * time.Second)
 	defer retry.Stop()
 	for {
@@ -292,8 +321,15 @@ func (p *lxdProvider) lxdLocalImage(system *System) (string, error) {
 		return "", err
 	}
 
+	// TODO use lxd image list --format=json to get all of this in one call
 	var stderr bytes.Buffer
-	cmd := exec.Command("lxc", "image", "list")
+	args := []string{"image", "list"}
+	if p.vm {
+		args = append(args, "type=virtual-machine")
+	} else {
+		args = append(args, "type=container")
+	}
+	cmd := exec.Command("lxc", args...)
 	cmd.Stderr = &stderr
 
 	output, err := cmd.Output()
@@ -443,9 +479,15 @@ func (p *lxdProvider) address(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for _, addr := range sjson.State.Network["eth0"].Addresses {
-		if addr.Family == "inet" && addr.Address != "" {
-			return addr.Address, nil
+	for ifacename, ifaceconf := range sjson.State.Network {
+		if ifacename == "lo" {
+			// ignore loopback interface
+			continue
+		}
+		for _, addr := range ifaceconf.Addresses {
+			if addr.Family == "inet" && addr.Address != "" {
+				return addr.Address, nil
+			}
 		}
 	}
 	return "", &lxdNoAddrError{name}

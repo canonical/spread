@@ -25,7 +25,8 @@ Spread
 [LXD backend](#lxd)  
 [QEMU backend](#qemu)  
 [Google backend](#google)  
-[Linode backend](#linode)  
+[Linode backend](#linode)
+[Testflinger backend](#testflinger)
 [AdHoc backend](#adhoc)  
 [More on parallelism](#parallelism)  
 [Repacking and delta uploads](#repacking)  
@@ -1019,6 +1020,44 @@ Some links to make your life easier:
   * [Users and permissions](https://manager.linode.com/user)
   * [API keys](https://manager.linode.com/profile/api)
 
+
+<a name="testflinger"/>
+
+[Testflinger backend](#testflinger)
+
+The Testflinger backend allows to allocate and run tasks on devices 
+orchestrated by testflinger server.
+
+_$PROJECT/spread.yaml_
+```
+(...)
+backends:
+    testflinger:
+        wait-timeout: 30m
+        systems:
+            - ubuntu-rpi3:
+                  queue: rpi3
+                  image: https://url/pi.img.xz
+                  workers: 2
+                  username: user
+                  password: pass
+
+```
+
+As the number of devices are limited and the time to get access is uncertaint, the testflinger
+backend uses a specific timeout called `wait-timeout` to specify the waiting time for the device
+allocation. 
+
+Each testflinger system needs to be configured with a queue which is used to identify a set of
+devices and an image which is used by testflinger to provision the device once it is allocated.
+
+When the machines terminate running, they will be free. If anything
+happens that prevents the immediate removal, they will remain in the account
+and need to be removed by hand.
+
+Some links to make your life easier:
+    * [Testflinger documentation](https://testflinger.readthedocs.io)
+    * [Testflinger queues and devices](https://github.com/canonical/certification-lab-docs/blob/main/reference/testflinger-devices.rst)
 
 <a name="adhoc"/>
 

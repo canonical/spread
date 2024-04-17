@@ -350,6 +350,12 @@ func (p *TestFlingerProvider) saveJobOutput(ctx context.Context, s *TestFlingerJ
 		return fmt.Errorf("Error requesting result output for job: %v", err)
 	}
 
+	state := resRes.JobState
+	// no output to save if the state is neither completed nor cancelled
+	if state != CANCELLED && state != COMPLETE && state != COMPLETED {
+		return nil
+	}
+
 	// Use the last part of the uuid to identify the file
 	uuidParts := strings.Split(s.d.JobId, "-")
 	outputFile := fmt.Sprintf(".spread-output.%s.log", uuidParts[len(uuidParts)-1])

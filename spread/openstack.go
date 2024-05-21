@@ -160,7 +160,8 @@ const openstackCloudInitScript = `
 runcmd:
   - echo root:%s | chpasswd
   - sed -i 's/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /etc/ssh/sshd_config
-  - sed -i 's/^\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/# COMMENTED OUT BY SPREAD: \0/' /etc/ssh/sshd_config.d/* || true
+  - sed -i 's/^PermitRootLogin=/#PermitRootLogin=/g' /etc/ssh/sshd_config.d/* || true
+  - sed -i 's/^PasswordAuthentication=/#PasswordAuthentication=/g' /etc/ssh/sshd_config.d/* || true
   - test -d /etc/ssh/sshd_config.d && echo -e 'PermitRootLogin=yes\nPasswordAuthentication=yes' > /etc/ssh/sshd_config.d/00-spread.conf
   - pkill -o -HUP sshd || true
   - echo '` + openstackReadyMarker + `' > /dev/ttyS0

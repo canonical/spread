@@ -25,6 +25,7 @@ Spread
 [LXD backend](#lxd)  
 [QEMU backend](#qemu)  
 [Google backend](#google)  
+[Openstack backend](#openstack)  
 [Linode backend](#linode)  
 [AdHoc backend](#adhoc)  
 [More on parallelism](#parallelism)  
@@ -909,6 +910,107 @@ and need to be removed by hand.
 
 For long term use, a dedicated project in the Google Cloud Platform is
 recommended to prevent automated manipulation of important machines.
+
+<a name="openstack"/>
+
+## Openstack backend
+
+The Openstack backend is easy to setup and use, and allows distributing
+your tasks to an openstack environment.
+
+_$PROJECT/spread.yaml_
+```
+(...)
+
+backends:
+    openstack:
+        key: '$(HOST: echo "$SPREAD_OPENSTACK_ENV")'
+        plan: cpu2-ram4-disk10
+        halt-timeout: 2h
+        systems:
+            - ubuntu-20.04:
+                  image: ubuntu-focal-daily-amd64
+                  workers: 5
+
+            # Extended syntax:
+            - another-system:
+                image: some-other-image
+                networks:
+                    - network_external
+                    - network_pvn
+                groups:
+                    - group_external
+
+```
+
+The Openstack backend gets all the information to authenticate from the
+environment variables. These are the supported variables (in all cases at
+least one env var has to be set):
+
+The URL to authenticate against
+```
+OS_AUTH_URL
+```
+
+The username to authenticate as
+```
+OS_USERNAME
+OS_ACCESS_KEY
+```
+
+The secrets to pass
+```
+OS_PASSWORD
+OS_SECRET_KEY
+```
+
+Region to send requests to
+```
+OS_REGION_NAME
+
+```
+
+The project name and ID for this connection
+```
+OS_TENANT_ID
+OS_PROJECT_ID
+OS_PROJECT_NAME
+OS_TENANT_NAME
+
+```
+
+The Keystone version
+```
+OS_AUTH_VERSION
+OS_IDENTITY_API_VERSION
+
+```
+
+The domain for authorization (new in keystone v3)
+```
+OS_DEFAULT_DOMAIN_NAME
+OS_PROJECT_DOMAIN_NAME
+OS_USER_DOMAIN_NAME
+
+```
+
+With the key setting the Openstack backend in Spread will pick the .env file
+with the credentials file pointed to in `$SPREAD_OPENSTACK_ENV` environment
+variable (we don't want that content inside `spread.yaml` itself).
+If no key is explicitly provided, Spread will attempt to use the environment
+variables described previously to authenticate.
+
+You can set up those variables by sourcing the Openstack RC file. 
+For more information about the environment setup please read 
+https://docs.openstack.org/ocata/user-guide/common/cli-set-environment-variables-using-openstack-rc.html
+
+Images are located by first attempting to match the provided value exactly
+against the image name, if there is not exact match the most recent image
+with partial match will be selected.
+
+When these machines terminate running, they will be removed. If anything
+happens that prevents the immediate removal, they will remain in the account
+and need to be removed by hand.
 
 
 <a name="linode"/>

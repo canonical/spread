@@ -139,6 +139,9 @@ type System struct {
 
 	Priority OptionalInt
 	Manual   bool
+
+	// Only for Google
+	AttachServiceAccount bool `yaml:"attach-service-account"`
 }
 
 func (system *System) String() string { return system.Backend + ":" + system.Name }

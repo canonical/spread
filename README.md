@@ -894,6 +894,26 @@ Service accounts are best as they can be further constrained and not be
 associated with your overall authenticated access. Do not ship your own
 credentials to remote systems.
 
+A service account can be attached to a created instances using the following
+configuration:
+
+```
+(...)
+
+backends:
+    google:
+        key: $(HOST:echo $GOOGLE_JSON_FILENAME)
+        ...
+        systems:
+            - system-with-service-account:
+                attach-service-account: true
+...
+```
+
+Service account can only be attached to an instance if the authentication key is
+of `service_acccount` type, and the IAM role associated with the account has the
+necessary permissions.
+
 Images are located by first attempting to match the provided value exactly
 against the image name, and then some processing is done to verify if an
 image with the individual tokens in its description exists. Images are

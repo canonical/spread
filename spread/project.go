@@ -125,6 +125,9 @@ type System struct {
 	// Only for Google so far.
 	SecureBoot bool `yaml:"secure-boot"`
 
+	// List of profiles, only for LXD
+	Profiles []string
+
 	// Supported are {"uefi",""}, only for qemu so far.
 	Bios string
 	// Request a specific CPU family, e.g. "Intel Skylake" The

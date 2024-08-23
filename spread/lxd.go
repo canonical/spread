@@ -134,6 +134,9 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		mem := int(p.backend.Memory / mb)
 		args = append(args, "-c", fmt.Sprintf("limits.memory=%dMiB", mem))
 	}
+	if system.Storage != Size(0) {
+		args = append(args, "-d", fmt.Sprintf("root,size=%d", system.Storage))
+	}
 	output, err := exec.Command("lxc", args...).CombinedOutput()
 	if err != nil {
 		err = outputErr(output, err)

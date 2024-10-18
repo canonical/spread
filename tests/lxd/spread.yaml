@@ -3,7 +3,7 @@ project: spread
 backends:
     lxd:
         systems:
-            - ubuntu-16.04
+            - ubuntu-24.04
 
 path: /home/test
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"gopkg.in/yaml.v2"
 
 	"golang.org/x/net/context"
 )
@@ -110,6 +111,11 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 	args := []string{"launch", lxdimage, name}
 	if !p.options.Reuse {
 		args = append(args, "--ephemeral")
+	}
+	if system != nil {
+		for _, profile := range system.Profiles {
+			args = append(args, "-p", profile)
+		}
 	}
 	output, err := exec.Command("lxc", args...).CombinedOutput()
 	if err != nil {
@@ -482,6 +488,7 @@ func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
 func (p *lxdProvider) tuneSSH(name string) error {
 	cmds := [][]string{
 		{"sed", "-i", `s/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/`, "/etc/ssh/sshd_config"},
+		{"bash", "-c", `sed -i "s/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/" /etc/ssh/sshd_config.d/* || :`},
 		{"/bin/bash", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", p.options.Password)},
 		{"killall", "-HUP", "sshd"},
 	}

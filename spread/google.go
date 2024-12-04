@@ -31,6 +31,8 @@ func Google(p *Project, b *Backend, o *Options) Provider {
 		options: o,
 
 		imagesCache: make(map[string]*googleImagesCache),
+
+		apiURL: "https://www.googleapis.com",
 	}
 }
 
@@ -50,6 +52,8 @@ type googleProvider struct {
 	keyErr     error
 
 	imagesCache map[string]*googleImagesCache
+
+	apiURL string
 }
 
 type googleServer struct {
@@ -369,6 +373,7 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 			Terms:   toTerms(item.Description),
 		})
 	}
+	cache.ready = true
 
 	return cache.images, err
 }
@@ -898,7 +903,7 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 
 	<-googleThrottle
 
-	url := "https://www.googleapis.com"
+	url := p.apiURL
 	if flags&noPathPrefix == 0 {
 		url += "/compute/v1/projects/" + p.gproject() + subpath
 	} else {

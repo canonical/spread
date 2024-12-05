@@ -22,6 +22,7 @@ import (
 type Options struct {
 	Password       string
 	Filter         Filter
+	Args           string
 	Reuse          bool
 	ReusePid       int
 	Debug          bool
@@ -36,6 +37,7 @@ type Options struct {
 	Seed           int64
 	Repeat         int
 	GarbageCollect bool
+	Report         bool
 }
 
 type Runner struct {
@@ -159,6 +161,7 @@ func (r *Runner) loop() (err error) {
 				}
 			}
 			r.stats.log()
+			r.createReports()
 		}
 		if !r.options.Reuse || r.options.Discard {
 			for len(r.servers) > 0 {
@@ -1023,6 +1026,15 @@ func (r *Runner) reuseServer(backend *Backend, system *System) *Client {
 		return client
 	}
 	return nil
+}
+
+func (r *Runner) createReports() {
+	if r.options.Report {
+		err := CreateResultsReport(r.stats)
+		if err != nil {
+			printf("Failed to create results reports: %v", err)
+		}
+	}
 }
 
 type stats struct {

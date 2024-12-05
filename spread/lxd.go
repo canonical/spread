@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"gopkg.in/yaml.v2"
 
 	"golang.org/x/net/context"
 )
@@ -110,6 +111,12 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 	args := []string{"launch", lxdimage, name}
 	if !p.options.Reuse {
 		args = append(args, "--ephemeral")
+	}
+	if p.backend.ContainerProfiles != "" {
+		profiles := strings.Split(p.backend.ContainerProfiles, ",")
+		for _, profile := range profiles {
+			args = append(args, "--profile", profile)
+		}
 	}
 	output, err := exec.Command("lxc", args...).CombinedOutput()
 	if err != nil {

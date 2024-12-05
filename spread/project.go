@@ -59,6 +59,9 @@ type Backend struct {
 	// Only for qemu so far.
 	Memory Size
 
+	// Only for LXD so far.
+	ContainerProfiles string `yaml:"container-profiles"`
+
 	// Only for Linode and Google so far.
 	Plan     string
 	Location string

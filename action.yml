@@ -1,0 +1,36 @@
+name: 'Setup Spread'
+description: 'Install and configure Spread on the runner'
+inputs:
+  ref:
+    description: 'Branch, tag or SHA to checkout'
+    required: true
+    default: 'master'
+outputs:
+  path:
+    description: "Path to the Spread binary"
+    value: ${{ steps.get-path.outputs.spread-path }}
+runs:
+  using: "composite"
+  steps:
+    - run: echo "CHECKOUT_PATH=_spread-${{ github.job }}" >> $GITHUB_ENV
+      shell: bash
+
+    - uses: actions/checkout@v3
+      with:
+        repository: 'snapcore/spread'
+        path: ${{ env.CHECKOUT_PATH }}
+        ref: ${{ inputs.ref }}
+
+    - uses: actions/setup-go@v3
+      with:
+        go-version-file: ${{ env.CHECKOUT_PATH }}/go.mod
+
+    - name: Build and run spread
+      working-directory: ${{ env.CHECKOUT_PATH }}
+      run: go install ./...
+      shell: bash
+
+    - id: get-path
+      run: echo "spread-path=$(which spread)" >> $GITHUB_OUTPUT
+      shell: bash
+

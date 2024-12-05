@@ -848,8 +848,10 @@ As a hint if you are using Ubuntu, here is an easy way to get a suitable
 QEMU image:
 ```
 sudo apt install qemu-kvm autopkgtest
-adt-buildvm-ubuntu-cloud
+autopkgtest-buildvm-ubuntu-cloud
 ```
+(replace the last command with `adt-buildvm-ubuntu-cloud` if running Ubuntu
+16.04).
 When done move the downloaded image into the location described above.
 
 

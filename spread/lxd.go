@@ -443,11 +443,11 @@ func (p *lxdProvider) address(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for intf, network := range sjson.State.Network {
-		if intf == "lo" {
+	for ifacename, ifaceconf := range sjson.State.Network {
+		if ifacename == "lo" {
 			continue
 		}
-		for _, addr := range network.Addresses {
+		for _, addr := range ifaceconf.Addresses {
 			if addr.Family == "inet" && addr.Address != "" {
 				return addr.Address, nil
 			}

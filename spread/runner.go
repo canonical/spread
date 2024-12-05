@@ -126,11 +126,6 @@ func (r *Runner) reusePath() string {
 	return filepath.Join(r.project.Path, fmt.Sprintf(".spread-reuse.%d.yaml", os.Getpid()))
 }
 
-type projectContent struct {
-	fd  *os.File
-	err error
-}
-
 func (r *Runner) Wait() error {
 	return r.tomb.Wait()
 }

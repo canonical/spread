@@ -21,21 +21,9 @@ var Verbose bool
 // Debug defines whether to also deliver debug messages to the log. Implies Verbose if set.
 var Debug bool
 
-func print(args ...interface{}) {
-	if Logger != nil {
-		writeLog(timePrefix() + pretty.Sprint(args...))
-	}
-}
-
 func printf(format string, args ...interface{}) {
 	if Logger != nil {
 		writeLog(timePrefix() + pretty.Sprintf(format, args...))
-	}
-}
-
-func log(args ...interface{}) {
-	if (Verbose || Debug) && Logger != nil {
-		writeLog(timePrefix() + pretty.Sprint(args...))
 	}
 }
 
@@ -90,18 +78,6 @@ const (
 
 func printft(start time.Time, flags logFlags, format string, args ...interface{}) {
 	if Logger != nil {
-		writeLogt(start, flags, format, args...)
-	}
-}
-
-func logft(start time.Time, flags logFlags, format string, args ...interface{}) {
-	if (Verbose || Debug) && Logger != nil {
-		writeLogt(start, flags, format, args...)
-	}
-}
-
-func debugft(start time.Time, flags logFlags, format string, args ...interface{}) {
-	if Debug && Logger != nil {
 		writeLogt(start, flags, format, args...)
 	}
 }
@@ -193,35 +169,4 @@ func travisFoldEnd(start time.Time) string {
 		return fmt.Sprintf("travis_fold:end:fold-%x\n", travisId(start))
 	}
 	return ""
-}
-
-func travisFold(output []byte) []byte {
-	if !onTravis {
-		return output
-	}
-	display := 10
-	min := display
-	max := display + 3
-	mark := 0
-	for i := len(output) - 1; i >= 0; i-- {
-		if output[i] != '\n' {
-			continue
-		}
-
-		min--
-		max--
-
-		if min == 0 {
-			mark = i + 1
-			continue
-		}
-		if max == 0 {
-			id := time.Now()
-			var buf bytes.Buffer
-			fmt.Fprintf(&buf, "%s(... %d folded lines ...)\n%s%s%s",
-				travisFoldStart(id), bytes.Count(output, []byte{'\n'})-display, output[:mark-1], travisFoldEnd(id), output[mark:])
-			return buf.Bytes()
-		}
-	}
-	return output
 }

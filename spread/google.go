@@ -39,9 +39,6 @@ type googleProvider struct {
 	backend *Backend
 	options *Options
 
-	googleProject string
-	googleZone    string
-
 	client *http.Client
 
 	mu sync.Mutex
@@ -67,12 +64,6 @@ type googleServerData struct {
 	Created time.Time `json:"creationTimestamp"`
 
 	Labels map[string]string `yaml:"-"`
-}
-
-func (d *googleServerData) cleanup() {
-	if i := strings.LastIndex(d.Plan, "/"); i >= 0 {
-		d.Plan = d.Plan[i+1:]
-	}
 }
 
 func (s *googleServer) String() string {
@@ -868,10 +859,6 @@ func (p *googleProvider) doz(method, subpath string, params interface{}, result 
 
 func (p *googleProvider) dozfl(method, subpath string, params interface{}, result interface{}, flags doFlags) error {
 	return p.dofl(method, "/zones/"+p.gzone()+subpath, params, result, flags)
-}
-
-func (p *googleProvider) do(method, subpath string, params interface{}, result interface{}) error {
-	return p.dofl(method, subpath, params, result, 0)
 }
 
 func (p *googleProvider) dofl(method, subpath string, params interface{}, result interface{}, flags doFlags) error {

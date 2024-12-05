@@ -9,8 +9,10 @@ prepare: |
 execute: |
     spread -vv -reuse -resend &> task.out
 
-    grep 'lxd:ubuntu-16.04:checks/main' task.out
-    grep '^WORKS$' task.out
+    for system in ubuntu-16.04 ubuntu-18.04 ubuntu-20.04 ubuntu-22.04; do
+        grep "lxd:${system}:checks/main" task.out
+        grep "^WORKS ${system}\$" task.out
+    done
 
 debug: |
     cat task.out || true

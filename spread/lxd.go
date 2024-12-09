@@ -490,10 +490,9 @@ func (p *lxdProvider) tuneSSH(name string) error {
 		// achieved in a different manner depending on the version of sshd in
 		// the system. Older versions of ssh used a single file.
 		{"sed", "-i", `s/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/`, "/etc/ssh/sshd_config"},
-		// While newer versions have configuration split into a bunch of drop-in
-		// configuration snippets, in which case we provide one that gets loaded
-		// before all others, as the first value observed in the configuration
-		// file prevails (see sshd_config(5)).
+		// If the sshd configuration is split in snippets in /etc/ssh/sshd_config.d,
+		// place the configuration in a 00-* file because the first obtained value
+		// will be used. See sshd_config(5) for details.
 		{"/bin/bash", "-c", `[ -d /etc/ssh/sshd_config.d ] && echo -e "PermitRootLogin yes\nPasswordAuthentication yes" > /etc/ssh/sshd_config.d/00-spread.conf`},
 		{"/bin/bash", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", p.options.Password)},
 		{"killall", "-HUP", "sshd"},

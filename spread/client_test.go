@@ -16,13 +16,13 @@ type clientSuite struct{}
 var _ = Suite(&clientSuite{})
 
 func (s *clientSuite) TestDialOnReboot(c *C) {
-	restore := spread.MockSshDial(func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
+	restore := spread.FakeSshDial(func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
 		time.Sleep(1 * time.Second)
 		return nil, fmt.Errorf("cannot connect")
 	})
 	defer restore()
 
-	cli := spread.MockClient()
+	cli := spread.FakeClient()
 	spread.SetWarnTimeout(cli, 50*time.Millisecond)
 	spread.SetKillTimeout(cli, 100*time.Millisecond)
 

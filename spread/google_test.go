@@ -38,11 +38,11 @@ func (s *googleSuite) TestImagesCache(c *C) {
 	}))
 	defer mockServer.Close()
 
-	g := spread.NewGoogleProviderForTesting(mockServer.URL, nil, nil, nil)
+	g := spread.FakeGoogleProvider(mockServer.URL, nil, nil, nil)
 	c.Assert(g, NotNil)
 
 	// Request the project images
-	images, err := g.ProjectImages("snapd")
+	images, err := spread.ProjectImages(g, "snapd")
 	c.Assert(err, IsNil)
 	c.Assert(images, HasLen, 2)
 	c.Check(images, DeepEquals, []spread.GoogleImage{
@@ -52,7 +52,7 @@ func (s *googleSuite) TestImagesCache(c *C) {
 	c.Check(n, Equals, 1)
 
 	// do it again, now it comes from the cache
-	images, err = g.ProjectImages("snapd")
+	images, err = spread.ProjectImages(g, "snapd")
 	c.Assert(err, IsNil)
 	c.Assert(images, HasLen, 2)
 	c.Check(images, DeepEquals, []spread.GoogleImage{
@@ -62,7 +62,7 @@ func (s *googleSuite) TestImagesCache(c *C) {
 	c.Check(n, Equals, 1)
 
 	// again, this time for another project
-	images, err = g.ProjectImages("other-project")
+	images, err = spread.ProjectImages(g, "other-project")
 	c.Assert(err, IsNil)
 	c.Assert(images, HasLen, 1)
 	c.Check(n, Equals, 2)

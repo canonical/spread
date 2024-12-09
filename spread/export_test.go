@@ -7,7 +7,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func MockClient() *Client {
+func FakeClient() *Client {
 	config := &ssh.ClientConfig{
 		User:    "mock",
 		Timeout: 10 * time.Second,
@@ -30,7 +30,7 @@ func SetWarnTimeout(cli *Client, warnTimeout time.Duration) {
 	cli.warnTimeout = warnTimeout
 }
 
-func MockSshDial(f func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error)) (restore func()) {
+func FakeSshDial(f func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error)) (restore func()) {
 	oldSshDial := sshDial
 	sshDial = f
 	return func() {
@@ -40,18 +40,18 @@ func MockSshDial(f func(network, addr string, config *ssh.ClientConfig) (*ssh.Cl
 
 var QemuCmd = qemuCmd
 
-func NewGoogleProviderForTesting(mockApiURL string, p *Project, b *Backend, o *Options) *googleProvider {
+func FakeGoogleProvider(mockApiURL string, p *Project, b *Backend, o *Options) Provider {
 	provider := Google(p, b, o)
 	ggl := provider.(*googleProvider)
 	ggl.apiURL = mockApiURL
 	ggl.keyChecked = true
 	ggl.client = &http.Client{}
 
-	return ggl
+	return provider
 }
 
-func (p *googleProvider) ProjectImages(project string) ([]googleImage, error) {
-	return p.projectImages(project)
+func ProjectImages(provider Provider, project string) ([]googleImage, error) {
+	return provider.(*googleProvider).projectImages(project)
 }
 
 type GoogleImage = googleImage

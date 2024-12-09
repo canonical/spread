@@ -32,7 +32,7 @@ func (s *googleSuite) TestImagesCache(c *C) {
                 }
                 `))
 		default:
-			c.Fatalf("unexpected number of requests")
+			c.Errorf("unexpected number of requests")
 		}
 		n++
 	}))

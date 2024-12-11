@@ -23,6 +23,7 @@ backends:
             - ubuntu-20.04-64:
                 image: ubuntu-2004-64-virt-enabled
                 workers: 1
+                storage: 15G
 
     qemu:
         systems:

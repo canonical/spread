@@ -493,7 +493,7 @@ func (p *lxdProvider) tuneSSH(name string) error {
 		// If the sshd configuration is split in snippets in /etc/ssh/sshd_config.d,
 		// place the configuration in a 00-* file because the first obtained value
 		// will be used. See sshd_config(5) for details.
-		{"/bin/bash", "-c", `[ -d /etc/ssh/sshd_config.d ] && echo -e "PermitRootLogin yes\nPasswordAuthentication yes" > /etc/ssh/sshd_config.d/00-spread.conf`},
+		{"/bin/bash", "-c", `if [ -d /etc/ssh/sshd_config.d ]; then echo -e "PermitRootLogin yes\nPasswordAuthentication yes" > /etc/ssh/sshd_config.d/00-spread.conf; fi`},
 		{"/bin/bash", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", p.options.Password)},
 		{"killall", "-HUP", "sshd"},
 	}

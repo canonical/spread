@@ -1,0 +1,4 @@
+summary: Test failure to allocate ad-hoc system
+
+execute: |
+    spread | MATCH 'I cannot do that, Dave'

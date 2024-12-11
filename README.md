@@ -803,6 +803,15 @@ backends:
                 image: ubuntu:16.04.1
 ```
 
+Additionally, you can provide a comma-seperated list of LXD profiles to use:
+```
+backends:
+    lxd:
+        container-profiles: my-profile
+        systems:
+            - ubuntu-16.04
+```
+
 That's it. Have fun with your self-contained multi-system task runner.
 
 

@@ -481,7 +481,6 @@ func (p *lxdProvider) address(name string) (string, error) {
 	}
 	for ifacename, ifaceconf := range sjson.State.Network {
 		if ifacename == "lo" {
-			// ignore loopback interface
 			continue
 		}
 		for _, addr := range ifaceconf.Addresses {
@@ -523,7 +522,14 @@ func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
 
 func (p *lxdProvider) tuneSSH(name string) error {
 	cmds := [][]string{
+		// Attempt to enable root login with a password through SSH, which is
+		// achieved in a different manner depending on the version of sshd in
+		// the system. Older versions of ssh used a single file.
 		{"sed", "-i", `s/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/`, "/etc/ssh/sshd_config"},
+		// If the sshd configuration is split in snippets in /etc/ssh/sshd_config.d,
+		// place the configuration in a 00-* file because the first obtained value
+		// will be used. See sshd_config(5) for details.
+		{"/bin/bash", "-c", `if [ -d /etc/ssh/sshd_config.d ]; then echo -e "PermitRootLogin yes\nPasswordAuthentication yes" > /etc/ssh/sshd_config.d/00-spread.conf; fi`},
 		{"/bin/bash", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", p.options.Password)},
 		{"killall", "-HUP", "sshd"},
 	}

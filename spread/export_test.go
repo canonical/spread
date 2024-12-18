@@ -1,12 +1,13 @@
 package spread
 
 import (
+	"net/http"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 )
 
-func MockClient() *Client {
+func FakeClient() *Client {
 	config := &ssh.ClientConfig{
 		User:    "mock",
 		Timeout: 10 * time.Second,
@@ -29,7 +30,7 @@ func SetWarnTimeout(cli *Client, warnTimeout time.Duration) {
 	cli.warnTimeout = warnTimeout
 }
 
-func MockSshDial(f func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error)) (restore func()) {
+func FakeSshDial(f func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error)) (restore func()) {
 	oldSshDial := sshDial
 	sshDial = f
 	return func() {
@@ -38,3 +39,19 @@ func MockSshDial(f func(network, addr string, config *ssh.ClientConfig) (*ssh.Cl
 }
 
 var QemuCmd = qemuCmd
+
+func FakeGoogleProvider(mockApiURL string, p *Project, b *Backend, o *Options) Provider {
+	provider := Google(p, b, o)
+	ggl := provider.(*googleProvider)
+	ggl.apiURL = mockApiURL
+	ggl.keyChecked = true
+	ggl.client = &http.Client{}
+
+	return provider
+}
+
+func ProjectImages(provider Provider, project string) ([]googleImage, error) {
+	return provider.(*googleProvider).projectImages(project)
+}
+
+type GoogleImage = googleImage

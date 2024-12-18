@@ -4,9 +4,10 @@ backends:
     lxd-vm:
         systems:
           # list systems which are known to work as VMs, both 16.04 and 18.04 do
-          # not work at all, lxd-agent does not start, 22.04 requires a fix for
-          # SSH from https://github.com/snapcore/spread/pull/184 or a similar PR
+          # not work at all
           - ubuntu-20.04
+          - ubuntu-22.04
+          - ubuntu-24.04
 
 path: /home/test
 

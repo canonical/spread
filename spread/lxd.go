@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"gopkg.in/yaml.v2"
 
 	"golang.org/x/net/context"
 )
@@ -107,7 +108,7 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		name = p.backend.Location + ":" + name
 	}
 
-	args := []string{"launch", lxdimage, name}
+	args := []string{"launch", lxdimage, name, "--vm"}
 	if !p.options.Reuse {
 		args = append(args, "--ephemeral")
 	}

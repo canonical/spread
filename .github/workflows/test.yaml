@@ -26,3 +26,20 @@ jobs:
           for r in .spread-reuse.*.yaml; do
             spread -discard -reuse-pid="$(echo "$r" | grep -o -E '[0-9]+')"
           done
+
+  action-tests:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Spread
+        uses: ./
+        id: install-spread
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Test the spread installation
+        run: |
+          echo "Spread path: ${{ steps.install-spread.outputs.path }}"
+          spread -list
+

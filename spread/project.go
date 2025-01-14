@@ -39,7 +39,8 @@ type Project struct {
 	Exclude []string
 	Rename  []string
 
-	Path string `yaml:"-"`
+	Path   string `yaml:"-"`
+	Subdir string `yaml:"project-subdir"`
 
 	WarnTimeout Timeout `yaml:"warn-timeout"`
 	KillTimeout Timeout `yaml:"kill-timeout"`
@@ -502,7 +503,7 @@ func Load(path string) (*Project, error) {
 		return nil, fmt.Errorf("missing project path field with remote project location")
 	}
 
-	project.Path = filepath.Dir(filename)
+	project.Path = filepath.Join(filepath.Dir(filename), project.Subdir)
 
 	project.Repack = strings.TrimSpace(project.Repack)
 	project.Prepare = strings.TrimSpace(project.Prepare)

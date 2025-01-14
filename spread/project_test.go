@@ -78,19 +78,46 @@ suites:
  tests/:
   summary: mock tests
 `)
-	tmpdir := c.MkDir()
-	err := ioutil.WriteFile(filepath.Join(tmpdir, "spread.yaml"), spreadYaml, 0644)
-	c.Assert(err, IsNil)
-	err = os.MkdirAll(filepath.Join(tmpdir, "tests"), 0755)
-	c.Assert(err, IsNil)
+	for _, tc := range []struct {
+		filename string // the file name to write the project to
+		subdir   string // the project subdir
+		errMsg   string // the expected error message
+	}{
+		{"spread.yaml", "", ""},
+		{".spread.yaml", "", ""},
+		{"other.yaml", "", "cannot load project file from .*: cannot find spread.yaml or .spread.yaml"},
+		{"spread.yaml", "subdir1", "cannot list suite tests/: open .*: no such file or directory"},
+		{"spread.yaml", "subdir2", ""},
+		{"spread.yaml", ".", ""},
+		{"spread.yaml", "/", ""},
+	} {
+		tmpdir := c.MkDir()
+		err := os.MkdirAll(filepath.Join(tmpdir, "subdir1"), 0755)
+		c.Assert(err, IsNil)
+		err = os.MkdirAll(filepath.Join(tmpdir, "subdir2/tests"), 0755)
+		c.Assert(err, IsNil)
 
-	prj, err := spread.Load(tmpdir)
-	c.Assert(err, IsNil)
-	backend := prj.Backends["google"]
-	c.Check(backend.Name, Equals, "google")
-	c.Check(backend.Systems["system-1"].Plan, Equals, "global-plan")
-	c.Check(backend.Systems["system-2"].Plan, Equals, "plan-for-2")
-	c.Check(backend.Systems["system-3"].Plan, Equals, "global-plan")
+		yaml := spreadYaml
+		if tc.subdir != "" {
+			yaml = append(yaml, []byte("project-subdir: "+tc.subdir)...)
+		}
+		err = ioutil.WriteFile(filepath.Join(tmpdir, tc.filename), yaml, 0644)
+		c.Assert(err, IsNil)
+		err = os.MkdirAll(filepath.Join(tmpdir, "tests"), 0755)
+		c.Assert(err, IsNil)
+
+		prj, err := spread.Load(tmpdir)
+		if tc.errMsg == "" {
+			c.Assert(err, IsNil)
+			backend := prj.Backends["google"]
+			c.Check(backend.Name, Equals, "google")
+			c.Check(backend.Systems["system-1"].Plan, Equals, "global-plan")
+			c.Check(backend.Systems["system-2"].Plan, Equals, "plan-for-2")
+			c.Check(backend.Systems["system-3"].Plan, Equals, "global-plan")
+		} else {
+			c.Assert(err, ErrorMatches, tc.errMsg)
+		}
+	}
 }
 
 func (s *projectSuite) TestOptionalInt(c *C) {

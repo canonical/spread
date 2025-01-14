@@ -36,6 +36,7 @@ type Options struct {
 	Seed           int64
 	Repeat         int
 	GarbageCollect bool
+	ExplicitOrder  bool
 }
 
 type Runner struct {
@@ -197,6 +198,9 @@ func (r *Runner) loop() (err error) {
 			for _, job := range r.pending {
 				if job.Backend == backend && job.System == system {
 					if system.Workers > workers[system] {
+						if workers[system] > 0 && r.options.ExplicitOrder {
+							break
+						}
 						workers[system]++
 						r.alive++
 					} else {
@@ -225,10 +229,18 @@ func (r *Runner) loop() (err error) {
 		for _, system := range backend.Systems {
 			n := workers[system]
 			for i := 0; i < n; i++ {
-				// Use a different seed per worker, so that the work-stealing
-				// logic will have a better chance of producing the same
-				// ordering on each of the workers.
-				order := rand.New(rand.NewSource(seed + int64(i))).Perm(len(r.pending))
+				var order []int
+				if r.options.ExplicitOrder {
+					order = make([]int, len(r.pending))
+					for i := range order {
+						order[i] = i
+					}
+				} else {
+					// Use a different seed per worker, so that the work-stealing
+					// logic will have a better chance of producing the same
+					// ordering on each of the workers.
+					order = rand.New(rand.NewSource(seed + int64(i))).Perm(len(r.pending))
+				}
 				go r.worker(backend, system, order)
 			}
 		}

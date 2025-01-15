@@ -38,6 +38,14 @@ func FakeSshDial(f func(network, addr string, config *ssh.ClientConfig) (*ssh.Cl
 	}
 }
 
+func MockTimeNow(f func() time.Time) (restore func()) {
+	oldTimeNow := timeNow
+	timeNow = f
+	return func() {
+		timeNow = oldTimeNow
+	}
+}
+
 var QemuCmd = qemuCmd
 
 func FakeGoogleProvider(mockApiURL string, p *Project, b *Backend, o *Options) Provider {

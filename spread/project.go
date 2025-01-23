@@ -40,7 +40,7 @@ type Project struct {
 	Rename  []string
 
 	Path   string `yaml:"-"`
-	Subdir string `yaml:"project-subdir"`
+	Subdir string `yaml:"reroot"`
 
 	WarnTimeout Timeout `yaml:"warn-timeout"`
 	KillTimeout Timeout `yaml:"kill-timeout"`

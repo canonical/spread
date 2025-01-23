@@ -1174,4 +1174,6 @@ prepare: |
 ```
 
 The `rename` and `exclude` settings used above ensure that the tarball that goes
-into `repack` looks like the one offered by GitHub.
+into `repack` looks like the one offered by GitHub. If needed, the `reroot` entry
+can be used to specify the relative path to a new project root prior to
+repacking.

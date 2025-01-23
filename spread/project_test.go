@@ -99,7 +99,7 @@ suites:
 
 		yaml := spreadYaml
 		if tc.subdir != "" {
-			yaml = append(yaml, []byte("project-subdir: "+tc.subdir)...)
+			yaml = append(yaml, []byte("reroot: "+tc.subdir)...)
 		}
 		err = ioutil.WriteFile(filepath.Join(tmpdir, tc.filename), yaml, 0644)
 		c.Assert(err, IsNil)

@@ -24,6 +24,7 @@ type Project struct {
 	Environment *Environment
 
 	Repack      string
+	Reroot      string `yaml:"reroot"`
 	Prepare     string
 	Restore     string
 	Debug       string
@@ -39,8 +40,7 @@ type Project struct {
 	Exclude []string
 	Rename  []string
 
-	Path   string `yaml:"-"`
-	Subdir string `yaml:"reroot"`
+	Path string `yaml:"-"`
 
 	WarnTimeout Timeout `yaml:"warn-timeout"`
 	KillTimeout Timeout `yaml:"kill-timeout"`
@@ -503,7 +503,7 @@ func Load(path string) (*Project, error) {
 		return nil, fmt.Errorf("missing project path field with remote project location")
 	}
 
-	project.Path = filepath.Join(filepath.Dir(filename), project.Subdir)
+	project.Path = filepath.Join(filepath.Dir(filename), project.Reroot)
 
 	project.Repack = strings.TrimSpace(project.Repack)
 	project.Prepare = strings.TrimSpace(project.Prepare)

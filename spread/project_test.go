@@ -69,43 +69,35 @@ type loadTest struct {
 	errMsg   string // the expected error message
 }
 
-var loadTests = []loadTest{
-	{
-		filename: "spread.yaml",
-		reroot:   "",
-		errMsg:   "",
-	},
-	{
-		filename: ".spread.yaml",
-		reroot:   "",
-		errMsg:   "",
-	},
-	{
-		filename: "other.yaml",
-		reroot:   "",
-		errMsg:   "cannot load project file from .*: cannot find spread.yaml or .spread.yaml",
-	},
-	{
-		filename: "spread.yaml",
-		reroot:   "subdir1",
-		errMsg:   "cannot list suite tests/: open .*: no such file or directory",
-	},
-	{
-		filename: "spread.yaml",
-		reroot:   "subdir2",
-		errMsg:   "",
-	},
-	{
-		filename: "spread.yaml",
-		reroot:   ".",
-		errMsg:   "",
-	},
-	{
-		filename: "spread.yaml",
-		reroot:   "/",
-		errMsg:   "",
-	},
-}
+var loadTests = []loadTest{{
+	filename: "spread.yaml",
+	reroot:   "",
+	errMsg:   "",
+}, {
+	filename: ".spread.yaml",
+	reroot:   "",
+	errMsg:   "",
+}, {
+	filename: "other.yaml",
+	reroot:   "",
+	errMsg:   "cannot load project file from .*: cannot find spread.yaml or .spread.yaml",
+}, {
+	filename: "spread.yaml",
+	reroot:   "subdir1",
+	errMsg:   "cannot list suite tests/: open .*: no such file or directory",
+}, {
+	filename: "spread.yaml",
+	reroot:   "subdir2",
+	errMsg:   "",
+}, {
+	filename: "spread.yaml",
+	reroot:   ".",
+	errMsg:   "",
+}, {
+	filename: "spread.yaml",
+	reroot:   "/",
+	errMsg:   "",
+}}
 
 func (s *projectSuite) TestLoad(c *C) {
 	spreadYaml := `

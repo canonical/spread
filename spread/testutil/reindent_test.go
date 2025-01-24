@@ -2,13 +2,18 @@ package testutil_test
 
 import (
 	"strings"
+	"testing"
 
 	. "gopkg.in/check.v1"
 
-	"github.com/snapcore/spread/testutil"
+	"github.com/snapcore/spread/spread/testutil"
 )
 
 type S struct{}
+
+var _ = Suite(&S{})
+
+func Test(t *testing.T) { TestingT(t) }
 
 type reindentTest struct {
 	raw, result, error string

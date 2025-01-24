@@ -10,7 +10,7 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/snapcore/spread/spread"
-	"github.com/snapcore/spread/testutil"
+	"github.com/snapcore/spread/spread/testutil"
 )
 
 func Test(t *testing.T) { TestingT(t) }

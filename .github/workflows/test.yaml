@@ -17,6 +17,13 @@ jobs:
 
       - name: Run tests
         run: |
+          echo =========================================================
+          uname -a
+          echo =========================================================
+          lxc --version
+          lxc list
+          free
+          df
           spread google:
 
       - name: Discard spread workers

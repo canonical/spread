@@ -6,10 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/snapcore/spread/spread"
-
 	. "gopkg.in/check.v1"
 	"gopkg.in/yaml.v2"
+
+	"github.com/snapcore/spread/spread"
+	"github.com/snapcore/spread/testutil"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -62,44 +63,78 @@ type projectSuite struct{}
 
 var _ = Suite(&projectSuite{})
 
+type loadTest struct {
+	filename string // the file name to write the project to
+	reroot   string // the new root relative to the spread.yaml location
+	errMsg   string // the expected error message
+}
+
+var loadTests = []loadTest{
+	{
+		filename: "spread.yaml",
+		reroot:   "",
+		errMsg:   "",
+	},
+	{
+		filename: ".spread.yaml",
+		reroot:   "",
+		errMsg:   "",
+	},
+	{
+		filename: "other.yaml",
+		reroot:   "",
+		errMsg:   "cannot load project file from .*: cannot find spread.yaml or .spread.yaml",
+	},
+	{
+		filename: "spread.yaml",
+		reroot:   "subdir1",
+		errMsg:   "cannot list suite tests/: open .*: no such file or directory",
+	},
+	{
+		filename: "spread.yaml",
+		reroot:   "subdir2",
+		errMsg:   "",
+	},
+	{
+		filename: "spread.yaml",
+		reroot:   ".",
+		errMsg:   "",
+	},
+	{
+		filename: "spread.yaml",
+		reroot:   "/",
+		errMsg:   "",
+	},
+}
+
 func (s *projectSuite) TestLoad(c *C) {
-	spreadYaml := []byte(`project: mock-prj
-path: /some/path
-backends:
- google:
-  key: some-key
-  plan: global-plan
-  systems:
-   - system-1:
-   - system-2:
-      plan: plan-for-2
-   - system-3:
-suites:
- tests/:
-  summary: mock tests
-`)
-	for _, tc := range []struct {
-		filename string // the file name to write the project to
-		subdir   string // the project subdir
-		errMsg   string // the expected error message
-	}{
-		{"spread.yaml", "", ""},
-		{".spread.yaml", "", ""},
-		{"other.yaml", "", "cannot load project file from .*: cannot find spread.yaml or .spread.yaml"},
-		{"spread.yaml", "subdir1", "cannot list suite tests/: open .*: no such file or directory"},
-		{"spread.yaml", "subdir2", ""},
-		{"spread.yaml", ".", ""},
-		{"spread.yaml", "/", ""},
-	} {
+	spreadYaml := `
+		project: mock-prj
+		path: /some/path
+		backends:
+			google:
+				key: some-key
+				plan: global-plan
+				systems:
+					- system-1:
+					- system-2:
+						plan: plan-for-2
+					- system-3:
+		suites:
+			tests/:
+				summary: mock tests
+	`
+
+	for _, tc := range loadTests {
 		tmpdir := c.MkDir()
 		err := os.MkdirAll(filepath.Join(tmpdir, "subdir1"), 0755)
 		c.Assert(err, IsNil)
 		err = os.MkdirAll(filepath.Join(tmpdir, "subdir2/tests"), 0755)
 		c.Assert(err, IsNil)
 
-		yaml := spreadYaml
-		if tc.subdir != "" {
-			yaml = append(yaml, []byte("reroot: "+tc.subdir)...)
+		yaml := testutil.Reindent(spreadYaml)
+		if tc.reroot != "" {
+			yaml = append(yaml, []byte("reroot: "+tc.reroot)...)
 		}
 		err = ioutil.WriteFile(filepath.Join(tmpdir, tc.filename), yaml, 0644)
 		c.Assert(err, IsNil)

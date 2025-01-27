@@ -457,14 +457,9 @@ func (p *lxdProvider) address(name string) (string, error) {
 }
 
 func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
-	var stderr bytes.Buffer
-	cmd := exec.Command("lxc", "list", "--format=json", name)
-	cmd.Stderr = &stderr
-
-	output, err := cmd.Output()
+	output, err := lxdList(name)
 	if err != nil {
-		err = outputErr(stderr.Bytes(), err)
-		return nil, fmt.Errorf("cannot list lxd container: %v", err)
+		return nil, err
 	}
 
 	var sjsons []*lxdServerJSON
@@ -503,6 +498,22 @@ func (p *lxdProvider) tuneSSH(name string) error {
 		}
 	}
 	return nil
+}
+
+var lxdList = lxdListImpl
+
+func lxdListImpl(name string) ([]byte, error) {
+	var stderr bytes.Buffer
+	cmd := exec.Command("lxc", "list", "--format=json", name)
+	cmd.Stderr = &stderr
+
+	output, err := cmd.Output()
+	if err != nil {
+		err = outputErr(stderr.Bytes(), err)
+		return nil, fmt.Errorf("cannot list lxd container: %w", err)
+	}
+
+	return output, nil
 }
 
 func contains(strs []string, s string) bool {

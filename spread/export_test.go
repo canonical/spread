@@ -38,6 +38,20 @@ func FakeSshDial(f func(network, addr string, config *ssh.ClientConfig) (*ssh.Cl
 	}
 }
 
+type LXDServerJSON = lxdServerJSON
+
+func LXDProviderServerJSON(provider Provider, name string) (*LXDServerJSON, error) {
+	return provider.(*lxdProvider).serverJSON(name)
+}
+
+func FakeLXDList(f func(name string) ([]byte, error)) (restore func()) {
+	oldLxdList := lxdList
+	lxdList = f
+	return func() {
+		lxdList = oldLxdList
+	}
+}
+
 var QemuCmd = qemuCmd
 
 func FakeGoogleProvider(mockApiURL string, p *Project, b *Backend, o *Options) Provider {

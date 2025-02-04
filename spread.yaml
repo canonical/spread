@@ -51,6 +51,9 @@ prepare: |
     # Cache is only available if SEND_CACHE=1 is set.
     mkdir -p tests/cache
 
+    # Prevent go VCS stamping error
+    chown "$UID" .git
+
     # Either use pregenerated spread if exists or build it
     if [ -x ./bin/spread ]; then
         mkdir -p "$GOHOME/bin"

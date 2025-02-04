@@ -1,6 +1,6 @@
 module github.com/snapcore/spread
 
-go 1.13
+go 1.21
 
 require (
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e
@@ -11,4 +11,13 @@ require (
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
 	gopkg.in/yaml.v2 v2.4.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+)
+
+require (
+	cloud.google.com/go/compute/metadata v0.3.0 // indirect
+	github.com/kr/pretty v0.2.1 // indirect
+	github.com/kr/text v0.1.0 // indirect
+	golang.org/x/sys v0.29.0 // indirect
+	golang.org/x/term v0.28.0 // indirect
+	golang.org/x/text v0.21.0 // indirect
 )

@@ -3,7 +3,6 @@ package spread
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -639,7 +638,7 @@ func Load(path string) (*Project, error) {
 			if fi, _ := os.Stat(filepath.Dir(tfilename)); !fi.IsDir() {
 				continue
 			}
-			tdata, err := ioutil.ReadFile(tfilename)
+			tdata, err := os.ReadFile(tfilename)
 			if os.IsNotExist(err) {
 				debugf("Skipping %s/%s: task.yaml missing", sname, tname)
 				continue
@@ -701,11 +700,11 @@ func readProject(path string) (filename string, data []byte, err error) {
 	for {
 		filename = filepath.Join(path, "spread.yaml")
 		debugf("Trying to read %s...", filename)
-		data, err = ioutil.ReadFile(filename)
+		data, err = os.ReadFile(filename)
 		if os.IsNotExist(err) {
 			filename = filepath.Join(path, ".spread.yaml")
 			debugf("Trying to read %s...", filename)
-			data, err = ioutil.ReadFile(filename)
+			data, err = os.ReadFile(filename)
 		}
 		if err == nil {
 			logf("Found %s.", filename)

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gopkg.in/yaml.v2"
-	"io/ioutil"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -382,7 +382,7 @@ func lxdName(system *System) (string, error) {
 		return "", fmt.Errorf("cannot obtain lock on ~/.spread/lxd-count: %v", err)
 	}
 
-	data, err := ioutil.ReadAll(file)
+	data, err := io.ReadAll(file)
 	if err != nil {
 		return "", fmt.Errorf("cannot read ~/.spread/lxd-count: %v", err)
 	}

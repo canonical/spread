@@ -2,7 +2,7 @@ package spread
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"sync"
 	"syscall"
@@ -57,7 +57,7 @@ func OpenReuse(filename string) (r *Reuse, err error) {
 		return nil, fmt.Errorf("cannot open reuse tracking file: %v", err)
 	}
 
-	data, err := ioutil.ReadAll(datafile)
+	data, err := io.ReadAll(datafile)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read reuse tracking file: %v", err)
 	}

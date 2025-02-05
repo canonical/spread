@@ -8,7 +8,7 @@
 project: spread
 
 environment:
-    GOVERSION: 1.13.8
+    GOVERSION: 1.21.13
     GOHOME: /home/test
     GOPATH: $GOHOME
     PATH: $GOHOME/bin:$PATH
@@ -51,6 +51,9 @@ prepare: |
     # Cache is only available if SEND_CACHE=1 is set.
     mkdir -p tests/cache
 
+    # Prevent go VCS stamping error
+    chown "$UID" .git
+
     # Either use pregenerated spread if exists or build it
     if [ -x ./bin/spread ]; then
         mkdir -p "$GOHOME/bin"
@@ -70,7 +73,7 @@ prepare: |
             fi
             dpkg -i tests/cache/go_$GOVERSION-*.deb
         fi
-        go get ./cmd/spread
+        go install ./cmd/spread
     fi
 
     # Cache is only available if SEND_CACHE=1 is set, follow the steps:

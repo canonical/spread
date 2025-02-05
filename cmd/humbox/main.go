@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
@@ -227,7 +227,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 }
 
 func decodeRequest(resp http.ResponseWriter, req *http.Request, result interface{}) bool {
-	body, err := ioutil.ReadAll(req.Body)
+	body, err := io.ReadAll(req.Body)
 	if err != nil {
 		sendError(resp, requestError{fmt.Errorf("cannot read request body: %v", err)})
 		return false

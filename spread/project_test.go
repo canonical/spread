@@ -1,7 +1,6 @@
 package spread_test
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -128,7 +127,7 @@ func (s *projectSuite) TestLoad(c *C) {
 		if tc.reroot != "" {
 			yaml = append(yaml, []byte("reroot: "+tc.reroot)...)
 		}
-		err = ioutil.WriteFile(filepath.Join(tmpdir, tc.filename), yaml, 0644)
+		err = os.WriteFile(filepath.Join(tmpdir, tc.filename), yaml, 0644)
 		c.Assert(err, IsNil)
 		err = os.MkdirAll(filepath.Join(tmpdir, "tests"), 0755)
 		c.Assert(err, IsNil)

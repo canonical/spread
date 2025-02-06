@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gopkg.in/yaml.v2"
-	"io/ioutil"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -159,7 +159,7 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		what = "VM"
 	}
 	printf("Waiting for lxd %s %s to have an address...", what, name)
-	maxTimeout := 30 * time.Second
+	maxTimeout := 60 * time.Second
 	if p.vm {
 		// VM may take considerably longer to start
 		// TODO: should this be configurable?
@@ -425,7 +425,7 @@ func lxdName(system *System) (string, error) {
 		return "", fmt.Errorf("cannot obtain lock on ~/.spread/lxd-count: %v", err)
 	}
 
-	data, err := ioutil.ReadAll(file)
+	data, err := io.ReadAll(file)
 	if err != nil {
 		return "", fmt.Errorf("cannot read ~/.spread/lxd-count: %v", err)
 	}
@@ -500,14 +500,9 @@ func (p *lxdProvider) address(name string) (string, error) {
 }
 
 func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
-	var stderr bytes.Buffer
-	cmd := exec.Command("lxc", "list", "--format=json", name)
-	cmd.Stderr = &stderr
-
-	output, err := cmd.Output()
+	output, err := lxdList(name)
 	if err != nil {
-		err = outputErr(stderr.Bytes(), err)
-		return nil, fmt.Errorf("cannot list lxd container: %v", err)
+		return nil, err
 	}
 
 	var sjsons []*lxdServerJSON
@@ -518,13 +513,12 @@ func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
 
 	debugf("lxd list output: %# v\n", sjsons)
 
-	if len(sjsons) == 0 {
-		return nil, &lxdNoServerError{name}
+	for _, server := range sjsons {
+		if server.Name == name {
+			return server, nil
+		}
 	}
-	if sjsons[0].Name != name {
-		return nil, fmt.Errorf("lxd returned invalid JSON listing for %q: %s", name, outputErr(output, nil))
-	}
-	return sjsons[0], nil
+	return nil, &lxdNoServerError{name}
 }
 
 func (p *lxdProvider) tuneSSH(name string) error {
@@ -547,6 +541,22 @@ func (p *lxdProvider) tuneSSH(name string) error {
 		}
 	}
 	return nil
+}
+
+var lxdList = lxdListImpl
+
+func lxdListImpl(name string) ([]byte, error) {
+	var stderr bytes.Buffer
+	cmd := exec.Command("lxc", "list", "--format=json", name)
+	cmd.Stderr = &stderr
+
+	output, err := cmd.Output()
+	if err != nil {
+		err = outputErr(stderr.Bytes(), err)
+		return nil, fmt.Errorf("cannot list lxd container: %w", err)
+	}
+
+	return output, nil
 }
 
 func contains(strs []string, s string) bool {

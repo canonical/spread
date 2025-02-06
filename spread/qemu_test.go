@@ -1,7 +1,6 @@
 package spread_test
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,7 +21,7 @@ func makeMockQemuImg(c *C, mockSystemName string) (restore func()) {
 	err := os.MkdirAll(mockQemuDir, 0755)
 	c.Assert(err, IsNil)
 
-	err = ioutil.WriteFile(filepath.Join(mockQemuDir, mockSystemName+".img"), nil, 0644)
+	err = os.WriteFile(filepath.Join(mockQemuDir, mockSystemName+".img"), nil, 0644)
 	c.Assert(err, IsNil)
 
 	realHome := os.Getenv("HOME")

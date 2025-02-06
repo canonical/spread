@@ -15,7 +15,7 @@ import (
 	"golang.org/x/net/context"
 
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 	"net"
 	"regexp"
 	"strconv"
@@ -428,7 +428,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		cmd = fmt.Sprintf("{\nf=$(mktemp)\ntrap 'rm '$f EXIT\ncat > $f <<'SCRIPT_END'\n%s\nSCRIPT_END\n%s/bin/bash $f\n}", buf.String(), c.sudo())
 		session.Stdout = os.Stdout
 		session.Stderr = os.Stderr
-		w, h, err := terminal.GetSize(0)
+		w, h, err := term.GetSize(0)
 		if err != nil {
 			return nil, fmt.Errorf("cannot get local terminal size: %v", err)
 		}
@@ -441,12 +441,12 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 
 	if mode == shellOutput {
 		termLock()
-		tstate, terr := terminal.MakeRaw(0)
+		tstate, terr := term.MakeRaw(0)
 		if terr != nil {
 			return nil, fmt.Errorf("cannot put local terminal in raw mode: %v", terr)
 		}
 		err = session.Run(cmd)
-		terminal.Restore(0, tstate)
+		term.Restore(0, tstate)
 		termUnlock()
 	} else {
 		err = c.runCommand(session, cmd, &stdout, &stderr)

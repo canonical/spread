@@ -1096,8 +1096,8 @@ func (s stringer) String() string { return string(s) }
 
 var (
 	varname = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*(?:/[a-zA-Z0-9_]+(?:,[a-zA-Z0-9_]+)*)?$`)
-	varcmd  = regexp.MustCompile(`\$\(HOST:.+?\)`)
-	varref  = regexp.MustCompile(`\$(?:\(HOST:.+?\)|[a-zA-Z_][a-zA-Z0-9_]*|\{[a-zA-Z_][a-zA-Z0-9_]*\})`)
+	varcmd  = regexp.MustCompile(`\$\(HOST:.+\)`)
+	varref  = regexp.MustCompile(`\$(?:\(HOST:.+\)|[a-zA-Z_][a-zA-Z0-9_]*|\{[a-zA-Z_][a-zA-Z0-9_]*\})`)
 )
 
 func evalslice(context string, values []string, cmdcache map[string]string, hostOnly bool, maps ...envmap) error {

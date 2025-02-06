@@ -19,13 +19,29 @@ import (
 )
 
 func LXD(p *Project, b *Backend, o *Options) Provider {
-	return &lxdProvider{p, b, o}
+	return &lxdProvider{
+		project: p,
+		backend: b,
+		options: o,
+		vm:      false,
+	}
+}
+
+func LXDVM(p *Project, b *Backend, o *Options) Provider {
+	return &lxdProvider{
+		project: p,
+		backend: b,
+		options: o,
+		vm:      true,
+	}
 }
 
 type lxdProvider struct {
 	project *Project
 	backend *Backend
 	options *Options
+
+	vm bool
 }
 
 type lxdServer struct {
@@ -111,6 +127,16 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 	if !p.options.Reuse {
 		args = append(args, "--ephemeral")
 	}
+	if p.vm {
+		args = append(args, "--vm")
+	}
+	if p.backend.Memory > 0 {
+		mem := int(p.backend.Memory / mb)
+		args = append(args, "-c", fmt.Sprintf("limits.memory=%dMiB", mem))
+	}
+	if system.Storage != Size(0) {
+		args = append(args, "-d", fmt.Sprintf("root,size=%d", system.Storage))
+	}
 	output, err := exec.Command("lxc", args...).CombinedOutput()
 	if err != nil {
 		err = outputErr(output, err)
@@ -128,8 +154,18 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		system: system,
 	}
 
-	printf("Waiting for lxd container %s to have an address...", name)
-	timeout := time.After(60 * time.Second)
+	what := "container"
+	if p.vm {
+		what = "VM"
+	}
+	printf("Waiting for lxd %s %s to have an address...", what, name)
+	maxTimeout := 60 * time.Second
+	if p.vm {
+		// VM may take considerably longer to start
+		// TODO: should this be configurable?
+		maxTimeout = 180 * time.Second
+	}
+	timeout := time.After(maxTimeout)
 	retry := time.NewTicker(1 * time.Second)
 	defer retry.Stop()
 	for {
@@ -292,8 +328,15 @@ func (p *lxdProvider) lxdLocalImage(system *System) (string, error) {
 		return "", err
 	}
 
+	// TODO use lxd image list --format=json to get all of this in one call
 	var stderr bytes.Buffer
-	cmd := exec.Command("lxc", "image", "list")
+	args := []string{"image", "list"}
+	if p.vm {
+		args = append(args, "type=virtual-machine")
+	} else {
+		args = append(args, "type=container")
+	}
+	cmd := exec.Command("lxc", args...)
 	cmd.Stderr = &stderr
 
 	output, err := cmd.Output()

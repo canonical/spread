@@ -1,0 +1,14 @@
+summary: Test the lxd backend.
+
+execute: |
+    # we'll run out of space on GCP systems so run VM tests one by one
+    for t in $(spread -list); do
+        spread -vv "$t" &> task.out
+        MATCH '^WORKS$' < task.out
+        # delete all VM images (there's just one test per system so this is
+        # fine), note lxd 4.x does not support filtering by image type
+        lxc image delete $(lxc image list -f csv -c 'ft' |grep VIRTUAL | cut -f1 -d,)
+    done
+
+debug: |
+    cat task.out || true

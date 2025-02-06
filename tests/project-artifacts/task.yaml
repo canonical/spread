@@ -1,0 +1,44 @@
+summary: Test downloading of project artifacts.
+
+prepare: |
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
+
+restore:
+    rm -rf artifacts
+
+execute: |
+    # Works even with different variants producing different data.
+    FAIL_CHECK=0 spread -v -reuse -resend -project-artifacts=./artifacts
+
+    test -f artifacts/my-artifacts/one.txt
+    test -f artifacts/my-artifacts/two.txt
+
+    ls artifacts/ | wc -l | grep 1
+    ls artifacts/my-artifacts | wc -l | grep 2
+
+    rm -rf artifacts/
+
+    # On failures, downloads whatever partial data is available.
+    if FAIL_CHECK=1 spread -v -reuse -resend -project-artifacts=./artifacts; then
+        echo 'Expected spread to fail with $FAIL_CHECK set to 1.'
+        exit 1
+    fi
+
+    test -f artifacts/my-artifacts/one.txt
+    test -f artifacts/my-artifacts/one.txt
+
+    test ! -f artifacts/my-artifacts/two.txt
+    test ! -f artifacts/my-artifacts/two.txt
+
+    rm -rf artifacts/
+
+    # Without -residual, nothing happens.
+    FAIL_CHECK=0 spread -v -reuse -resend
+
+    test ! -e artifacts/
+
+debug: |
+    find artifacts/

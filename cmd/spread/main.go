@@ -16,24 +16,25 @@ import (
 )
 
 var (
-	verbose        = flag.Bool("v", false, "Show detailed progress information")
-	vverbose       = flag.Bool("vv", false, "Show debugging messages as well")
-	list           = flag.Bool("list", false, "Just show list of jobs that would run")
-	pass           = flag.String("pass", "", "Server password to use, defaults to random")
-	reuse          = flag.Bool("reuse", false, "Keep servers running for reuse")
-	reusePid       = flag.Int("reuse-pid", 0, "Reuse servers from crashed process")
-	resend         = flag.Bool("resend", false, "Resend project content to reused servers")
-	debug          = flag.Bool("debug", false, "Run shell after script errors")
-	shell          = flag.Bool("shell", false, "Run shell instead of task scripts")
-	shellBefore    = flag.Bool("shell-before", false, "Run shell before task scripts")
-	shellAfter     = flag.Bool("shell-after", false, "Run shell after task scripts")
-	abend          = flag.Bool("abend", false, "Stop without restoring on first error")
-	restore        = flag.Bool("restore", false, "Run only the restore scripts")
-	discard        = flag.Bool("discard", false, "Discard reused servers without running")
-	artifacts      = flag.String("artifacts", "", "Where to store task artifacts")
-	seed           = flag.Int64("seed", 0, "Seed for job order permutation")
-	repeat         = flag.Int("repeat", 0, "Number of times to repeat each task")
-	garbageCollect = flag.Bool("gc", false, "Garbage collect backend resources when possible")
+	verbose          = flag.Bool("v", false, "Show detailed progress information")
+	vverbose         = flag.Bool("vv", false, "Show debugging messages as well")
+	list             = flag.Bool("list", false, "Just show list of jobs that would run")
+	pass             = flag.String("pass", "", "Server password to use, defaults to random")
+	reuse            = flag.Bool("reuse", false, "Keep servers running for reuse")
+	reusePid         = flag.Int("reuse-pid", 0, "Reuse servers from crashed process")
+	resend           = flag.Bool("resend", false, "Resend project content to reused servers")
+	debug            = flag.Bool("debug", false, "Run shell after script errors")
+	shell            = flag.Bool("shell", false, "Run shell instead of task scripts")
+	shellBefore      = flag.Bool("shell-before", false, "Run shell before task scripts")
+	shellAfter       = flag.Bool("shell-after", false, "Run shell after task scripts")
+	abend            = flag.Bool("abend", false, "Stop without restoring on first error")
+	restore          = flag.Bool("restore", false, "Run only the restore scripts")
+	discard          = flag.Bool("discard", false, "Discard reused servers without running")
+	artifacts        = flag.String("artifacts", "", "Where to store task artifacts")
+	seed             = flag.Int64("seed", 0, "Seed for job order permutation")
+	repeat           = flag.Int("repeat", 0, "Number of times to repeat each task")
+	garbageCollect   = flag.Bool("gc", false, "Garbage collect backend resources when possible")
+	projectArtifacts = flag.String("project-artifacts", "", "Where to store project artifacts")
 )
 
 func main() {
@@ -80,22 +81,23 @@ func run() error {
 	}
 
 	options := &spread.Options{
-		Password:       password,
-		Filter:         filter,
-		Reuse:          *reuse,
-		ReusePid:       *reusePid,
-		Resend:         *resend,
-		Debug:          *debug,
-		Shell:          *shell,
-		ShellBefore:    *shellBefore,
-		ShellAfter:     *shellAfter,
-		Abend:          *abend,
-		Restore:        *restore,
-		Discard:        *discard,
-		Artifacts:      *artifacts,
-		Seed:           *seed,
-		Repeat:         *repeat,
-		GarbageCollect: *garbageCollect,
+		Password:         password,
+		Filter:           filter,
+		Reuse:            *reuse,
+		ReusePid:         *reusePid,
+		Resend:           *resend,
+		Debug:            *debug,
+		Shell:            *shell,
+		ShellBefore:      *shellBefore,
+		ShellAfter:       *shellAfter,
+		Abend:            *abend,
+		Restore:          *restore,
+		Discard:          *discard,
+		Artifacts:        *artifacts,
+		Seed:             *seed,
+		Repeat:           *repeat,
+		GarbageCollect:   *garbageCollect,
+		ProjectArtifacts: *projectArtifacts,
 	}
 
 	project, err := spread.Load(".")

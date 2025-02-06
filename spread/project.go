@@ -23,6 +23,8 @@ type Project struct {
 
 	Environment *Environment
 
+	Artifacts []string
+
 	Repack      string
 	Reroot      string `yaml:"reroot"`
 	Prepare     string
@@ -515,6 +517,12 @@ func Load(path string) (*Project, error) {
 
 	if err := checkEnv(project, &project.Environment); err != nil {
 		return nil, err
+	}
+
+	for _, fname := range project.Artifacts {
+		if filepath.IsAbs(fname) || fname != filepath.Clean(fname) || strings.HasPrefix(fname, "../") {
+			return nil, fmt.Errorf("the project has an invalid artifact path: %s", fname)
+		}
 	}
 
 	for bname, backend := range project.Backends {

@@ -61,11 +61,3 @@ func ParseLabelTime(s string) (time.Time, error) {
 type UnknownServer struct {
 	Addr string
 }
-
-func removedSystem(backend *Backend, sysname string) *System {
-	return &System{
-		Backend: backend.Name,
-		Name:    sysname,
-		Image:   sysname,
-	}
-}

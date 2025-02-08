@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net/http"
 	"os"
@@ -307,7 +307,7 @@ func (p *humboxProvider) dofl(method, subpath string, params interface{}, result
 	}
 	defer resp.Body.Close()
 
-	data, err = ioutil.ReadAll(resp.Body)
+	data, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("cannot read Humbox response: %v", err)
 	}

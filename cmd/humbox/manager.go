@@ -5,7 +5,6 @@ import (
 	"encoding/base32"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net"
@@ -132,7 +131,7 @@ func (m *Manager) Servers(account *Account) ([]*Server, error) {
 }
 
 func (m *Manager) Reload() error {
-	data, err := ioutil.ReadFile(m.path("setup.yaml"))
+	data, err := os.ReadFile(m.path("setup.yaml"))
 	if err != nil {
 		return fmt.Errorf("cannot read setup file: %v", err)
 	}
@@ -301,7 +300,7 @@ func (m *Manager) reloadServers() error {
 			continue
 		}
 
-		data, err := ioutil.ReadFile(m.path("servers", name, "server.yaml"))
+		data, err := os.ReadFile(m.path("servers", name, "server.yaml"))
 		if err != nil {
 			log.Printf("WARNING: Cannot read server.yaml for server %s: %v", name, err)
 			continue
@@ -474,14 +473,14 @@ func (m *Manager) serverPid(name string) (int, error) {
 		return 0, nil
 	}
 
-	data, err := ioutil.ReadFile(m.path("servers", name, "qemu.pid"))
+	data, err := os.ReadFile(m.path("servers", name, "qemu.pid"))
 	if err != nil && !os.IsNotExist(err) {
 		log.Printf("Cannot read pid of server %s: %v", name, err)
 		return 0, fmt.Errorf("cannot read pid of server %s: %v", name, err)
 	}
 
 	pidstr := string(bytes.TrimSpace(data))
-	data, err = ioutil.ReadFile("/proc/" + pidstr + "/cmdline")
+	data, err = os.ReadFile("/proc/" + pidstr + "/cmdline")
 	if err == nil && strings.Contains(string(data), "\x00-name\x00"+name+"\x00") {
 		pid, err := strconv.Atoi(pidstr)
 		if err != nil {
@@ -577,12 +576,12 @@ func (m *Manager) Allocate(account *Account, image *Image, password string, cust
 	// Write cloud-init seed disk.
 	userdataPath := m.path("servers", server.Name, "user-data")
 	metadataPath := m.path("servers", server.Name, "meta-data")
-	err = ioutil.WriteFile(userdataPath, []byte(fmt.Sprintf(cloudInitUser, password)), 0600)
+	err = os.WriteFile(userdataPath, []byte(fmt.Sprintf(cloudInitUser, password)), 0600)
 	if err != nil {
 		log.Printf("Cannot write user-data for server %s: %v", server.Name, err)
 		return nil, fmt.Errorf("cannot write user-data for server %s: %v", server.Name, err)
 	}
-	err = ioutil.WriteFile(metadataPath, []byte(fmt.Sprintf(cloudInitMeta, server.Name)), 0600)
+	err = os.WriteFile(metadataPath, []byte(fmt.Sprintf(cloudInitMeta, server.Name)), 0600)
 	if err != nil {
 		log.Printf("Cannot write meta-data for server %s: %v", server.Name, err)
 		return nil, fmt.Errorf("cannot write meta-data for server %s: %v", server.Name, err)
@@ -605,7 +604,7 @@ func (m *Manager) Allocate(account *Account, image *Image, password string, cust
 		log.Printf("Cannot generate control data for server %s: %v", server.Name, err)
 		return nil, fmt.Errorf("cannot generate control data for server %s: %v", server.Name, err)
 	}
-	err = ioutil.WriteFile(yamlPath+"~", data, 0600)
+	err = os.WriteFile(yamlPath+"~", data, 0600)
 	if err != nil {
 		log.Printf("Cannot write control data for server %s: %v", server.Name, err)
 		return nil, fmt.Errorf("cannot write control data for server %s: %v", server.Name, err)

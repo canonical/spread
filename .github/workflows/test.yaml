@@ -11,7 +11,7 @@ on:
 
 jobs:
   run-tests:
-    runs-on: self-hosted
+    runs-on: '["self-hosted", "spread-enabled"]'
     steps:
       - uses: actions/checkout@v2
 

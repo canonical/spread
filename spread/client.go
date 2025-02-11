@@ -635,7 +635,7 @@ func (c *Client) SendTar(tar io.Reader, unpackDir string) error {
 	return nil
 }
 
-func (c *Client) RecvTar(packDir string, include []string, tar io.Writer) error {
+func (c *Client) RecvTar(packDir string, include []string, tarFilter TarFilter, tar io.Writer) error {
 	session, err := c.sshc.NewSession()
 	if err != nil {
 		return err
@@ -657,7 +657,7 @@ func (c *Client) RecvTar(packDir string, include []string, tar io.Writer) error 
 	var stderr safeBuffer
 	session.Stdout = tar
 	session.Stderr = &stderr
-	cmd := fmt.Sprintf(`%s/bin/tar -C %q -cJ --sort=name --ignore-failed-read -- %s`, c.sudo(), packDir, strings.Join(args, " "))
+	cmd := fmt.Sprintf(`%s/bin/tar -C %q -c%s --sort=name --ignore-failed-read -- %s`, c.sudo(), packDir, tarFilter, strings.Join(args, " "))
 	err = c.runCommand(session, cmd, nil, &stderr)
 	if err != nil {
 		return outputErr(stderr.Bytes(), err)

@@ -756,6 +756,8 @@ hold it after the job is executed.
 Residual content is fetched whether the job finishes successfully or not,
 and even if some of the provided paths are missing.
 
+By default artifacts are fetched and compressed using `xz`. If this is
+unavailable use the `-tar-filter` flag specifying an option, eg `gzip`.
 
 <a name="lxd"/>
 

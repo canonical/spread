@@ -18,6 +18,20 @@ import (
 	"math/rand"
 )
 
+type TarFilter string
+
+const (
+	XZ    TarFilter = "J"
+	GZip  TarFilter = "z"
+	Bzip2 TarFilter = "j"
+)
+
+var TarFilters map[string]TarFilter = map[string]TarFilter{
+	"xz":   XZ,
+	"gzip": GZip,
+	"bz2":  Bzip2,
+}
+
 type Options struct {
 	Password       string
 	Filter         Filter
@@ -32,6 +46,7 @@ type Options struct {
 	Resend         bool
 	Discard        bool
 	Artifacts      string
+	TarFilter      TarFilter
 	Seed           int64
 	Repeat         int
 	GarbageCollect bool
@@ -827,7 +842,7 @@ func (r *Runner) fetchArtifacts(client *Client, job *Job) error {
 	tarr, tarw := io.Pipe()
 
 	var stderr bytes.Buffer
-	cmd := exec.Command("tar", "xJ")
+	cmd := exec.Command("tar", "x"+string(r.options.TarFilter))
 	cmd.Dir = localDir
 	cmd.Stdin = tarr
 	cmd.Stderr = &stderr
@@ -839,7 +854,7 @@ func (r *Runner) fetchArtifacts(client *Client, job *Job) error {
 	printf("Fetching artifacts of %s...", job)
 
 	remoteDir := filepath.Join(r.project.RemotePath, job.Task.Name)
-	err = client.RecvTar(remoteDir, job.Task.Artifacts, tarw)
+	err = client.RecvTar(remoteDir, job.Task.Artifacts, r.options.TarFilter, tarw)
 	tarw.Close()
 	terr := cmd.Wait()
 

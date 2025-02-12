@@ -658,6 +658,12 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 		insideBackend = false
 	}
 	if !abend && insideProject {
+		if err := r.fetchProjectArtifacts(client); err != nil {
+			printf("Cannot copy contents %v", err)
+			r.tomb.Killf("cannot copy contents: %v", err)
+		}
+	}
+	if !abend && insideProject {
 		if !r.run(client, last, restoring, r.project, r.project.Restore, r.project.Debug, &abend) {
 			r.add(&stats.ProjectRestoreError, last)
 		}
@@ -671,6 +677,38 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 		printf("Discarding %s...", server)
 		r.discardServer(server)
 	}
+}
+
+func (r *Runner) fetchProjectArtifacts(client *Client) error {
+	if r.options.Artifacts == "" || len(r.project.Artifacts) == 0 {
+		return nil
+	}
+
+	localDir := filepath.Join(r.options.Artifacts)
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		return fmt.Errorf("cannot create artifacts directory: %v", err)
+	}
+
+	tarr, tarw := io.Pipe()
+
+	var stderr bytes.Buffer
+	cmd := exec.Command("tar", "xJ")
+	cmd.Dir = localDir
+	cmd.Stdin = tarr
+	cmd.Stderr = &stderr
+	err := cmd.Start()
+	if err != nil {
+		return fmt.Errorf("cannot start unpacking tar: %v", err)
+	}
+
+	printf("Fetching artifacts")
+
+	remoteDir := filepath.Join(r.project.RemotePath)
+	err = client.RecvTar(remoteDir, r.project.Artifacts, tarw)
+	tarw.Close()
+	terr := cmd.Wait()
+
+	return firstErr(err, terr)
 }
 
 func (r *Runner) job(backend *Backend, system *System, suite *Suite, last *Job, order []int) *Job {

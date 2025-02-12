@@ -1,0 +1,23 @@
+project: spread
+
+backends:
+    lxd:
+        systems:
+            - ubuntu-16.04
+
+path: /home/test
+
+
+artifacts:
+    - my-artifacts
+
+suites:
+    checks/: 
+        summary: Verification tasks.
+        restore-each: |
+            mkdir -p "$SPREAD_PATH"/my-artifacts
+            if [ -d "artifacts" ]; then
+                cp artifacts/* "$SPREAD_PATH"/my-artifacts
+            fi 
+
+# vim:ts=4:sw=4:et

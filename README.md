@@ -772,6 +772,25 @@ hold it after the job is executed.
 Residual content is fetched whether the job finishes successfully or not,
 and even if some of the provided paths are missing.
 
+### Suite-level artifacts
+
+The provided directory or file paths are relative to the suite directory for 
+suite-level artifacts, and they are only considered when Spread is run with 
+the `-artifacts` flag pointing to the target directory where content will 
+be downloaded into.
+
+For example, consider the following command:
+```
+$ spread -artifacts=./artifacts lxd:ubuntu-16.04:mysuite/task-one:variant-a
+```
+
+Assuming the given task has residual content registered, the directory
+`./artifacts/lxd:ubuntu-16.04:mysuite/` would be created to
+hold it after the job is executed.
+
+Residual content is fetched whether the job finishes successfully or not,
+and even if some of the provided paths are missing.
+
 ### Project-level artifacts
 
 The provided directory or file paths are relative to the project directory 
@@ -782,7 +801,7 @@ downloaded into.
 
 For example, consider the following command:
 ```
-$ spread -project-artifacts=./artifacts lxd:ubuntu-16.04
+$ spread -artifacts=./artifacts lxd:ubuntu-16.04
 ```
 
 Assuming the given project has residual content registered, the directory

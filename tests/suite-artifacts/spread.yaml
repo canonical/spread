@@ -7,17 +7,15 @@ backends:
 
 path: /home/test
 
-
-artifacts:
-    - my-artifacts
-
 suites:
     checks/: 
         summary: Verification tasks.
+        artifacts:
+            - my-artifacts
         restore-each: |
-            mkdir -p "${SPREAD_PATH}/my-artifacts"
+            mkdir -p "${SPREAD_PATH}/${SPREAD_SUITE}/my-artifacts"
             if [ -d "artifacts" ]; then
-                cp artifacts/* "${SPREAD_PATH}/my-artifacts"
+                cp artifacts/* "${SPREAD_PATH}/${SPREAD_SUITE}/my-artifacts"
             fi 
 
 # vim:ts=4:sw=4:et

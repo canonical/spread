@@ -633,7 +633,7 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 				repeat = -1
 			}
 			if !abend && !r.options.Restore && repeat <= 0 {
-				if err := r.fetchArtifacts(client, job); err != nil {
+				if err := r.fetchJobArtifacts(client, job); err != nil {
 					printf("Cannot fetch artifacts of %s: %v", job, err)
 					r.tomb.Killf("cannot fetch artifacts of %s: %v", job, err)
 				}
@@ -647,6 +647,10 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 	}
 
 	if !abend && insideSuite != nil {
+		if err := r.fetchSuiteArtifacts(client, insideSuite, last); err != nil {
+			printf("Cannot copy contents %v", err)
+			r.tomb.Killf("cannot copy contents: %v", err)
+		}
 		if !r.run(client, last, restoring, insideSuite, insideSuite.Restore, insideSuite.Debug, &abend) {
 			r.add(&stats.SuiteRestoreError, last)
 		}
@@ -663,8 +667,6 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 			printf("Cannot copy contents %v", err)
 			r.tomb.Killf("cannot copy contents: %v", err)
 		}
-	}
-	if !abend && insideProject {
 		if !r.run(client, last, restoring, r.project, r.project.Restore, r.project.Debug, &abend) {
 			r.add(&stats.ProjectRestoreError, last)
 		}
@@ -678,38 +680,6 @@ func (r *Runner) worker(backend *Backend, system *System, order []int) {
 		printf("Discarding %s...", server)
 		r.discardServer(server)
 	}
-}
-
-func (r *Runner) fetchProjectArtifacts(client *Client) error {
-	if r.options.Artifacts == "" || len(r.project.Artifacts) == 0 {
-		return nil
-	}
-
-	localDir := filepath.Join(r.options.Artifacts)
-	if err := os.MkdirAll(localDir, 0755); err != nil {
-		return fmt.Errorf("cannot create artifacts directory: %v", err)
-	}
-
-	tarr, tarw := io.Pipe()
-
-	var stderr bytes.Buffer
-	cmd := exec.Command("tar", "xJ")
-	cmd.Dir = localDir
-	cmd.Stdin = tarr
-	cmd.Stderr = &stderr
-	err := cmd.Start()
-	if err != nil {
-		return fmt.Errorf("cannot start unpacking tar: %v", err)
-	}
-
-	printf("Fetching artifacts")
-
-	remoteDir := filepath.Join(r.project.RemotePath)
-	err = client.RecvTar(remoteDir, r.project.Artifacts, tarw)
-	tarw.Close()
-	terr := cmd.Wait()
-
-	return firstErr(err, terr)
 }
 
 func (r *Runner) job(backend *Backend, system *System, suite *Suite, last *Job, order []int) *Job {
@@ -853,12 +823,11 @@ func (r *Runner) client(backend *Backend, system *System) *Client {
 	return nil
 }
 
-func (r *Runner) fetchArtifacts(client *Client, job *Job) error {
-	if r.options.Artifacts == "" || len(job.Task.Artifacts) == 0 {
+func (r *Runner) fetchArtifacts(client *Client, localDir string, remoteDir string, artifactDeclaration []string) error {
+	if r.options.Artifacts == "" || len(artifactDeclaration) == 0 {
 		return nil
 	}
 
-	localDir := filepath.Join(r.options.Artifacts, job.Name)
 	if err := os.MkdirAll(localDir, 0755); err != nil {
 		return fmt.Errorf("cannot create artifacts directory: %v", err)
 	}
@@ -875,14 +844,32 @@ func (r *Runner) fetchArtifacts(client *Client, job *Job) error {
 		return fmt.Errorf("cannot start unpacking tar: %v", err)
 	}
 
-	printf("Fetching artifacts of %s...", job)
+	printf("Fetching artifacts...")
 
-	remoteDir := filepath.Join(r.project.RemotePath, job.Task.Name)
-	err = client.RecvTar(remoteDir, job.Task.Artifacts, tarw)
+	err = client.RecvTar(remoteDir, artifactDeclaration, tarw)
 	tarw.Close()
 	terr := cmd.Wait()
 
 	return firstErr(err, terr)
+}
+
+func (r *Runner) fetchSuiteArtifacts(client *Client, suite *Suite, lastJob *Job) error {
+	suiteFolder := fmt.Sprintf("%s:%s:%s", lastJob.Backend.Name, lastJob.System.Name, suite.Name)
+	localDir := filepath.Join(r.options.Artifacts, suiteFolder)
+	remoteDir := filepath.Join(r.project.RemotePath, suite.Name)
+	return r.fetchArtifacts(client, localDir, remoteDir, suite.Artifacts)
+}
+
+func (r *Runner) fetchProjectArtifacts(client *Client) error {
+	localDir := filepath.Join(r.options.Artifacts)
+	remoteDir := filepath.Join(r.project.RemotePath)
+	return r.fetchArtifacts(client, localDir, remoteDir, r.project.Artifacts)
+}
+
+func (r *Runner) fetchJobArtifacts(client *Client, job *Job) error {
+	localDir := filepath.Join(r.options.Artifacts, job.Name)
+	remoteDir := filepath.Join(r.project.RemotePath, job.Task.Name)
+	return r.fetchArtifacts(client, localDir, remoteDir, job.Task.Artifacts)
 }
 
 func (r *Runner) discardServer(server Server) {

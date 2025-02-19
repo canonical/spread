@@ -5,7 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net/http"
 	"os"
@@ -31,6 +31,8 @@ func Google(p *Project, b *Backend, o *Options) Provider {
 		options: o,
 
 		imagesCache: make(map[string]*googleImagesCache),
+
+		apiURL: "https://www.googleapis.com",
 	}
 }
 
@@ -50,6 +52,8 @@ type googleProvider struct {
 	keyErr     error
 
 	imagesCache map[string]*googleImagesCache
+
+	apiURL string
 }
 
 type googleServer struct {
@@ -369,6 +373,7 @@ func (p *googleProvider) projectImages(project string) ([]googleImage, error) {
 			Terms:   toTerms(item.Description),
 		})
 	}
+	cache.ready = true
 
 	return cache.images, err
 }
@@ -898,7 +903,7 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 
 	<-googleThrottle
 
-	url := "https://www.googleapis.com"
+	url := p.apiURL
 	if flags&noPathPrefix == 0 {
 		url += "/compute/v1/projects/" + p.gproject() + subpath
 	} else {
@@ -927,7 +932,7 @@ func (p *googleProvider) dofl(method, subpath string, params interface{}, result
 			return fmt.Errorf("cannot perform Google request: %v", err)
 		}
 
-		data, err = ungzip(ioutil.ReadAll(resp.Body))
+		data, err = ungzip(io.ReadAll(resp.Body))
 		resp.Body.Close()
 		if err != nil {
 			return fmt.Errorf("cannot read Google response: %v", err)
@@ -983,5 +988,5 @@ func ungzip(data []byte, err error) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("data seems compressed but corrupted")
 	}
-	return ioutil.ReadAll(r)
+	return io.ReadAll(r)
 }

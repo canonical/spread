@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -255,7 +254,7 @@ func (r *Runner) prepareContent() (err error) {
 		return nil
 	}
 
-	file, err := ioutil.TempFile("", fmt.Sprintf("spread-content.%d.", os.Getpid()))
+	file, err := os.CreateTemp("", fmt.Sprintf("spread-content.%d.", os.Getpid()))
 	if err != nil {
 		return fmt.Errorf("cannot create temporary content file: %v", err)
 	}

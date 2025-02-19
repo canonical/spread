@@ -1,15 +1,15 @@
 package spread_test
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/snapcore/spread/spread"
-
 	. "gopkg.in/check.v1"
 	"gopkg.in/yaml.v2"
+
+	"github.com/snapcore/spread/spread"
+	"github.com/snapcore/spread/spread/testutil"
 )
 
 func Test(t *testing.T) { TestingT(t) }
@@ -62,35 +62,88 @@ type projectSuite struct{}
 
 var _ = Suite(&projectSuite{})
 
-func (s *projectSuite) TestLoad(c *C) {
-	spreadYaml := []byte(`project: mock-prj
-path: /some/path
-backends:
- google:
-  key: some-key
-  plan: global-plan
-  systems:
-   - system-1:
-   - system-2:
-      plan: plan-for-2
-   - system-3:
-suites:
- tests/:
-  summary: mock tests
-`)
-	tmpdir := c.MkDir()
-	err := ioutil.WriteFile(filepath.Join(tmpdir, "spread.yaml"), spreadYaml, 0644)
-	c.Assert(err, IsNil)
-	err = os.MkdirAll(filepath.Join(tmpdir, "tests"), 0755)
-	c.Assert(err, IsNil)
+type loadTest struct {
+	filename string // the file name to write the project to
+	reroot   string // the new root relative to the spread.yaml location
+	errMsg   string // the expected error message
+}
 
-	prj, err := spread.Load(tmpdir)
-	c.Assert(err, IsNil)
-	backend := prj.Backends["google"]
-	c.Check(backend.Name, Equals, "google")
-	c.Check(backend.Systems["system-1"].Plan, Equals, "global-plan")
-	c.Check(backend.Systems["system-2"].Plan, Equals, "plan-for-2")
-	c.Check(backend.Systems["system-3"].Plan, Equals, "global-plan")
+var loadTests = []loadTest{{
+	filename: "spread.yaml",
+	reroot:   "",
+	errMsg:   "",
+}, {
+	filename: ".spread.yaml",
+	reroot:   "",
+	errMsg:   "",
+}, {
+	filename: "other.yaml",
+	reroot:   "",
+	errMsg:   "cannot load project file from .*: cannot find spread.yaml or .spread.yaml",
+}, {
+	filename: "spread.yaml",
+	reroot:   "subdir1",
+	errMsg:   "cannot list suite tests/: open .*: no such file or directory",
+}, {
+	filename: "spread.yaml",
+	reroot:   "subdir2",
+	errMsg:   "",
+}, {
+	filename: "spread.yaml",
+	reroot:   ".",
+	errMsg:   "",
+}, {
+	filename: "spread.yaml",
+	reroot:   "/",
+	errMsg:   "",
+}}
+
+func (s *projectSuite) TestLoad(c *C) {
+	spreadYaml := `
+		project: mock-prj
+		path: /some/path
+		backends:
+			google:
+				key: some-key
+				plan: global-plan
+				systems:
+					- system-1:
+					- system-2:
+						plan: plan-for-2
+					- system-3:
+		suites:
+			tests/:
+				summary: mock tests
+	`
+
+	for _, tc := range loadTests {
+		tmpdir := c.MkDir()
+		err := os.MkdirAll(filepath.Join(tmpdir, "subdir1"), 0755)
+		c.Assert(err, IsNil)
+		err = os.MkdirAll(filepath.Join(tmpdir, "subdir2/tests"), 0755)
+		c.Assert(err, IsNil)
+
+		yaml := testutil.Reindent(spreadYaml)
+		if tc.reroot != "" {
+			yaml = append(yaml, []byte("reroot: "+tc.reroot)...)
+		}
+		err = os.WriteFile(filepath.Join(tmpdir, tc.filename), yaml, 0644)
+		c.Assert(err, IsNil)
+		err = os.MkdirAll(filepath.Join(tmpdir, "tests"), 0755)
+		c.Assert(err, IsNil)
+
+		prj, err := spread.Load(tmpdir)
+		if tc.errMsg == "" {
+			c.Assert(err, IsNil)
+			backend := prj.Backends["google"]
+			c.Check(backend.Name, Equals, "google")
+			c.Check(backend.Systems["system-1"].Plan, Equals, "global-plan")
+			c.Check(backend.Systems["system-2"].Plan, Equals, "plan-for-2")
+			c.Check(backend.Systems["system-3"].Plan, Equals, "global-plan")
+		} else {
+			c.Assert(err, ErrorMatches, tc.errMsg)
+		}
+	}
 }
 
 func (s *projectSuite) TestOptionalInt(c *C) {

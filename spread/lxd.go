@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gopkg.in/yaml.v2"
-	"io/ioutil"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -129,7 +129,7 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 	}
 
 	printf("Waiting for lxd container %s to have an address...", name)
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(60 * time.Second)
 	retry := time.NewTicker(1 * time.Second)
 	defer retry.Stop()
 	for {
@@ -382,7 +382,7 @@ func lxdName(system *System) (string, error) {
 		return "", fmt.Errorf("cannot obtain lock on ~/.spread/lxd-count: %v", err)
 	}
 
-	data, err := ioutil.ReadAll(file)
+	data, err := io.ReadAll(file)
 	if err != nil {
 		return "", fmt.Errorf("cannot read ~/.spread/lxd-count: %v", err)
 	}
@@ -443,23 +443,23 @@ func (p *lxdProvider) address(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for _, addr := range sjson.State.Network["eth0"].Addresses {
-		if addr.Family == "inet" && addr.Address != "" {
-			return addr.Address, nil
+	for ifacename, ifaceconf := range sjson.State.Network {
+		if ifacename == "lo" {
+			continue
+		}
+		for _, addr := range ifaceconf.Addresses {
+			if addr.Family == "inet" && addr.Address != "" {
+				return addr.Address, nil
+			}
 		}
 	}
 	return "", &lxdNoAddrError{name}
 }
 
 func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
-	var stderr bytes.Buffer
-	cmd := exec.Command("lxc", "list", "--format=json", name)
-	cmd.Stderr = &stderr
-
-	output, err := cmd.Output()
+	output, err := lxdList(name)
 	if err != nil {
-		err = outputErr(stderr.Bytes(), err)
-		return nil, fmt.Errorf("cannot list lxd container: %v", err)
+		return nil, err
 	}
 
 	var sjsons []*lxdServerJSON
@@ -470,18 +470,24 @@ func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
 
 	debugf("lxd list output: %# v\n", sjsons)
 
-	if len(sjsons) == 0 {
-		return nil, &lxdNoServerError{name}
+	for _, server := range sjsons {
+		if server.Name == name {
+			return server, nil
+		}
 	}
-	if sjsons[0].Name != name {
-		return nil, fmt.Errorf("lxd returned invalid JSON listing for %q: %s", name, outputErr(output, nil))
-	}
-	return sjsons[0], nil
+	return nil, &lxdNoServerError{name}
 }
 
 func (p *lxdProvider) tuneSSH(name string) error {
 	cmds := [][]string{
+		// Attempt to enable root login with a password through SSH, which is
+		// achieved in a different manner depending on the version of sshd in
+		// the system. Older versions of ssh used a single file.
 		{"sed", "-i", `s/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/`, "/etc/ssh/sshd_config"},
+		// If the sshd configuration is split in snippets in /etc/ssh/sshd_config.d,
+		// place the configuration in a 00-* file because the first obtained value
+		// will be used. See sshd_config(5) for details.
+		{"/bin/bash", "-c", `if [ -d /etc/ssh/sshd_config.d ]; then echo -e "PermitRootLogin yes\nPasswordAuthentication yes" > /etc/ssh/sshd_config.d/00-spread.conf; fi`},
 		{"/bin/bash", "-c", fmt.Sprintf("echo root:'%s' | chpasswd", p.options.Password)},
 		{"killall", "-HUP", "sshd"},
 	}
@@ -492,6 +498,22 @@ func (p *lxdProvider) tuneSSH(name string) error {
 		}
 	}
 	return nil
+}
+
+var lxdList = lxdListImpl
+
+func lxdListImpl(name string) ([]byte, error) {
+	var stderr bytes.Buffer
+	cmd := exec.Command("lxc", "list", "--format=json", name)
+	cmd.Stderr = &stderr
+
+	output, err := cmd.Output()
+	if err != nil {
+		err = outputErr(stderr.Bytes(), err)
+		return nil, fmt.Errorf("cannot list lxd container: %w", err)
+	}
+
+	return output, nil
 }
 
 func contains(strs []string, s string) bool {

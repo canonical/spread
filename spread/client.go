@@ -15,7 +15,7 @@ import (
 	"golang.org/x/net/context"
 
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 	"net"
 	"regexp"
 	"strconv"
@@ -74,7 +74,7 @@ func (c *Client) ResetJob() {
 	c.SetJob("")
 }
 
-func (c *Client) dialOnReboot(prevUptime time.Time) error {
+func (c *Client) dialOnReboot(prevBootID string) error {
 	// First wait until SSH isn't working anymore.
 	timeout := time.After(c.killTimeout)
 	relog := time.NewTicker(c.warnTimeout)
@@ -84,7 +84,6 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 
 	waitConfig := *c.config
 	waitConfig.Timeout = 5 * time.Second
-	uptimeChanged := 3 * time.Second
 
 	for {
 		// Try to connect to the rebooting system, note that
@@ -93,15 +92,13 @@ func (c *Client) dialOnReboot(prevUptime time.Time) error {
 		// before the code times out.
 		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
 		if err == nil {
-			// once successfully connected, check uptime to
+			// once successfully connected, check boot_id to
 			// see if the reboot actually happend
 			c.sshc.Close()
 			c.sshc = sshc
-			currUptime, err := c.getUptime()
+			curBootID, err := c.getBootID()
 			if err == nil {
-				uptimeDelta := currUptime.Sub(prevUptime)
-				if uptimeDelta > uptimeChanged {
-					// Reboot done
+				if curBootID != prevBootID {
 					return nil
 				}
 			}
@@ -294,31 +291,26 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 		rebootKey = rerr.Key
 		output = append(output, '\n')
 
-		uptime, err := c.getUptime()
+		bootID, err := c.getBootID()
 		if err != nil {
 			return nil, err
 		}
 		c.Run("reboot", "", nil)
 
-		if err := c.dialOnReboot(uptime); err != nil {
+		if err := c.dialOnReboot(bootID); err != nil {
 			return nil, err
 		}
 	}
 	panic("unreachable")
 }
 
-func (c *Client) getUptime() (time.Time, error) {
-	uptime, err := c.Output("date -u -d \"$(cut -f1 -d. /proc/uptime) seconds ago\" +\"%Y-%m-%dT%H:%M:%SZ\"", "", nil)
+func (c *Client) getBootID() (string, error) {
+	rawBootID, err := c.Output("cat /proc/sys/kernel/random/boot_id", "", nil)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("cannot obtain the remote system uptime: %v", err)
+		return "", fmt.Errorf("cannot obtain the remote system boot_id: %v", err)
 	}
 
-	parsedUptime, err := time.Parse(time.RFC3339, string(uptime))
-	if err != nil {
-		return time.Time{}, fmt.Errorf("cannot parse the remote system uptime: %q", uptime)
-	}
-
-	return parsedUptime, nil
+	return string(bytes.TrimSpace(rawBootID)), nil
 }
 
 var toBashRC = map[string]bool{
@@ -436,7 +428,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		cmd = fmt.Sprintf("{\nf=$(mktemp)\ntrap 'rm '$f EXIT\ncat > $f <<'SCRIPT_END'\n%s\nSCRIPT_END\n%s/bin/bash $f\n}", buf.String(), c.sudo())
 		session.Stdout = os.Stdout
 		session.Stderr = os.Stderr
-		w, h, err := terminal.GetSize(0)
+		w, h, err := term.GetSize(0)
 		if err != nil {
 			return nil, fmt.Errorf("cannot get local terminal size: %v", err)
 		}
@@ -449,12 +441,12 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 
 	if mode == shellOutput {
 		termLock()
-		tstate, terr := terminal.MakeRaw(0)
+		tstate, terr := term.MakeRaw(0)
 		if terr != nil {
 			return nil, fmt.Errorf("cannot put local terminal in raw mode: %v", terr)
 		}
 		err = session.Run(cmd)
-		terminal.Restore(0, tstate)
+		term.Restore(0, tstate)
 		termUnlock()
 	} else {
 		err = c.runCommand(session, cmd, &stdout, &stderr)
@@ -665,7 +657,7 @@ func (c *Client) RecvTar(packDir string, include []string, tar io.Writer) error 
 	var stderr safeBuffer
 	session.Stdout = tar
 	session.Stderr = &stderr
-	cmd := fmt.Sprintf(`cd '%s' && %s/bin/tar cJ --sort=name --ignore-failed-read -- %s`, packDir, c.sudo(), strings.Join(args, " "))
+	cmd := fmt.Sprintf(`%s/bin/tar -C %q -cJ --sort=name --ignore-failed-read -- %s`, c.sudo(), packDir, strings.Join(args, " "))
 	err = c.runCommand(session, cmd, nil, &stderr)
 	if err != nil {
 		return outputErr(stderr.Bytes(), err)

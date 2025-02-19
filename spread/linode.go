@@ -3,7 +3,7 @@ package spread
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/url"
@@ -1549,7 +1549,7 @@ func (p *linodeProvider) dofl(params linodeParams, result interface{}, flags doF
 	}
 	defer resp.Body.Close()
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("cannot read Linode response: %v", err)
 	}

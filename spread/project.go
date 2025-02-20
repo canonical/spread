@@ -65,6 +65,8 @@ type Backend struct {
 	Storage  Size
 
 	// Only for Openstack so far
+	Account  string
+	Endpoint string
 	Networks []string
 	Groups   []string
 

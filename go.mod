@@ -4,7 +4,6 @@ go 1.21
 
 require (
 	github.com/go-goose/goose/v5 v5.0.0-20230421180421-abaee9096e3a
-	github.com/joho/godotenv v1.5.1
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e
 	golang.org/x/crypto v0.32.0
 	golang.org/x/net v0.34.0

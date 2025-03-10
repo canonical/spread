@@ -80,6 +80,9 @@ type Backend struct {
 	KillTimeout Timeout `yaml:"kill-timeout"`
 	HaltTimeout Timeout `yaml:"halt-timeout"`
 
+	// Only for Testflinger so far.
+	WaitTimeout Timeout `yaml:"wait-timeout"`
+
 	Priority OptionalInt
 	Manual   bool
 }
@@ -118,6 +121,10 @@ type System struct {
 	Username string
 	Password string
 	Workers  int
+
+	// Only for Testflinger so far.
+	Queue       string
+	WaitTimeout Timeout `yaml:"wait-timeout"`
 
 	// Only for Linode and Google so far.
 	Storage Size
@@ -478,7 +485,7 @@ func SplitVariants(s string) (prefix string, variants []string) {
 
 var (
 	validName   = regexp.MustCompile("^[a-z0-9]+(?:[-._][a-z0-9]+)*$")
-	validSystem = regexp.MustCompile("^[a-z*]+-[a-z0-9*]+(?:[-.][a-z0-9*]+)*$")
+	validSystem = regexp.MustCompile("^[a-z*][a-z0-9*]*-[a-z0-9*]+(?:[-.][a-z0-9*]+)*$")
 	validSuite  = regexp.MustCompile("^(?:[a-z0-9]+(?:[-._][a-z0-9]+)*/)+$")
 	validTask   = regexp.MustCompile("^(?:[a-z0-9]+(?:[-._][a-z0-9]+)*/)+[a-z0-9]+(?:[-._][a-z0-9]+)*$")
 )
@@ -529,7 +536,7 @@ func Load(path string) (*Project, error) {
 			backend.Type = bname
 		}
 		switch backend.Type {
-		case "google", "linode", "lxd", "qemu", "adhoc", "humbox":
+		case "google", "linode", "lxd", "qemu", "adhoc", "humbox", "testflinger":
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
 		}
@@ -561,6 +568,9 @@ func Load(path string) (*Project, error) {
 			}
 			if system.Plan == "" {
 				system.Plan = backend.Plan
+			}
+			if system.WaitTimeout.Duration == 0 {
+				system.WaitTimeout = backend.WaitTimeout
 			}
 			if err := checkEnv(system, &system.Environment); err != nil {
 				return nil, err

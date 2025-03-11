@@ -934,6 +934,9 @@ func (p *openstackProvider) checkCredentials() error {
 	if p.computeClient == nil {
 		err = p.authenticate()
 	}
+	if err != nil {
+		err = &FatalError{err}
+	}
 
 	p.authComplete = true
 	p.authErr = err
@@ -943,17 +946,17 @@ func (p *openstackProvider) checkCredentials() error {
 func (p *openstackProvider) authenticate() error {
 	// Only identity API v3 is currently supported
 	if !strings.HasSuffix(p.backend.Endpoint, "/v3") {
-		return &FatalError{errors.New("identity API version not supported")}
+		return errors.New("identity API version not supported")
 	}
 	identityAPIVersion := 3
 
 	// The location entry contains project/region
-	var region, proj string
+	var osproj, region string
 	loc := strings.SplitN(p.backend.Location, "/", 2)
-	if len(loc) == 2 {
-		proj = loc[0]
-		region = loc[1]
+	if len(loc) != 2 {
+		return errors.New("cannot obtain project and region from location")
 	}
+	osproj, region = loc[0], loc[1]
 
 	// Authenticate using the project credentials.
 	creds := &identity.Credentials{
@@ -961,12 +964,12 @@ func (p *openstackProvider) authenticate() error {
 		User:       p.backend.Account,  // The username to authenticate as
 		Secrets:    p.backend.Key,      // The authentication secret
 		Region:     region,             // The OS region
-		TenantName: proj,               // The OS project name
+		TenantName: osproj,             // The OS project name
 		Version:    identityAPIVersion, // The identity API version
 	}
 	authClient := gooseclient.NewClient(creds, identity.AuthUserPassV3, nil)
 	if err := authClient.Authenticate(); err != nil {
-		err = &FatalError{fmt.Errorf("cannot authenticate: %v", &openstackError{err})}
+		err = fmt.Errorf("cannot authenticate: %v", &openstackError{err})
 	}
 
 	p.region = creds.Region
@@ -976,7 +979,7 @@ func (p *openstackProvider) authenticate() error {
 	p.imageClient = glance.New(authClient)
 
 	if err := p.saveServices(); err != nil {
-		return &FatalError{fmt.Errorf("failed to save services: %v", &openstackError{err})}
+		return fmt.Errorf("failed to save services: %v", &openstackError{err})
 	}
 
 	// Create cinder client

@@ -158,9 +158,8 @@ const openstackCloudInitScript = `
 runcmd:
   - echo root:%s | chpasswd
   - sed -i 's/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /etc/ssh/sshd_config
-  - sed -i 's/^PermitRootLogin=/#PermitRootLogin=/g' /etc/ssh/sshd_config.d/* || true
-  - sed -i 's/^PasswordAuthentication=/#PasswordAuthentication=/g' /etc/ssh/sshd_config.d/* || true
-  - test -d /etc/ssh/sshd_config.d && echo -e 'PermitRootLogin=yes\nPasswordAuthentication=yes' > /etc/ssh/sshd_config.d/00-spread.conf
+  - test -d /etc/ssh/sshd_config.d && echo 'PermitRootLogin=yes' > /etc/ssh/sshd_config.d/00-spread.conf
+  - test -d /etc/ssh/sshd_config.d && echo 'PasswordAuthentication=yes' >> /etc/ssh/sshd_config.d/00-spread.conf
   - pkill -o -HUP sshd || true
   - echo '` + openstackReadyMarker + `' > /dev/ttyS0
 `
@@ -401,7 +400,7 @@ func (p *openstackProvider) waitServerBootSSH(ctx context.Context, s *openstackS
 		addr += ":22"
 	}
 
-	// Iterate until the ssh connection to the host can be stablished
+	// Iterate until the ssh connection to the host can be established
 	// In openstack the client cannot access to the serial console of the instance
 	timeout := time.After(openstackServerBootTimeout)
 	retry := time.NewTicker(openstackServerBootRetry)
@@ -486,7 +485,6 @@ func (p *openstackProvider) waitServerBootSerial(ctx context.Context, s *opensta
 			return fmt.Errorf("cannot wait for %s to boot: interrupted", s)
 		}
 	}
-	panic("unreachable")
 }
 
 func (p *openstackProvider) waitServerBoot(ctx context.Context, s *openstackServer) error {

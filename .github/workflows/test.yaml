@@ -15,6 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Run unit tests
+        run: |
+          go test -race ./...
+
       - name: Run tests
         run: |
           spread google:

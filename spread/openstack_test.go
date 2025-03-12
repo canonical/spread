@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"regexp"
 	"time"
 
@@ -37,7 +37,7 @@ func (s *openstackSuite) TestTrivial(c *C) {
 }
 
 func (s *openstackSuite) TestOpenstackName(c *C) {
-	restore := spread.MockTimeNow(func() time.Time {
+	restore := spread.FakeTimeNow(func() time.Time {
 		return time.Date(2007, 8, 22, 11, 59, 58, 987654321, time.UTC)
 	})
 	defer restore()
@@ -174,9 +174,9 @@ func (s *openstackFindImageSuite) SetUpTest(c *C) {
 	s.fakeComputeClient = &fakeNovaComputeClient{}
 	s.fakeOsClient = &fakeOsClient{}
 
-	spread.MockOpenstackImageClient(s.opst, s.fakeImageClient)
-	spread.MockOpenstackComputeClient(s.opst, s.fakeComputeClient)
-	spread.MockOpenstackGooseClient(s.opst, s.fakeOsClient)
+	spread.FakeOpenstackImageClient(s.opst, s.fakeImageClient)
+	spread.FakeOpenstackComputeClient(s.opst, s.fakeComputeClient)
+	spread.FakeOpenstackGooseClient(s.opst, s.fakeOsClient)
 }
 
 func (s *openstackFindImageSuite) TestOpenstackFindImageNotFound(c *C) {
@@ -196,7 +196,7 @@ func (s *openstackFindImageSuite) TestOpenstackFindImageErrors(c *C) {
 }
 
 func uuid() string {
-	b, err := ioutil.ReadFile("/proc/sys/kernel/random/uuid")
+	b, err := os.ReadFile("/proc/sys/kernel/random/uuid")
 	if err != nil {
 		panic(err)
 	}
@@ -228,15 +228,24 @@ var fakeOpenstackImageListMadeUp = []string{
 	"fedora-38",
 }
 
+type openstackFindImageTest struct {
+	imageName       string
+	availableImages []string
+	expectFind      bool
+}
+
+var openstackFindImageTests = []openstackFindImageTest{{
+	imageName:       "ubuntu-14.04",
+	availableImages: fakeOpenstackImageListMadeUp,
+	expectFind:      false,
+}, {
+	imageName:       "ubuntu-22.04",
+	availableImages: fakeOpenstackImageListMadeUp,
+	expectFind:      true,
+}}
+
 func (s *openstackFindImageSuite) TestOpenstackFindImage(c *C) {
-	for _, tc := range []struct {
-		imageName       string
-		availableImages []string
-		expectFind      bool
-	}{
-		{"ubuntu-14.04", fakeOpenstackImageListMadeUp, false},
-		{"ubuntu-22.04", fakeOpenstackImageListMadeUp, true},
-	} {
+	for _, tc := range openstackFindImageTests {
 		s.fakeImageClient.res = makeGlanceImageDetails(tc.availableImages)
 		idt, err := spread.OpenstackFindImage(s.opst, tc.imageName)
 		if tc.expectFind {
@@ -261,21 +270,36 @@ var fakeOpenstackImageList = []string{
 	"tumbleweed-1",
 }
 
+type openstackFindImageComplexTest struct {
+	imageName         string
+	availableImages   []string
+	expectedImageName string
+}
+
+var openstackFindImageComplexTests = []openstackFindImageComplexTest{{
+	// trivial
+	imageName:         "fedora-35",
+	availableImages:   fakeOpenstackImageList,
+	expectedImageName: "fedora-35",
+}, {
+	// simple string match of name
+	imageName:         "ubuntu-22.04",
+	availableImages:   fakeOpenstackImageList,
+	expectedImageName: "auto-sync/ubuntu-22.04-something",
+}, {
+	// complex sorting based on date of the images
+	imageName:         "ubuntu-bionic-18.04-amd64",
+	availableImages:   fakeOpenstackImageList,
+	expectedImageName: "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+}, {
+	// term matching is more flexible than simple substring matching
+	imageName:         "ubuntu-18.04-server",
+	availableImages:   fakeOpenstackImageList,
+	expectedImageName: "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+}}
+
 func (s *openstackFindImageSuite) TestOpenstackFindImageComplex(c *C) {
-	for _, tc := range []struct {
-		imageName         string
-		availableImages   []string
-		expectedImageName string
-	}{
-		// trivial
-		{"fedora-35", fakeOpenstackImageList, "fedora-35"},
-		// simple string match of name
-		{"ubuntu-22.04", fakeOpenstackImageList, "auto-sync/ubuntu-22.04-something"},
-		// complex sorting based on date of the images
-		{"ubuntu-bionic-18.04-amd64", fakeOpenstackImageList, "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img"},
-		// term matching is more flexible than simple substring matching
-		{"ubuntu-18.04-server", fakeOpenstackImageList, "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img"},
-	} {
+	for _, tc := range openstackFindImageComplexTests {
 		s.fakeImageClient.res = makeGlanceImageDetails(tc.availableImages)
 		idt, err := spread.OpenstackFindImage(s.opst, tc.imageName)
 		if tc.expectedImageName != "" {
@@ -311,7 +335,7 @@ func (s *openstackFindImageSuite) TestOpenstackWaitProvisionHappy(c *C) {
 		return nil, nil
 	}
 
-	restore := spread.MockOpenstackProvisionTimeout(100*time.Millisecond, time.Nanosecond)
+	restore := spread.FakeOpenstackProvisionTimeout(100*time.Millisecond, time.Nanosecond)
 	defer restore()
 
 	err := spread.OpenstackWaitProvision(s.opst, context.TODO(), "test-id", "")
@@ -335,7 +359,7 @@ func (s *openstackFindImageSuite) TestOpenstackWaitProvisionBadStatus(c *C) {
 		return nil, nil
 	}
 
-	restore := spread.MockOpenstackProvisionTimeout(100*time.Millisecond, time.Nanosecond)
+	restore := spread.FakeOpenstackProvisionTimeout(100*time.Millisecond, time.Nanosecond)
 	defer restore()
 
 	err := spread.OpenstackWaitProvision(s.opst, context.TODO(), "test-id", "")
@@ -348,7 +372,7 @@ func (s *openstackFindImageSuite) TestOpenstackWaitProvisionTimeout(c *C) {
 		return &nova.ServerDetail{Status: nova.StatusBuild}, nil
 	}
 
-	restore := spread.MockOpenstackProvisionTimeout(100*time.Millisecond, time.Nanosecond)
+	restore := spread.FakeOpenstackProvisionTimeout(100*time.Millisecond, time.Nanosecond)
 	defer restore()
 
 	err := spread.OpenstackWaitProvision(s.opst, context.TODO(), "", "test-server")
@@ -356,9 +380,9 @@ func (s *openstackFindImageSuite) TestOpenstackWaitProvisionTimeout(c *C) {
 }
 
 func (s *openstackFindImageSuite) TestOpenstackWaitServerBootSerialHappy(c *C) {
-	restore := spread.MockOpenstackServerBootTimeout(100*time.Millisecond, time.Nanosecond)
+	restore := spread.FakeOpenstackServerBootTimeout(100*time.Millisecond, time.Nanosecond)
 	defer restore()
-	restore = spread.MockOpenstackSerialOutputTimeout(50 * time.Millisecond)
+	restore = spread.FakeOpenstackSerialOutputTimeout(50 * time.Millisecond)
 	defer restore()
 
 	var called int
@@ -382,9 +406,9 @@ func (s *openstackFindImageSuite) TestOpenstackWaitServerBootSerialHappy(c *C) {
 }
 
 func (s *openstackFindImageSuite) TestOpenstackWaitServerBootSerialTimeout(c *C) {
-	restore := spread.MockOpenstackServerBootTimeout(100*time.Millisecond, time.Nanosecond)
+	restore := spread.FakeOpenstackServerBootTimeout(100*time.Millisecond, time.Nanosecond)
 	defer restore()
-	restore = spread.MockOpenstackSerialOutputTimeout(50 * time.Millisecond)
+	restore = spread.FakeOpenstackSerialOutputTimeout(50 * time.Millisecond)
 	defer restore()
 
 	s.fakeOsClient.response = func() interface{} {
@@ -411,9 +435,9 @@ func (s *openstackFindImageSuite) TestOpenstackWaitServerBootSSHHappy(c *C) {
 		return nil, nil
 	})
 
-	restore := spread.MockOpenstackServerBootTimeout(100*time.Millisecond, time.Nanosecond)
+	restore := spread.FakeOpenstackServerBootTimeout(100*time.Millisecond, time.Nanosecond)
 	defer restore()
-	restore = spread.MockOpenstackSerialOutputTimeout(50 * time.Millisecond)
+	restore = spread.FakeOpenstackSerialOutputTimeout(50 * time.Millisecond)
 	defer restore()
 
 	// force fallback to SSH
@@ -429,9 +453,9 @@ func (s *openstackFindImageSuite) TestOpenstackWaitServerBootSSHTimeout(c *C) {
 		return nil, errors.New("connection error")
 	})
 
-	restore := spread.MockOpenstackServerBootTimeout(100*time.Millisecond, time.Nanosecond)
+	restore := spread.FakeOpenstackServerBootTimeout(100*time.Millisecond, time.Nanosecond)
 	defer restore()
-	restore = spread.MockOpenstackSerialOutputTimeout(50 * time.Millisecond)
+	restore = spread.FakeOpenstackSerialOutputTimeout(50 * time.Millisecond)
 	defer restore()
 
 	// force fallback to SSH

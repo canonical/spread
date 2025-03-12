@@ -12,7 +12,7 @@ var (
 	OpenstackName = openstackName
 )
 
-func MockOpenstackImageClient(p Provider, imageClient glanceImageClient) (restore func()) {
+func FakeOpenstackImageClient(p Provider, imageClient glanceImageClient) (restore func()) {
 	opst := p.(*openstackProvider)
 	oldGlanceImageClient := opst.imageClient
 	opst.imageClient = imageClient
@@ -21,7 +21,7 @@ func MockOpenstackImageClient(p Provider, imageClient glanceImageClient) (restor
 	}
 }
 
-func MockOpenstackComputeClient(p Provider, computeClient novaComputeClient) (restore func()) {
+func FakeOpenstackComputeClient(p Provider, computeClient novaComputeClient) (restore func()) {
 	opst := p.(*openstackProvider)
 	oldNovaImageClient := opst.computeClient
 	opst.computeClient = computeClient
@@ -30,7 +30,7 @@ func MockOpenstackComputeClient(p Provider, computeClient novaComputeClient) (re
 	}
 }
 
-func MockOpenstackGooseClient(p Provider, gooseClient gooseclient.Client) (restore func()) {
+func FakeOpenstackGooseClient(p Provider, gooseClient gooseclient.Client) (restore func()) {
 	opst := p.(*openstackProvider)
 	oldOsClient := opst.osClient
 	opst.osClient = gooseClient
@@ -39,7 +39,7 @@ func MockOpenstackGooseClient(p Provider, gooseClient gooseclient.Client) (resto
 	}
 }
 
-func MockOpenstackProvisionTimeout(timeout, retry time.Duration) (restore func()) {
+func FakeOpenstackProvisionTimeout(timeout, retry time.Duration) (restore func()) {
 	oldTimeout := openstackProvisionTimeout
 	oldRetry := openstackProvisionRetry
 	openstackProvisionTimeout = timeout
@@ -50,7 +50,7 @@ func MockOpenstackProvisionTimeout(timeout, retry time.Duration) (restore func()
 	}
 }
 
-func MockOpenstackServerBootTimeout(timeout, retry time.Duration) (restore func()) {
+func FakeOpenstackServerBootTimeout(timeout, retry time.Duration) (restore func()) {
 	oldTimeout := openstackServerBootTimeout
 	oldRetry := openstackServerBootRetry
 	openstackServerBootTimeout = timeout
@@ -61,7 +61,7 @@ func MockOpenstackServerBootTimeout(timeout, retry time.Duration) (restore func(
 	}
 }
 
-func MockOpenstackSerialOutputTimeout(timeout time.Duration) (restore func()) {
+func FakeOpenstackSerialOutputTimeout(timeout time.Duration) (restore func()) {
 	oldTimeout := openstackSerialOutputTimeout
 	openstackSerialOutputTimeout = timeout
 	return func() {

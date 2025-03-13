@@ -791,17 +791,17 @@ func (p *openstackProvider) authenticate() error {
 	return nil
 }
 
-type identityEndpointMediaTypes struct {
+type openstackIdentityEndpointMediaTypes struct {
 	Base string
 	Type string
 }
 
-type identityEndpointVersion struct {
-	MediaTypes []identityEndpointMediaTypes `json:"media-types"`
+type openstackIdentityEndpointVersion struct {
+	MediaTypes []openstackIdentityEndpointMediaTypes `json:"media-types"`
 }
 
-type identityEndpointInfo struct {
-	Version identityEndpointVersion
+type openstackIdentityEndpointInfo struct {
+	Version openstackIdentityEndpointVersion
 }
 
 func getIdentityAPIVersion(endpoint string) (int, error) {
@@ -813,20 +813,17 @@ func getIdentityAPIVersion(endpoint string) (int, error) {
 		return 0, fmt.Errorf("cannot request endpoint information (%s)", resp.Status)
 	}
 
-	var info identityEndpointInfo
+	var info openstackIdentityEndpointInfo
 	err = json.NewDecoder(resp.Body).Decode(&info)
 	if err != nil {
 		return 0, err
 	}
 
 	for _, mt := range info.Version.MediaTypes {
-		switch mt.Type {
-		case "application/vnd.openstack.identity-v3+json":
+		if mt.Type == "application/vnd.openstack.identity-v3+json" {
 			return 3, nil
-		case "application/vnd.openstack.identity-v2.0+json":
-			return 2, nil
 		}
 	}
 
-	return 0, errors.New("unrecognized API version")
+	return 0, errors.New("unsupported API version")
 }

@@ -1,6 +1,7 @@
 package spread
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -751,10 +752,13 @@ func (p *openstackProvider) checkCredentials() error {
 
 func (p *openstackProvider) authenticate() error {
 	// Only identity API v3 is currently supported
-	if !strings.HasSuffix(p.backend.Endpoint, "/v3") {
+	identityAPIVersion, err := getIdentityAPIVersion(p.backend.Endpoint)
+	if err != nil {
+		return fmt.Errorf("cannot obtain the identity API version: %w", err)
+	}
+	if identityAPIVersion != 3 {
 		return errors.New("identity API version not supported")
 	}
-	identityAPIVersion := 3
 
 	// The location entry contains project/region
 	var osproj, region string
@@ -785,4 +789,44 @@ func (p *openstackProvider) authenticate() error {
 	p.imageClient = glance.New(authClient)
 
 	return nil
+}
+
+type identityEndpointMediaTypes struct {
+	Base string
+	Type string
+}
+
+type identityEndpointVersion struct {
+	MediaTypes []identityEndpointMediaTypes `json:"media-types"`
+}
+
+type identityEndpointInfo struct {
+	Version identityEndpointVersion
+}
+
+func getIdentityAPIVersion(endpoint string) (int, error) {
+	resp, err := http.Get(endpoint)
+	if err != nil {
+		return 0, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("cannot request endpoint information (%s)", resp.Status)
+	}
+
+	var info identityEndpointInfo
+	err = json.NewDecoder(resp.Body).Decode(&info)
+	if err != nil {
+		return 0, err
+	}
+
+	for _, mt := range info.Version.MediaTypes {
+		switch mt.Type {
+		case "application/vnd.openstack.identity-v3+json":
+			return 3, nil
+		case "application/vnd.openstack.identity-v2.0+json":
+			return 2, nil
+		}
+	}
+
+	return 0, errors.New("unrecognized API version")
 }

@@ -809,6 +809,8 @@ func getIdentityAPIVersion(endpoint string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return 0, fmt.Errorf("cannot request endpoint information (%s)", resp.Status)
 	}

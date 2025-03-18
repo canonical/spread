@@ -82,6 +82,7 @@ type Backend struct {
 
 	Priority OptionalInt
 	Manual   bool
+	Vm       bool
 }
 
 func (b *Backend) String() string { return fmt.Sprintf("backend %q", b.Name) }
@@ -139,6 +140,7 @@ type System struct {
 
 	Priority OptionalInt
 	Manual   bool
+	Vm       bool
 }
 
 func (system *System) String() string { return system.Backend + ":" + system.Name }

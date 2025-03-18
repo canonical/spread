@@ -1,4 +1,13 @@
 summary: Ensure it works.
 
 execute: |
-    echo WORKS NPROC=$(nproc) $SPREAD_SYSTEM
+    # Use presence of lxd-agent process as proof of being run in a VM.
+    #
+    # systemd-detect-virt(1) does unfortunately not work reliably in the CI
+    # environment.
+    #
+    # We also cannot rely on the fact that LXD populates manufacturer/product
+    # information for VMs because for all we know we are running in a container
+    # inside a LXD VM.
+    is_vm=$(pgrep lxd-agent &> /dev/null && echo 1 || echo 0)
+    echo WORKS NPROC=$(nproc) VM=$is_vm $SPREAD_SYSTEM

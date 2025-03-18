@@ -18,6 +18,13 @@ backends:
           - ubuntu-24.04-with-plan:
               image: ubuntu-24.04
               plan: c1-m1
+    lxd-d:
+        type: lxd
+        systems:
+          - ubuntu-24.04-vm:
+              image: ubuntu-24.04
+              plan: c1-m1
+              vm: true
 
 path: /home/test
 

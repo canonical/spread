@@ -1,4 +1,4 @@
 summary: Ensure it works.
 
 execute: |
-    echo WORKS $SPREAD_SYSTEM
+    echo WORKS NPROC=$(nproc) $SPREAD_SYSTEM

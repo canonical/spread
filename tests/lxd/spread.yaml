@@ -14,7 +14,10 @@ backends:
     lxd-c:
         type: lxd
         systems:
-            - ubuntu-24.04
+          - ubuntu-24.04:
+          - ubuntu-24.04-with-plan:
+              image: ubuntu-24.04
+              plan: c1-m1
 
 path: /home/test
 

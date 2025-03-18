@@ -111,6 +111,10 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 	if !p.options.Reuse {
 		args = append(args, "--ephemeral")
 	}
+	instanceType := p.lxdInstanceType(system)
+	if instanceType != "" {
+		args = append(args, "-t", instanceType)
+	}
 	output, err := exec.Command("lxc", args...).CombinedOutput()
 	if err != nil {
 		err = outputErr(output, err)
@@ -384,6 +388,17 @@ NextImage:
 	}
 
 	return "", errNoImage
+}
+
+func (p *lxdProvider) lxdInstanceType(system *System) string {
+	instanceType := ""
+	if system.Plan != "" {
+		instanceType = system.Plan
+	} else if p.backend.Plan != "" {
+		instanceType = p.backend.Plan
+	}
+
+	return instanceType
 }
 
 func lxdName(system *System) (string, error) {

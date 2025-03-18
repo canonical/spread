@@ -26,5 +26,10 @@ execute: |
         grep "^WORKS NPROC=[[:digit:]]\+ VM=0 ${system}\$" task.out
     done
 
+    for system in ubuntu-24.04-with-plan; do
+        grep "lxd-c:${system}:checks/main" task.out
+        grep "^WORKS NPROC=1 VM=0 ${system}\$" task.out
+    done
+
 debug: |
     cat task.out || true

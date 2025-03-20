@@ -150,6 +150,33 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 			return nil, err
 		}
 	}
+	printf("Waiting for cloud-init in lxd instance %s to complete...", name)
+	timeout = time.After(60 * time.Second)
+	retry = time.NewTicker(1 * time.Second)
+	defer retry.Stop()
+	for {
+		err := p.cloudInitDone(name, 10)
+		if err != nil {
+			_, is_timeout := err.(*lxdCloudInitTimeoutError)
+			_, is_not_present := err.(*lxdCloudInitNotPresentError)
+			if is_not_present {
+				printf(err.Error())
+				break
+			}
+			if !is_timeout {
+				s.Discard(ctx)
+				return nil, err
+			}
+		} else {
+			break
+		}
+		select {
+		case <-retry.C:
+		case <-timeout:
+			s.Discard(ctx)
+			return nil, err
+		}
+	}
 
 	err = p.tuneSSH(name)
 	if err != nil {
@@ -476,6 +503,42 @@ func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
 		}
 	}
 	return nil, &lxdNoServerError{name}
+}
+
+type lxdCloudInitTimeoutError struct {
+	name string
+}
+
+func (e *lxdCloudInitTimeoutError) Error() string {
+	return fmt.Sprintf("cloud-init not ready yet %q", e.name)
+}
+
+type lxdCloudInitNotPresentError struct {
+	name string
+}
+
+func (e *lxdCloudInitNotPresentError) Error() string {
+	return fmt.Sprintf("cloud-init not present in %q, assuming ready state",
+		e.name)
+}
+
+func (p *lxdProvider) cloudInitDone(name string, timeout int) error {
+	output, err := exec.Command("lxc", "exec", name, "--", "sh", "-c",
+		fmt.Sprintf("timeout %ds cloud-init status --long --wait",
+			timeout)).CombinedOutput()
+	if err != nil {
+		switch exitCode := err.(*exec.ExitError).ExitCode(); exitCode {
+		case 124:
+			return &lxdCloudInitTimeoutError{name}
+		case 127:
+			return &lxdCloudInitNotPresentError{name}
+		default:
+			return fmt.Errorf("cloud-init failed %q: %v",
+				name, outputErr(output, err))
+		}
+	}
+	logf("cloud-init done: %q: %q", name, output)
+	return nil
 }
 
 func (p *lxdProvider) tuneSSH(name string) error {

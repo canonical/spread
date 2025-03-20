@@ -87,6 +87,16 @@ prepare: |
             lxc image import tests/cache/lxd-ubuntu-16.04
         fi
     fi
+    # We need `mount fstype=devpts` for snapd to work properly within LXD
+    # containers.
+    #
+    # Without this change snapd is stuck in a forever loop on Ubuntu 20.04 and
+    # 22.04 container images while attempting to install the `lxd` snap as part
+    # of system initialization.
+    #
+    # https://github.com/canonical/lxd/blob/b13c4f528bf7c9703f673eaf15476c11e59a8074/lxd/apparmor/instance_lxc.go#L513
+    snap refresh --channel 5.21/stable lxd
+
     # Start lxd instance
     lxd init --auto
 

@@ -1,12 +1,19 @@
 project: spread
 
 backends:
-    lxd:
+    lxd-a:
+        type: lxd
         systems:
             - ubuntu-16.04
             - ubuntu-18.04
+    lxd-b:
+        type: lxd
+        systems:
             - ubuntu-20.04
             - ubuntu-22.04
+    lxd-c:
+        type: lxd
+        systems:
             - ubuntu-24.04
 
 path: /home/test

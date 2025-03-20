@@ -7,11 +7,23 @@ prepare: |
     fi
 
 execute: |
-    spread -vv -reuse -resend &> task.out
+    spread -vv -reuse -resend lxd-a &> task.out
+    spread -vv -reuse -resend lxd-b &>> task.out
+    spread -vv -reuse -resend lxd-c &>> task.out
 
-    for system in ubuntu-16.04 ubuntu-18.04 ubuntu-20.04 ubuntu-22.04 ubuntu-24.04; do
-        grep "lxd:${system}:checks/main" task.out
-        grep "^WORKS ${system}\$" task.out
+    for system in ubuntu-16.04 ubuntu-18.04; do
+        grep "lxd-a:${system}:checks/main" task.out
+        grep "^WORKS NPROC=[[:digit:]]\+ VM=0 ${system}\$" task.out
+    done
+
+    for system in ubuntu-20.04 ubuntu-22.04; do
+        grep "lxd-b:${system}:checks/main" task.out
+        grep "^WORKS NPROC=[[:digit:]]\+ VM=0 ${system}\$" task.out
+    done
+
+    for system in ubuntu-24.04; do
+        grep "lxd-c:${system}:checks/main" task.out
+        grep "^WORKS NPROC=[[:digit:]]\+ VM=0 ${system}\$" task.out
     done
 
 debug: |

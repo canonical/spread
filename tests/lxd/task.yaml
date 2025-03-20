@@ -7,10 +7,10 @@ prepare: |
     fi
 
 execute: |
-    spread -vv -reuse -resend lxd-a &> task.out
-    spread -vv -reuse -resend lxd-b &>> task.out
-    spread -vv -reuse -resend lxd-c &>> task.out
-    spread -vv -reuse -resend lxd-d &>> task.out
+    spread -vv -reuse -resend lxd-a 2>&1 | tee task.out
+    spread -vv -reuse -resend lxd-b 2>&1 | tee -a task.out
+    spread -vv -reuse -resend lxd-c 2>&1 | tee -a task.out
+    spread -vv -reuse -resend lxd-d 2>&1 | tee -a task.out
 
     for system in ubuntu-16.04 ubuntu-18.04; do
         grep "lxd-a:${system}:checks/main" task.out

@@ -575,11 +575,20 @@ func (p *lxdProvider) cloudInitDone(name string, timeout int) error {
 			return &lxdCloudInitTimeoutError{name}
 		case 127:
 			return &lxdCloudInitNotPresentError{name}
+		case 255:
+			if bytes.HasPrefix(output,
+				[]byte("Error: LXD VM agent isn't currently running")) {
+				return &lxdAgentNotAvailableError{name}
+			}
 		default:
 			if bytes.HasPrefix(output,
 				[]byte("Error: Failed to connect to lxd-agent")) {
 				return &lxdAgentNotAvailableError{name}
+			} else if bytes.HasPrefix(output,
+				[]byte("Error: Instance is not running")) {
+				return &lxdAgentNotAvailableError{name}
 			}
+
 			return fmt.Errorf("cloud-init failed %q: (%d) %v",
 				name, exitCode, outputErr(output, err))
 		}

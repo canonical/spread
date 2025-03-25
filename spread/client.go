@@ -85,48 +85,46 @@ func (c *Client) dialOnReboot(prevBootID string) error {
 	waitConfig := *c.config
 	waitConfig.Timeout = 5 * time.Second
 
+	bootIDCh := make(chan string)
 	for {
-		// Try to connect to the rebooting system, note that
-		// waitConfig is not well honored by golang, it is
-		// set to 5sec above but in reality it takes ~60sec
-		// before the code times out.
-		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
-		if err == nil {
-			// once successfully connected, check boot_id to
-			// see if the reboot actually happend
+		go func() {
+			// XXX: This can hang. We need to be reslient to this
+			// function never returning. The next best thing is to
+			// just create a new connection in a separate goroutine
+			// and let things (maybe?) time out if they hang,
+			// without blocking this loop.
+			if bootID, err := c.getBootID(); err == nil {
+				bootIDCh <- bootID
+			}
+
+		}()
+
+		select {
+		case bootID := <-bootIDCh:
+			if bootID == prevBootID {
+				// If we've seen the old boot ID then sleep for
+				// a good amount of time to let the machine
+				// reboot without being loaded extra with our
+				// questions.
+				time.Sleep(time.Second * 5)
+				continue
+			}
+
+			// Re-dial ssh to the system and set it as the current client.
+			sshc, err := ssh.Dial("tcp", c.addr, c.config)
+			if err != nil {
+				return fmt.Errorf("cannot re-dial ssh: %w", err)
+			}
 			c.sshc.Close()
 			c.sshc = sshc
-			curBootID, err := c.getBootID()
-			if err == nil {
-				if curBootID != prevBootID {
-					return nil
-				}
-			}
-		}
-
-		// Use multiple selects to ensure that the channels get
-		// checked in the right order. If a single select is used
-		// and all channels have data golang will pick a random
-		// channel. This means that on timeout there is a 1/2 chance
-		// that there is also a retry and ssh.Dial() is run again
-		// which needs to timeout first before the channels are
-		// checked again.
-		select {
+			return nil
 		case <-timeout:
 			return fmt.Errorf("kill-timeout reached after %s reboot request", c.job)
-		default:
-		}
-		select {
 		case <-relog.C:
 			printf("Reboot on %s is taking a while...", c.job)
-		default:
-		}
-		select {
 		case <-retry.C:
 		}
 	}
-
-	return nil
 }
 
 func (c *Client) Close() error {
@@ -305,12 +303,26 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 }
 
 func (c *Client) getBootID() (string, error) {
-	rawBootID, err := c.Output("cat /proc/sys/kernel/random/boot_id", "", nil)
+	sshc, err := ssh.Dial("tcp", c.addr, c.config)
 	if err != nil {
-		return "", fmt.Errorf("cannot obtain the remote system boot_id: %v", err)
+		return "", fmt.Errorf("cannot dial ssh: %w", err)
 	}
 
-	return string(bytes.TrimSpace(rawBootID)), nil
+	defer sshc.Close()
+
+	session, err := sshc.NewSession()
+	if err != nil {
+		return "", fmt.Errorf("cannot open new ssh session: %w", err)
+	}
+
+	defer session.Close()
+
+	bootIdBytes, err := session.Output("cat /proc/sys/kernel/random/boot_id")
+	if err != nil {
+		return "", fmt.Errorf("cannot get boot id: %w", err)
+	}
+
+	return string(bytes.TrimSpace(bootIdBytes)), nil
 }
 
 var toBashRC = map[string]bool{

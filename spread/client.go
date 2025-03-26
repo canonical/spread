@@ -82,9 +82,6 @@ func (c *Client) dialOnReboot(prevBootID string) error {
 	retry := time.NewTicker(200 * time.Millisecond)
 	defer retry.Stop()
 
-	waitConfig := *c.config
-	waitConfig.Timeout = 5 * time.Second
-
 	bootIDCh := make(chan string)
 	for {
 		go func() {

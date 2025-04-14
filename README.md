@@ -25,7 +25,7 @@ Spread
 [LXD backend](#lxd)  
 [QEMU backend](#qemu)  
 [Google backend](#google)  
-[Openstack backend](#openstack)  
+[OpenStack backend](#openstack)
 [Linode backend](#linode)  
 [AdHoc backend](#adhoc)  
 [More on parallelism](#parallelism)  
@@ -914,7 +914,7 @@ recommended to prevent automated manipulation of important machines.
 
 <a name="openstack"/>
 
-## Openstack backend
+## OpenStack backend
 
 This backend allows distributing your tasks to an OpenStack environment. It
 currently only supports version 3 of the OpenStack identity API and the

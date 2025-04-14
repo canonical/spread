@@ -22,7 +22,7 @@ import (
 	"golang.org/x/net/context"
 )
 
-func Openstack(p *Project, b *Backend, o *Options) Provider {
+func OpenStack(p *Project, b *Backend, o *Options) Provider {
 	return &openstackProvider{
 		project: p,
 		backend: b,
@@ -513,7 +513,7 @@ func (p *openstackProvider) address(ctx context.Context, s *openstackServer) (st
 	for {
 		server, err := p.computeClient.GetServer(s.d.Id)
 		if err != nil {
-			return "", fmt.Errorf("cannot get IP address for Openstack server %s: %v", s, &openstackError{err})
+			return "", fmt.Errorf("cannot get IP address for OpenStack server %s: %v", s, &openstackError{err})
 		}
 		// The addresses for a network is map of networks to a list of ip adresses
 		// We are configuring just 1 network address for the network
@@ -535,7 +535,7 @@ func (p *openstackProvider) address(ctx context.Context, s *openstackServer) (st
 		case <-retry.C:
 			debugf("Server %s is taking a while to get IP address...", s)
 		case <-timeout:
-			return "", fmt.Errorf("timeout waiting for Openstack server %s IP address", s)
+			return "", fmt.Errorf("timeout waiting for OpenStack server %s IP address", s)
 		case <-ctx.Done():
 			return "", fmt.Errorf("cannot wait for %s IP address: interrupted", s)
 		}
@@ -639,9 +639,9 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 	}
 	if err != nil {
 		if p.removeMachine(ctx, s) != nil {
-			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) new Openstack server %s: %v", s, err)}
+			return nil, &FatalError{fmt.Errorf("cannot allocate or deallocate (!) new OpenStack server %s: %v", s, err)}
 		}
-		return nil, &FatalError{fmt.Errorf("cannot allocate new Openstack server %s: %v", s, err)}
+		return nil, &FatalError{fmt.Errorf("cannot allocate new OpenStack server %s: %v", s, err)}
 	}
 
 	return s, nil

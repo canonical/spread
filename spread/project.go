@@ -59,12 +59,12 @@ type Backend struct {
 	// Only for qemu so far.
 	Memory Size
 
-	// Only for Linode, Google, Openstack so far.
+	// Only for Linode, Google, OpenStack so far.
 	Plan     string
 	Location string
 	Storage  Size
 
-	// Only for Openstack so far
+	// Only for OpenStack so far
 	Account  string
 	Endpoint string
 	Networks []string
@@ -128,7 +128,7 @@ type System struct {
 	// Only for Linode and Google so far.
 	Storage Size
 
-	// Only for Openstack so far
+	// Only for OpenStack so far
 	Networks []string
 	Groups   []string
 

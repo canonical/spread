@@ -9,10 +9,10 @@ import (
 )
 
 var (
-	OpenstackName = openstackName
+	OpenStackName = openstackName
 )
 
-func FakeOpenstackImageClient(p Provider, imageClient glanceImageClient) (restore func()) {
+func FakeOpenStackImageClient(p Provider, imageClient glanceImageClient) (restore func()) {
 	opst := p.(*openstackProvider)
 	oldGlanceImageClient := opst.imageClient
 	opst.imageClient = imageClient
@@ -21,7 +21,7 @@ func FakeOpenstackImageClient(p Provider, imageClient glanceImageClient) (restor
 	}
 }
 
-func FakeOpenstackComputeClient(p Provider, computeClient novaComputeClient) (restore func()) {
+func FakeOpenStackComputeClient(p Provider, computeClient novaComputeClient) (restore func()) {
 	opst := p.(*openstackProvider)
 	oldNovaImageClient := opst.computeClient
 	opst.computeClient = computeClient
@@ -30,7 +30,7 @@ func FakeOpenstackComputeClient(p Provider, computeClient novaComputeClient) (re
 	}
 }
 
-func FakeOpenstackGooseClient(p Provider, gooseClient gooseclient.Client) (restore func()) {
+func FakeOpenStackGooseClient(p Provider, gooseClient gooseclient.Client) (restore func()) {
 	opst := p.(*openstackProvider)
 	oldOsClient := opst.osClient
 	opst.osClient = gooseClient
@@ -39,7 +39,7 @@ func FakeOpenstackGooseClient(p Provider, gooseClient gooseclient.Client) (resto
 	}
 }
 
-func FakeOpenstackProvisionTimeout(timeout, retry time.Duration) (restore func()) {
+func FakeOpenStackProvisionTimeout(timeout, retry time.Duration) (restore func()) {
 	oldTimeout := openstackProvisionTimeout
 	oldRetry := openstackProvisionRetry
 	openstackProvisionTimeout = timeout
@@ -50,7 +50,7 @@ func FakeOpenstackProvisionTimeout(timeout, retry time.Duration) (restore func()
 	}
 }
 
-func FakeOpenstackServerBootTimeout(timeout, retry time.Duration) (restore func()) {
+func FakeOpenStackServerBootTimeout(timeout, retry time.Duration) (restore func()) {
 	oldTimeout := openstackServerBootTimeout
 	oldRetry := openstackServerBootRetry
 	openstackServerBootTimeout = timeout
@@ -61,7 +61,7 @@ func FakeOpenstackServerBootTimeout(timeout, retry time.Duration) (restore func(
 	}
 }
 
-func FakeOpenstackSerialOutputTimeout(timeout time.Duration) (restore func()) {
+func FakeOpenStackSerialOutputTimeout(timeout time.Duration) (restore func()) {
 	oldTimeout := openstackSerialOutputTimeout
 	openstackSerialOutputTimeout = timeout
 	return func() {
@@ -69,12 +69,12 @@ func FakeOpenstackSerialOutputTimeout(timeout time.Duration) (restore func()) {
 	}
 }
 
-func OpenstackFindImage(p Provider, name string) (*glance.ImageDetail, error) {
+func OpenStackFindImage(p Provider, name string) (*glance.ImageDetail, error) {
 	opst := p.(*openstackProvider)
 	return opst.findImage(name)
 }
 
-func OpenstackWaitProvision(p Provider, ctx context.Context, serverID, serverName string) error {
+func OpenStackWaitProvision(p Provider, ctx context.Context, serverID, serverName string) error {
 	opst := p.(*openstackProvider)
 	server := &openstackServer{
 		p: opst,
@@ -86,7 +86,7 @@ func OpenstackWaitProvision(p Provider, ctx context.Context, serverID, serverNam
 	return opst.waitProvision(ctx, server)
 }
 
-func OpenstackWaitServerBoot(p Provider, ctx context.Context, serverID, serverName string, serverNetworks []string) error {
+func OpenStackWaitServerBoot(p Provider, ctx context.Context, serverID, serverName string, serverNetworks []string) error {
 	opst := p.(*openstackProvider)
 	server := &openstackServer{
 		p: opst,
@@ -99,6 +99,6 @@ func OpenstackWaitServerBoot(p Provider, ctx context.Context, serverID, serverNa
 	return opst.waitServerBoot(ctx, server)
 }
 
-func NewOpenstackError(gooseError error) error {
+func NewOpenStackError(gooseError error) error {
 	return &openstackError{gooseError}
 }

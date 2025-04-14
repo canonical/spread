@@ -38,6 +38,14 @@ func FakeSshDial(f func(network, addr string, config *ssh.ClientConfig) (*ssh.Cl
 	}
 }
 
+func FakeTimeNow(f func() time.Time) (restore func()) {
+	oldTimeNow := timeNow
+	timeNow = f
+	return func() {
+		timeNow = oldTimeNow
+	}
+}
+
 type LXDServerJSON = lxdServerJSON
 
 func LXDProviderServerJSON(provider Provider, name string) (*LXDServerJSON, error) {

@@ -25,6 +25,7 @@ Spread
 [LXD backend](#lxd)  
 [QEMU backend](#qemu)  
 [Google backend](#google)  
+[Openstack backend](#openstack)  
 [Linode backend](#linode)  
 [AdHoc backend](#adhoc)  
 [More on parallelism](#parallelism)  
@@ -909,6 +910,50 @@ and need to be removed by hand.
 
 For long term use, a dedicated project in the Google Cloud Platform is
 recommended to prevent automated manipulation of important machines.
+
+
+<a name="openstack"/>
+
+## Openstack backend
+
+This backend allows distributing your tasks to an OpenStack environment. It
+currently only supports version 3 of the OpenStack identity API and the
+default domain.
+
+_$PROJECT/spread.yaml_
+```
+(...)
+
+backends:
+    openstack:
+        endpoint: https://my-keystone-server:5000/v3
+        account: my-account
+        key: '$(HOST: echo "$OS_PASSWORD")'
+        location: my-project/my-region
+        plan: cpu2-ram4-disk10
+        halt-timeout: 2h
+        systems:
+            - ubuntu-20.04:
+                  image: ubuntu-focal-daily-amd64
+                  workers: 2
+
+            # Extended syntax:
+            - another-system:
+                image: some-other-image
+                networks:
+                    - network_external
+                    - network_pvn
+                groups:
+                    - group_external
+```
+
+Images are located by first attempting to match the provided value exactly
+against the image name. If exact match exists the most recent image with
+a partially matching name will be selected.
+
+When machines complete their jobs they will be removed. If anything happens
+that prevents the immediate removal, they will remain in the account and
+will need to be removed manually.
 
 
 <a name="linode"/>

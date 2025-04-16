@@ -16,7 +16,6 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
-	"golang.org/x/oauth2/jwt"
 
 	"github.com/niemeyer/pretty"
 	"regexp"
@@ -45,6 +44,8 @@ type googleProvider struct {
 	googleZone    string
 
 	client *http.Client
+
+	serviceAccount string
 
 	mu sync.Mutex
 
@@ -464,6 +465,20 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 		},
 	}
 
+	if system.AttachServiceAccount {
+		if p.serviceAccount == "" {
+			return nil, &FatalError{fmt.Errorf("no service account to attach")}
+		}
+		// XXX the service account could be set from google key
+		// credentials, but the account used in the context of the
+		// request may not have the permissions to attach a service
+		// account to the instance
+		params["serviceAccounts"] = []googleParams{{
+			"email":  p.serviceAccount,
+			"scopes": []string{"https://www.googleapis.com/auth/cloud-platform"},
+		}}
+	}
+
 	if system.SecureBoot {
 		params["shieldedInstanceConfig"] = googleParams{
 			"enableSecureBoot":          true,
@@ -760,6 +775,28 @@ func (p *googleProvider) waitOperation(ctx context.Context, s *googleServer, ver
 	panic("unreachable")
 }
 
+func serviceAccountFromKey(raw []byte) (string, error) {
+	const serviceAccountKey = "service_account"
+
+	// taken from golang.org/x/oauth/google
+	var credentials struct {
+		Type        string `json:"type"`
+		ClientEmail string `json:"client_email"`
+	}
+
+	if err := json.Unmarshal(raw, &credentials); err != nil {
+		return "", err
+	}
+
+	if credentials.Type != serviceAccountKey {
+		// email is only relevant if dealing with service_account
+		// credentials type
+		return "", nil
+	}
+
+	return credentials.ClientEmail, nil
+}
+
 func (p *googleProvider) checkKey() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -776,15 +813,29 @@ func (p *googleProvider) checkKey() error {
 
 	if err == nil && p.client == nil {
 		ctx := context.Background()
-		if strings.HasPrefix(p.backend.Key, "{") {
-			var cfg *jwt.Config
-			cfg, err = google.JWTConfigFromJSON([]byte(p.backend.Key), googleScope)
-			if err == nil {
-				p.client = oauth2.NewClient(ctx, cfg.TokenSource(ctx))
+		var creds *google.Credentials
+		if p.backend.Key != "" {
+			var raw []byte
+			if strings.HasPrefix(p.backend.Key, "{") {
+				// already a raw JSON blob
+				raw = []byte(p.backend.Key)
+			} else {
+				raw, err = ioutil.ReadFile(p.backend.Key)
 			}
+
+			if err == nil {
+				creds, err = google.CredentialsFromJSON(ctx, raw, googleScope)
+			}
+
+			// identify service account if possible
+			p.serviceAccount, err = serviceAccountFromKey(raw)
 		} else {
-			os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", p.backend.Key)
-			p.client, err = google.DefaultClient(context.Background(), googleScope)
+			// none provided, let the google library find whatever
+			// is appropriate
+			creds, err = google.FindDefaultCredentials(ctx, googleScope)
+		}
+		if err == nil {
+			p.client = oauth2.NewClient(ctx, creds.TokenSource)
 		}
 	}
 	if err == nil {

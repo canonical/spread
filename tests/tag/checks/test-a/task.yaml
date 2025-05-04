@@ -1,0 +1,6 @@
+summary: Test the tag option
+
+tags: [tag-a]
+
+execute: |
+    echo WORKS

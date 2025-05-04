@@ -1,0 +1,4 @@
+summary: Test the tag option
+
+execute: |
+    echo WORKS

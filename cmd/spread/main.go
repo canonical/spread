@@ -33,6 +33,7 @@ var (
 	artifacts      = flag.String("artifacts", "", "Where to store task artifacts")
 	seed           = flag.Int64("seed", 0, "Seed for job order permutation")
 	repeat         = flag.Int("repeat", 0, "Number of times to repeat each task")
+	tag            = flag.String("tag", "", "Filter tests which match with the tag specified")
 	garbageCollect = flag.Bool("gc", false, "Garbage collect backend resources when possible")
 )
 
@@ -95,6 +96,7 @@ func run() error {
 		Artifacts:      *artifacts,
 		Seed:           *seed,
 		Repeat:         *repeat,
+		Tag:            *tag,
 		GarbageCollect: *garbageCollect,
 	}
 

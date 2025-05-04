@@ -1,5 +1,5 @@
 name: spread
-version: 2020.08.19
+adopt-info: spread
 summary: Convenient full-system test (task) distribution
 description: |
     Spread is a plesant way distribute full-system integration tests and
@@ -12,14 +12,35 @@ description: |
 
 confinement: strict
 grade: stable
-base: core20
+base: core22
 
+plugs:
+  dot-spread:
+    interface: personal-files
+    read:
+      - $HOME/.spread
+    write:
+      - $HOME/.spread
+  dot-gcloud:
+    interface: personal-files
+    read:
+      - $HOME/.config/gcloud
 apps:
     spread:
         command: bin/spread
-        plugs: [home, network, network-bind]
+        plugs:
+          - home
+          - network
+          - network-bind
+          - dot-spread
+          - dot-gcloud
 
 parts:
     spread:
         plugin: go
         source: .
+        build-packages: [git]
+        build-snaps: [go]
+        override-pull: |
+          snapcraftctl pull
+          snapcraftctl set-version "$(date +"%Y.%m.%d").g$(git describe --always)"

@@ -432,6 +432,27 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 	} else if system.Storage > 0 {
 		diskParams["diskSizeGb"] = int(system.Storage / gb)
 	}
+	disks := []googleParams{{
+			"autoDelete":       "true",
+			"boot":             "true",
+			"type":             "PERSISTENT",
+			"initializeParams": diskParams,
+		}}
+	if system.Disks > 10 {
+		return nil, &FatalError{fmt.Errorf("cannot allocate a Google server with more than 10 disks")}
+	} else if system.Disks < 0 {
+		return nil, &FatalError{fmt.Errorf("cannot allocate a Google server with negative number of disks")}
+	} else if system.Disks == 0 {
+		system.Disks = 1
+	}
+	for i := 1; i < system.Disks; i++ {
+		disks = append(disks, googleParams{
+				"autoDelete":       "true",
+				"boot":             "false",
+				"type":             "PERSISTENT",
+				"initializeParams": diskParams,
+			})
+	}
 
 	minCpuPlatform := "AUTOMATIC"
 	if system.CPUFamily != "" {
@@ -449,12 +470,7 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 			}},
 			"network": "global/networks/default",
 		}},
-		"disks": []googleParams{{
-			"autoDelete":       "true",
-			"boot":             "true",
-			"type":             "PERSISTENT",
-			"initializeParams": diskParams,
-		}},
+		"disks": disks,
 		"metadata": googleParams{
 			"items": metadata,
 		},

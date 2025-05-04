@@ -494,14 +494,6 @@ func (p *linodeProvider) boot(s *linodeServer, configID int) (*linodeSimpleJob, 
 	})
 }
 
-func (p *linodeProvider) reboot(s *linodeServer, configID int) (*linodeSimpleJob, error) {
-	return p.simpleJob(s, "reboot", linodeParams{
-		"api_action": "linode.reboot",
-		"LinodeID":   s.d.ID,
-		"ConfigID":   configID,
-	})
-}
-
 func (p *linodeProvider) shutdown(s *linodeServer) (*linodeSimpleJob, error) {
 	return p.simpleJob(s, "shutdown", linodeParams{
 		"api_action": "linode.shutdown",

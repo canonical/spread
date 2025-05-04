@@ -221,25 +221,6 @@ func (p *humboxProvider) checkKey() error {
 	return err
 }
 
-const (
-	humboxMissingAccount = "MISSING-ACCOUNT"
-	humboxMissingAddress = "MISSING-ADDRESS"
-)
-
-func (p *humboxProvider) haccount() string {
-	if i := strings.Index(p.backend.Location, "@"); i > 0 {
-		return p.backend.Location[:i]
-	}
-	return humboxMissingAccount
-}
-
-func (p *humboxProvider) haddress() string {
-	if i := strings.Index(p.backend.Location, "@"); i > 0 && i+1 < len(p.backend.Location) {
-		return p.backend.Location[i+1:]
-	}
-	return humboxMissingAddress
-}
-
 type humboxResult struct {
 	Error string
 }

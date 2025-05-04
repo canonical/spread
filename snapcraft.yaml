@@ -10,7 +10,7 @@ description: |
     where, what to do before and after it runs, and how to duplicate jobs
     with minor variations without copy & paste.
 
-confinement: strict
+confinement: classic
 grade: stable
 base: core20
 

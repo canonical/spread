@@ -573,6 +573,10 @@ the task fails.
 To do that there is an option `-repeat` which receives an integer indicating 
 the number of reexecutions to do, being 0 the default value.
 
+In case it is desired to repeat a set of tasks in the original order the option
+that can be used is `-repeat-all`, which receives an integer indicating
+the number of reexecutions to do, being 0 the default value.
+
 
 <a name="passwords">
 

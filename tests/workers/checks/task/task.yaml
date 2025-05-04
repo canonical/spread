@@ -1,0 +1,9 @@
+summary: The automatic task.
+
+environment:
+    TASK/first: task-1
+    TASK/second: task-2
+    TASK/third: task-3
+
+execute: |
+    echo "WORKS:$TASK"

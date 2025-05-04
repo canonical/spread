@@ -883,6 +883,15 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 		return nil, fmt.Errorf("remote project path must be absolute and not /: %s", p.RemotePath)
 	}
 
+	// Set the all the system workers to 1 in case the single worker option is set
+	if options.SingleWorker {
+		for _, backend := range p.Backends {
+			for _, system := range backend.Systems {
+				system.Workers = 1
+			}
+		}
+	}
+
 	for _, suite := range p.Suites {
 		senv := envmap{suite, suite.Environment}
 		sevr := strmap{suite, evars(suite.Environment, "+")}

@@ -1,0 +1,15 @@
+summary: Test the MATCH function.
+
+prepare: |
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
+
+execute: |
+    # Check it is possible to use just 1 worker
+    spread -single-worker lxd:ubuntu-16.04:checks/ &> task1.out
+    [ "$(grep -c Allocating task1.out)" -eq 1 ]
+
+    spread lxd:ubuntu-16.04:checks/ &> task2.out
+    [ "$(grep -c Allocating task2.out)" -eq 2 ]

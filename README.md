@@ -17,6 +17,7 @@ Spread
 [Fast iterations with reuse](#reuse)  
 [Debugging](#debugging)  
 [Repeating tasks](#repeating)
+[Single Worker](#single-worker)
 [Passwords and usernames](#passwords)  
 [Including, excluding, and renaming files](#including)  
 [Selecting which tasks to run](#selecting)  
@@ -572,6 +573,14 @@ the task fails.
 
 To do that there is an option `-repeat` which receives an integer indicating 
 the number of reexecutions to do, being 0 the default value.
+
+<a name="single-worker"/>
+
+## Single Worker
+
+The number of workers can be set as part of the spread.yaml file and also by
+using the `-single-worker` option, which automatically set the number of
+workers used by all the systems selected to 1.
 
 
 <a name="passwords">

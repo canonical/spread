@@ -1,0 +1,20 @@
+summary: Ensure it works.
+
+environment:
+    skip/T1: true
+    exec/T1: true
+    skip/T2: false
+    exec/T2: true
+    skip/T3: false
+    exec/T3: false
+
+details: |
+    Test
+
+skip:
+  reason: This is the skip reason
+  check: |
+    [ "$skip" = "true" ]
+
+execute: |
+    [ "$exec" = "true" ]

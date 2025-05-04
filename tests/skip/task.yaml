@@ -1,0 +1,20 @@
+summary: Test the skip condition feature
+
+prepare: |
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
+
+execute: |
+    # Check when the skip condition matches (the test execution fails)
+    spread -reuse -resend &> task1.out || true
+    grep 'Successful tasks: 1' task1.out
+    grep 'Failed tasks: 1' task1.out
+    grep 'Skipped tasks: 1' task1.out
+
+    grep 'Skipping' task1.out
+    grep 'This is the skip reason' task1.out
+
+debug: |
+    cat task1.out || true

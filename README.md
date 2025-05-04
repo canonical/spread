@@ -11,7 +11,8 @@ Spread
 [Variants](#variants)  
 [Blacklisting and whitelisting](#blacklisting)  
 [Preparing and restoring](#preparing)  
-[Functions](#functions)
+[Skip condition](#skip-condition)  
+[Functions](#functions)  
 [Rebooting](#rebooting)  
 [Timeouts](#timeouts)  
 [Fast iterations with reuse](#reuse)  
@@ -403,6 +404,32 @@ scripts may also be defined in the same places. These are only run when other
 scripts fail, and their purpose is to display further information which might
 be helpful when trying to understand what went wrong.
 
+<a name="skip-condition"/>
+
+## Skip condition
+
+The skip condition is used to determine if the task has to be skiped or not.
+
+The skip condition which can be only defined at task level is called before
+the task preparation and in case the result is possitive the task is skipped
+(prepare, execute and restore).
+
+For the skip condition has to be defined a reason which is a message that is
+shown with the tasks results and a check which is what is evaluated to define
+if the task is either skipped or executed.
+
+This is an example to show how to define a skip condition for a task:
+
+```
+summary: Skip condition example
+skip:
+    reason: This is the skip reason
+    check: |
+        [ -d /path/to/dir ]
+        [ -f /path/to/file ]
+execute: |
+    echo "This is an example"
+```
 
 <a name="functions"/>
 

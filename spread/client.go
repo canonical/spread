@@ -295,7 +295,18 @@ func (c *Client) run(script string, dir string, env *Environment, mode outputMod
 		if err != nil {
 			return nil, err
 		}
-		c.Run("reboot", "", nil)
+
+		errch := make(chan error, 1)
+		go func() {
+			errch <- c.Run("reboot", "", nil)
+		}()
+
+		retry := time.NewTicker(60 * time.Second)
+		defer retry.Stop()
+		select {
+		case <-retry.C:
+			c.sshc.Close()
+		}
 
 		if err := c.dialOnReboot(bootID); err != nil {
 			return nil, err
@@ -721,6 +732,7 @@ func (c *Client) runCommand(session *ssh.Session, cmd string, stdout, stderr io.
 			// Use a different time so it has a different id on Travis, but keep
 			// the original start time so the message shows the task time so far.
 			start = start.Add(1)
+
 			if bytes.Equal(output, unchangedMarker) {
 				printft(start, startTime|endTime, "WARNING: %s running late. Output unchanged.", c.job)
 			} else if len(output) == 0 {

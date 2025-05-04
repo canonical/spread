@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
@@ -35,10 +36,33 @@ type Client struct {
 	killTimeout time.Duration
 }
 
-func Dial(server Server, username, password string) (*Client, error) {
+func getSSHKeySigner(sshkeyfile string) (ssh.Signer, error) {
+	key, err := ioutil.ReadFile(sshkeyfile)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read private key file: %v", err)
+	}
+	// Create the Signer for this private key.
+	// It is not supported the
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse private key: %v", err)
+	}
+	return signer, nil
+}
+
+func Dial(server Server, username, password string, sshkeyfile string) (*Client, error) {
+	auth := ssh.Password(password)
+	if sshkeyfile != "" {
+		signer, err := getSSHKeySigner(sshkeyfile)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to parse ssh key from file %s: %v", sshkeyfile, err)
+		}
+		auth = ssh.PublicKeys(signer)
+	}
+
 	config := &ssh.ClientConfig{
 		User:            username,
-		Auth:            []ssh.AuthMethod{ssh.Password(password)},
+		Auth:            []ssh.AuthMethod{auth},
 		Timeout:         10 * time.Second,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
@@ -1036,7 +1060,7 @@ func waitPortUp(ctx context.Context, what fmt.Stringer, address string) error {
 	return nil
 }
 
-func waitServerUp(ctx context.Context, server Server, username, password string) error {
+func waitServerUp(ctx context.Context, server Server, username, password string, sshkey string) error {
 	var timeout = time.After(5 * time.Minute)
 	var relog = time.NewTicker(2 * time.Minute)
 	defer relog.Stop()
@@ -1045,7 +1069,7 @@ func waitServerUp(ctx context.Context, server Server, username, password string)
 
 	for {
 		debugf("Waiting until %s is listening...", server)
-		client, err := Dial(server, username, password)
+		client, err := Dial(server, username, password, sshkey)
 		if err == nil {
 			client.Close()
 			break

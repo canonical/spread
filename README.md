@@ -316,6 +316,12 @@ Just add this to the task or suite body:
 systems: [-ubuntu-14.04]
 ```
 
+And, what if you want to run in all the ubuntu systems, but skip a particular ubuntu-14.04?
+Just add this to the task or suite body:
+```
+systems: [ubuntu-*, -ubuntu-14.04]
+```
+
 Cascading also takes place for these settings - each level can
 add/remove/replace what the previous level defined, again with the ordering:
 

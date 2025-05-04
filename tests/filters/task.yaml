@@ -1,0 +1,85 @@
+summary: Test the MATCH function.
+
+prepare: |
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
+
+restore: |
+    rm -f checks/main/task.yaml
+
+execute: |
+    cp checks/main/task1.yaml checks/main/task.yaml
+    # Match: lxd:ubuntu-16.04, lxd:ubuntu-20.04 and lxd:ubuntu-22.04
+    spread -list lxd:checks/main &> task.out
+    test "$(cat task.out | wc -l)" = 3
+    grep -q lxd:ubuntu-16.04:checks/main task.out
+    grep -q lxd:ubuntu-20.04:checks/main task.out
+    grep -q lxd:ubuntu-22.04:checks/main task.out
+
+    cp checks/main/task2.yaml checks/main/task.yaml
+    # Match: lxd:ubuntu-20.04 and lxd:ubuntu-22.04
+    spread -list lxd:checks/main &> task.out
+    test "$(cat task.out | wc -l)" = 2
+    grep -q lxd:ubuntu-20.04:checks/main task.out
+    grep -q lxd:ubuntu-22.04:checks/main task.out
+
+    cp checks/main/task3.yaml checks/main/task.yaml
+    # Match: lxd:ubuntu-22.04
+    spread -list lxd:checks/main &> task.out
+    test "$(cat task.out | wc -l)" = 1
+    grep -q lxd:ubuntu-22.04:checks/main task.out
+
+    cp checks/main/task4.yaml checks/main/task.yaml
+    # Match: lxd:ubuntu-20.04, lxd:ubuntu-22.04
+    # Match: All the 5 google systems
+    spread -list checks/main &> task.out 
+    test "$(cat task.out | wc -l)" = 7
+    grep -q google:ubuntu-20.04-64:checks/main task.out
+    grep -q google:debian-sid-64:checks/main task.out
+    grep -q google:ubuntu-20.04-arm-64:checks/main task.out
+    grep -q lxd:ubuntu-20.04:checks/main task.out
+
+    cp checks/main/task5.yaml checks/main/task.yaml
+    # No Matches
+    spread -list lxd:checks/main 2>&1 | grep -q "error: nothing matches provider filter"
+
+    cp checks/main/task6.yaml checks/main/task.yaml
+    # Match: All the lxd systems
+    spread -list lxd:checks/main &> task.out
+    test "$(cat task.out | wc -l)" = 4
+    grep -q lxd:ubuntu-20.04:checks/main task.out
+    grep -q lxd:ubuntu-22.04:checks/main task.out
+
+    cp checks/main/task7.yaml checks/main/task.yaml
+    # Match: google:ubuntu-20.04 and google:ubuntu-22.04
+    spread -list google:checks/main &> task.out
+    test "$(cat task.out | wc -l)" = 2
+    grep -q google:ubuntu-20.04-64:checks/main task.out
+    grep -q google:ubuntu-22.04-64:checks/main task.out
+
+    cp checks/main/task8.yaml checks/main/task.yaml
+    # Match: All the lxd systems
+    spread -list lxd:checks/main &> task.out
+    test "$(cat task.out | wc -l)" = 4
+    grep -q lxd:ubuntu-16.04:checks/main task.out
+    grep -q lxd:ubuntu-22.04:checks/main task.out
+
+    cp checks/main/task9.yaml checks/main/task.yaml
+    # Match: All the ubuntu 1* and debian systems
+    spread -list checks/main &> task.out
+    test "$(cat task.out | wc -l)" = 3
+    grep -q lxd:ubuntu-16.04:checks/main task.out
+    grep -q lxd:ubuntu-18.04:checks/main task.out
+    grep -q google:debian-sid-64:checks/main task.out
+
+    cp checks/main/task10.yaml checks/main/task.yaml
+    # Match: All the arm systems
+    spread -list checks/main &> task.out
+    test "$(cat task.out | wc -l)" = 2
+    grep -q google:ubuntu-20.04-arm-64:checks/main task.out
+    grep -q google:ubuntu-22.04-arm-64:checks/main task.out
+
+debug: |
+    cat task.out || true

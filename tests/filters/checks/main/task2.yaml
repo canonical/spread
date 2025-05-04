@@ -1,0 +1,6 @@
+summary: Test the filters for systems and backends work.
+
+systems: [ubuntu-*, -ubuntu-1*]
+
+execute: |
+    echo WORKS

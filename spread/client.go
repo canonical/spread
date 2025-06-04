@@ -657,7 +657,7 @@ func (c *Client) RecvTar(packDir string, include []string, tar io.Writer) error 
 	var stderr safeBuffer
 	session.Stdout = tar
 	session.Stderr = &stderr
-	cmd := fmt.Sprintf(`%s/bin/tar -C %q -cJ --sort=name --ignore-failed-read -- %s`, c.sudo(), packDir, strings.Join(args, " "))
+	cmd := fmt.Sprintf(`%s/bin/tar -C %q -cz --sort=name --ignore-failed-read -- %s`, c.sudo(), packDir, strings.Join(args, " "))
 	err = c.runCommand(session, cmd, nil, &stderr)
 	if err != nil {
 		return outputErr(stderr.Bytes(), err)

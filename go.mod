@@ -16,13 +16,13 @@ require (
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
 
-require golang.org/x/term v0.30.0
+require golang.org/x/term v0.32.0
 
 require (
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
 	github.com/juju/collections v0.0.0-20220203020748-febd7cad8a7a // indirect
 	github.com/kr/pretty v0.2.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 )

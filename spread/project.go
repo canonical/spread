@@ -759,6 +759,7 @@ func checkSystems(context fmt.Stringer, systems []string) error {
 
 type Filter interface {
 	Pass(job *Job) bool
+	PassOrder(*Job) (int, bool)
 }
 
 type filterExp struct {
@@ -772,10 +773,15 @@ type filter struct {
 }
 
 func (f *filter) Pass(job *Job) bool {
+	_, ok := f.PassOrder(job)
+	return ok
+}
+
+func (f *filter) PassOrder(job *Job) (int, bool) {
 	if len(f.exps) == 0 {
-		return true
+		return 0, true
 	}
-	for _, exp := range f.exps {
+	for i, exp := range f.exps {
 		if exp.firstSample > 0 {
 			if job.Sample < exp.firstSample {
 				continue
@@ -785,10 +791,10 @@ func (f *filter) Pass(job *Job) bool {
 			}
 		}
 		if exp.regexp.MatchString(job.Name) {
-			return true
+			return i, true
 		}
 	}
-	return false
+	return 0, false
 }
 
 func NewFilter(args []string) (Filter, error) {
@@ -862,6 +868,8 @@ func (p *Project) backendNames() []string {
 
 func (p *Project) Jobs(options *Options) ([]*Job, error) {
 	var jobs []*Job
+
+	jobOrder := make(map[string]int)
 
 	hasFilter := options.Filter != nil
 	manualBackends := hasFilter
@@ -975,8 +983,12 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 							}
 							job.Environment = env.Variant(variant)
 
-							if options.Filter != nil && !options.Filter.Pass(job) {
-								continue
+							if options.Filter != nil {
+								order, ok := options.Filter.PassOrder(job)
+								if !ok {
+									continue
+								}
+								jobOrder[job.Name] = order
 							}
 
 							jobs = append(jobs, job)
@@ -1076,6 +1088,11 @@ func (p *Project) Jobs(options *Options) ([]*Job, error) {
 	}
 
 	sort.Sort(jobsByName(jobs))
+	if options.ExplicitOrder {
+		sort.SliceStable(jobs, func(i, j int) bool {
+			return jobOrder[jobs[i].Name] < jobOrder[jobs[j].Name]
+		})
+	}
 
 	return jobs, nil
 }

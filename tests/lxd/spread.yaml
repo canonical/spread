@@ -1,13 +1,30 @@
 project: spread
 
 backends:
-    lxd:
+    lxd-a:
+        type: lxd
         systems:
             - ubuntu-16.04
             - ubuntu-18.04
+    lxd-b:
+        type: lxd
+        systems:
             - ubuntu-20.04
             - ubuntu-22.04
-            - ubuntu-24.04
+    lxd-c:
+        type: lxd
+        systems:
+          - ubuntu-24.04:
+          - ubuntu-24.04-with-plan:
+              image: ubuntu-24.04
+              plan: c1-m1
+    lxd-d:
+        type: lxd
+        systems:
+          - ubuntu-24.04-vm:
+              image: ubuntu-24.04
+              plan: c1-m1
+              vm: true
 
 path: /home/test
 

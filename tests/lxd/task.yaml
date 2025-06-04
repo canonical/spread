@@ -7,12 +7,49 @@ prepare: |
     fi
 
 execute: |
-    spread -vv -reuse -resend &> task.out
+    spread -vv -reuse -resend lxd-a 2>&1 | tee task.out
+    spread -vv -reuse -resend lxd-b 2>&1 | tee -a task.out
+    spread -vv -reuse -resend lxd-c 2>&1 | tee -a task.out
+    spread -vv -reuse -resend lxd-d 2>&1 | tee -a task.out
 
-    for system in ubuntu-16.04 ubuntu-18.04 ubuntu-20.04 ubuntu-22.04 ubuntu-24.04; do
-        grep "lxd:${system}:checks/main" task.out
-        grep "^WORKS ${system}\$" task.out
+    for system in ubuntu-16.04 ubuntu-18.04; do
+        grep "lxd-a:${system}:checks/main" task.out
+        grep "^WORKS NPROC=[[:digit:]]\+ VM=0 ${system}\$" task.out
+    done
+
+    for system in ubuntu-20.04 ubuntu-22.04; do
+        grep "lxd-b:${system}:checks/main" task.out
+        grep "^WORKS NPROC=[[:digit:]]\+ VM=0 ${system}\$" task.out
+    done
+
+    for system in ubuntu-24.04; do
+        grep "lxd-c:${system}:checks/main" task.out
+        grep "^WORKS NPROC=[[:digit:]]\+ VM=0 ${system}\$" task.out
+    done
+
+    for system in ubuntu-24.04-with-plan; do
+        grep "lxd-c:${system}:checks/main" task.out
+        grep "^WORKS NPROC=1 VM=0 ${system}\$" task.out
+    done
+
+    for system in ubuntu-24.04-vm; do
+        grep "lxd-d:${system}:checks/main" task.out
+        grep "^WORKS NPROC=1 VM=1 ${system}\$" task.out
     done
 
 debug: |
+    snap list || true
+    df -h || true
+    free -h || true
+    lxc image list || true
+    lxc network list || true
+    lxc list || true
+    journalctl -u snap.lxd.daemon | cat || true
+    cat /var/snap/lxd/common/lxd/logs/dnsmasq.* || true
+    for i in $(lxc list | awk '/RUNNING/{print$2}'); do
+        lxc exec $i -- cat /var/log/cloud-init*.log || true
+        lxc exec $i -- sh -c 'journalctl | cat' || true
+    done
+    cat /proc/cpuinfo || true
+    dmesg || true
     cat task.out || true

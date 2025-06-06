@@ -2,7 +2,7 @@ module github.com/snapcore/spread
 
 go 1.23.0
 
-toolchain go1.24.3
+toolchain go1.24.4
 
 require (
 	github.com/go-goose/goose/v5 v5.0.0-20230421180421-abaee9096e3a

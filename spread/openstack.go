@@ -263,7 +263,7 @@ func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, er
 	var lastCreatedDate time.Time
 
 	// TODO: consider using an image cache just like the google backend
-	// (https://github.com/snapcore/spread/pull/175 needs to be fixed first)
+	// (https://github.com/canonical/spread/pull/175 needs to be fixed first)
 	images, err := p.imageClient.ListImagesDetail()
 	if err != nil {
 		return nil, fmt.Errorf("cannot retrieve images list: %v", &openstackError{err})

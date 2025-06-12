@@ -8,8 +8,8 @@ import (
 	. "gopkg.in/check.v1"
 	"gopkg.in/yaml.v2"
 
-	"github.com/snapcore/spread/spread"
-	"github.com/snapcore/spread/spread/testutil"
+	"github.com/canonical/spread/spread"
+	"github.com/canonical/spread/spread/testutil"
 )
 
 func Test(t *testing.T) { TestingT(t) }

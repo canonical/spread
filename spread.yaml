@@ -36,7 +36,7 @@ exclude:
     - tests/.spread-reuse.yaml
     - $CACHE_DISABLED
 
-path: /home/test/src/github.com/snapcore/spread
+path: /home/test/src/github.com/canonical/spread
 
 suites:
     tests/: 

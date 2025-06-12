@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/snapcore/spread/spread"
+	"github.com/canonical/spread/spread"
 
 	. "gopkg.in/check.v1"
 )

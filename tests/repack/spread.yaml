@@ -7,7 +7,7 @@ backends:
 
 environment:
     GOPATH: /gopath
-    GOPKG: github.com/snapcore/spread
+    GOPKG: github.com/canonical/spread
     PATH: $GOPATH/bin:$PATH
     DELTA_REF: 08dbc8b
     DELTA_PREFIX: spread-$DELTA_REF/

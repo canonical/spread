@@ -6,7 +6,7 @@ import (
 
 	. "gopkg.in/check.v1"
 
-	"github.com/snapcore/spread/spread/testutil"
+	"github.com/canonical/spread/spread/testutil"
 )
 
 type S struct{}

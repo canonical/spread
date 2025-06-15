@@ -1,0 +1,7 @@
+summary: test
+
+priority: 1000
+
+execute: |
+    echo works
+

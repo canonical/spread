@@ -411,7 +411,7 @@ be helpful when trying to understand what went wrong.
 A few helper functions are available for scripts to use:
 
  * _REBOOT_ - Reboot the system. See [below](#rebooting) for details.
- * _MATCH_ - Run `grep -q -e` on stdin. Without match, print error including content.
+ * _MATCH_ - Run `grep -q -E` on stdin. Without match, print error including content.
  * _NOMATCH_ - Assert no match on stdin.  If match found, print error including content.
  * _ERROR_ - Fail script with provided error message only instead of script trace.
  * _FATAL_ - Similar to ERROR, but prevents retries. Specific to [adhoc backend](#adhoc).

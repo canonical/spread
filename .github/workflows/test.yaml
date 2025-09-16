@@ -11,9 +11,20 @@ on:
 
 jobs:
   run-tests:
-    runs-on: self-hosted
+    runs-on: ["self-hosted", "spread-enabled"]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Build local spread
+        run: |
+          sudo snap install go --classic
+          git init spread-testing
+          cd spread-testing
+          git remote add origin https://github.com/canonical/spread.git
+          git fetch --depth=1 origin ae284792596e00d325a1787604fe4ec7e00574aa
+          git checkout FETCH_HEAD
+          go build -o spread-testing ./cmd/spread
+          sudo cp spread-testing /usr/bin/spread
 
       - name: Run tests
         run: |

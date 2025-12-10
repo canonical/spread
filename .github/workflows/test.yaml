@@ -11,13 +11,35 @@ on:
 
 jobs:
   run-tests:
-    runs-on: self-hosted
+    #runs-on: [self-hosted, spread-enabled]
+    runs-on: [self-hosted]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run tests
+      - name: Run unit tests
         run: |
-          spread google:
+          sudo snap install go --classic
+          go test -v ./...
+
+      - name: Build local spread
+        run: |
+          mkdir spread-testing
+          cd spread-testing
+          git init
+          git remote add origin https://github.com/canonical/spread.git
+          git fetch --depth=1 origin ae284792596e00d325a1787604fe4ec7e00574aa
+          git checkout FETCH_HEAD
+          go build -o spread-testing ./cmd/spread
+          sudo cp spread-testing /usr/bin/spread
+          cd ..
+          rm -Rf spread-testing
+
+      - name: Run spread tests
+        env:
+          SPREAD_GOOGLE_KEY: ${{ secrets.SPREAD_GOOGLE_KEY }}
+        run: |
+          echo "$SPREAD_GOOGLE_KEY" | sha1sum
+          /usr/bin/spread google:
 
       - name: Discard spread workers
         if: always()

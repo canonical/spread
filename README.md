@@ -12,6 +12,7 @@ Spread
 [Blacklisting and whitelisting](#blacklisting)  
 [Preparing and restoring](#preparing)  
 [Functions](#functions)
+[Skipping](#skipping)  
 [Rebooting](#rebooting)  
 [Timeouts](#timeouts)  
 [Fast iterations with reuse](#reuse)  
@@ -417,6 +418,36 @@ A few helper functions are available for scripts to use:
  * _FATAL_ - Similar to ERROR, but prevents retries. Specific to [adhoc backend](#adhoc).
  * _ADDRESS_ - Set allocated system address. Specific to [adhoc backend](#adhoc).
 
+<a name="skipping"/>
+
+## Skipping
+
+A skip condition determines whether a task or suite should be skipped before it begins execution.
+
+Skip conditions can only be defined at the task or suite level. They are evaluated before the preparation phase. If a condition evaluates to true, then:
+
+ * Task: the task is completely skipped — including the prepare, execute, and restore phases.
+
+ * Suite: the suite is not prepared or restored, and all tasks inside it are skipped as well.
+
+Each skip condition must include:
+
+ * if: a shell expression (or list of expressions) evaluated to decide whether the task/suite should be skipped.
+
+ * reason: a human-readable explanation of why the task or suite was skipped.
+
+Below is an example showing how to define skip conditions for a task:
+
+```
+summary: skip condition example
+skip:
+    - reason: This is the first skip reason
+      if: [ -d /path/to/dir ]
+    - reason: This is the second skip reason
+      if: [ -f /path/to/file ]
+execute: |
+    echo "This is an example"
+```
 
 <a name="rebooting"/>
 

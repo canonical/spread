@@ -1,0 +1,20 @@
+summary: Ensure skip condition works.
+
+environment:
+    skip_1/T1: true
+    skip_2/T1: true
+    skip_1/T2: false
+    skip_2/T2: true
+    skip_1/T3: false
+    skip_2/T3: false
+
+skip:
+  - reason: This is the first skip reason
+    if: |
+      [ "$skip_1" = "true" ]
+  - reason: This is the second skip reason
+    if: |
+      [ "$skip_2" = "true" ]
+
+execute: |
+    exit 0

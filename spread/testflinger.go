@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -41,17 +40,22 @@ type TestFlingerJob struct {
 }
 
 type TestFlingerJobData struct {
-	Name 	  string
-	JobId 	  string    `json:"job_id"`
-	CreatedAt time.Time `json:"created_at"`
+	Name      string
+	JobId     string    `json:"job_id"`
+	CreatedAt CreatedAt `json:"created_at"`
 	JobState  string    `json:"job_state"`
+}
+
+type CreatedAt struct {
+	Date time.Time `json:"$date"`
 }
 
 type TestFlingerRequestData struct {
 	Queue          string                      `json:"job_queue"`
 	ProvisionDdata TestFlingerProvisioningData `json:"provision_data"`
+	ReserveData    TestFlingerReserveData      `json:"reserve_data"`
 	AllocateData   TestFlingerAllocateData     `json:"allocate_data"`
-	Tags           []string   				   `json:"tags"`
+	Tags           []string                    `json:"tags"`
 }
 
 type TestFlingerProvisioningData struct {
@@ -59,8 +63,13 @@ type TestFlingerProvisioningData struct {
 	Distro string `json:"distro,omitempty"`
 }
 
+type TestFlingerReserveData struct {
+	Keys    []string `json:"ssh_keys,omitempty"`
+	Timeout int      `json:"timeout,omitempty"`
+}
+
 type TestFlingerAllocateData struct {
-	Allocate bool `json:"allocate"`
+	Allocate bool `json:"allocate,omitempty"`
 }
 
 type TestFlingerJobResponse struct {
@@ -68,8 +77,8 @@ type TestFlingerJobResponse struct {
 }
 
 type TestFlingerJobInfoResponse struct {
-	JobId string  `json:"job_id"`
-	Tags []string `json:"tags"`
+	JobId string   `json:"job_id"`
+	Tags  []string `json:"tags"`
 }
 
 type TestFlingerDeviceInfo struct {
@@ -94,6 +103,7 @@ const (
 	CANCELLED = "cancelled"
 	COMPLETE  = "complete"
 	COMPLETED = "completed"
+	RESERVE   = "reserve"
 )
 
 func (s *TestFlingerJob) String() string {
@@ -120,13 +130,17 @@ func (s *TestFlingerJob) ReuseData() interface{} {
 	return &s.d
 }
 
+func (s *TestFlingerJob) SerialOutput() (string, error) {
+	return "", nil
+}
+
 func (s *TestFlingerJob) Discard(ctx context.Context) error {
 	data := &TestFlingerActionData{
 		Action: "cancel",
 	}
 	err := s.p.do("POST", "/job/"+s.d.JobId+"/action", data, nil)
 	if err != nil {
-		return fmt.Errorf("Error discarding job: %v: ", err)
+		return fmt.Errorf("error discarding job: %v: ", err)
 	}
 	return nil
 }
@@ -160,7 +174,7 @@ func (p *TestFlingerProvider) GarbageCollect() error {
 		}
 
 		var result TestFlingerJobInfoResponse
-		err := p.do("GET", "/job/" + s.d.JobId , nil, &result)
+		err := p.do("GET", "/job/"+s.d.JobId, nil, &result)
 		if err != nil {
 			return fmt.Errorf("cannot get instance info: %v", err)
 		}
@@ -181,7 +195,7 @@ func (p *TestFlingerProvider) GarbageCollect() error {
 			continue
 		}
 
-		runningTime := now.Sub(s.d.CreatedAt)
+		runningTime := now.Sub(s.d.CreatedAt.Date)
 		if runningTime > jobTimeout {
 			printf("Job %s exceeds halt-timeout. Shutting it down...", s.d.JobId)
 			err := s.Discard(context.Background())
@@ -230,10 +244,6 @@ func (p *TestFlingerProvider) Allocate(ctx context.Context, system *System) (Ser
 	}
 	err = p.waitDeviceBoot(ctx, s)
 	if err != nil {
-		saveErr := p.saveJobOutput(ctx, s)
-		if saveErr != nil {
-			return nil, fmt.Errorf("Error saving job result output: %v", err)
-		}
 		return nil, err
 	}
 	return s, nil
@@ -243,24 +253,34 @@ func (p *TestFlingerProvider) requestDevice(ctx context.Context, system *System)
 	image := system.Image
 	queue := TestFlingerQueue(system)
 
-	pdata := TestFlingerProvisioningData{Url: image,}
+	pdata := TestFlingerProvisioningData{Url: image}
 	// In case the image is a url, then the provisioning data is used with url,
 	// otherwise it is used with distro
 	_, err := url.ParseRequestURI(image)
 	if err != nil {
-		pdata = TestFlingerProvisioningData{Distro: image,}
+		pdata = TestFlingerProvisioningData{Distro: image}
 	}
 
 	data := &TestFlingerRequestData{
-		Queue: queue,
+		Queue:          queue,
 		ProvisionDdata: pdata,
-		AllocateData: TestFlingerAllocateData{
-			Allocate: true,
-		},
 		// Tags used are:
 		// 1. spread which is used to find the spread active jobs
 		// 2. halt-timeout=DURATION which is used to determine when a running job has to be cancelled
 		Tags: []string{"spread", "halt-timeout=" + p.backend.HaltTimeout.Duration.String()},
+	}
+
+	if system.ReserveKey != "" {
+		rData := TestFlingerReserveData{
+			Keys:    []string{system.ReserveKey},
+			Timeout: int(p.backend.HaltTimeout.Duration.Seconds()),
+		}
+		data.ReserveData = rData
+	} else {
+		aData := TestFlingerAllocateData{
+			Allocate: true,
+		}
+		data.AllocateData = aData
 	}
 
 	var jobRes TestFlingerJobResponse
@@ -269,13 +289,13 @@ func (p *TestFlingerProvider) requestDevice(ctx context.Context, system *System)
 	// First step is to get the job_id running the submit command
 	jobId := ""
 	if err != nil {
-		return nil, fmt.Errorf("Error creating job: %v: ", err)
+		return nil, fmt.Errorf("error creating job: %v: ", err)
 	}
 	if p.validJobId(jobRes.JobId) {
 		jobId = jobRes.JobId
 		printf("TestFlinger job %s created for system %s", jobId, system.Name)
 	} else {
-		return nil, fmt.Errorf("Failed to retrieve job id: %s", jobRes.JobId)
+		return nil, fmt.Errorf("failed to retrieve job id: %s", jobRes.JobId)
 	}
 
 	s := &TestFlingerJob{
@@ -292,25 +312,27 @@ func (p *TestFlingerProvider) requestDevice(ctx context.Context, system *System)
 func (p *TestFlingerProvider) waitDeviceBoot(ctx context.Context, s *TestFlingerJob) error {
 	printf("Waiting for TestFlinger %s to have an address...", s.d.Name)
 	wait_timeout := s.system.WaitTimeout.Duration
-	timeout := time.NewTicker(15 * time.Minute)
+	timeout := time.After(15 * time.Minute)
 	if wait_timeout != 0 {
-		timeout = time.NewTicker(wait_timeout)
+		timeout = time.After(wait_timeout)
 	}
 	warn := time.NewTicker(3 * time.Minute)
 	retry := time.NewTicker(15 * time.Second)
 	defer retry.Stop()
+	defer warn.Stop()
+
 	for {
 		var resRes TestFlingerResultResponse
 		err := p.do("GET", "/result/"+s.d.JobId, nil, &resRes)
 
 		if err != nil {
-			return fmt.Errorf("Error requesting job status: %v", err)
+			return fmt.Errorf("error requesting job status: %v", err)
 		}
 		state := ""
 		if resRes.JobState != "" {
 			state = resRes.JobState
 		} else {
-			return fmt.Errorf("Failed to retrieve job state")
+			return fmt.Errorf("failed to retrieve job state")
 		}
 
 		// allocated stated means the ip for the device available
@@ -318,75 +340,68 @@ func (p *TestFlingerProvider) waitDeviceBoot(ctx context.Context, s *TestFlinger
 			if resRes.DeviceInfo.DeviceIP != "" {
 				s.address = resRes.DeviceInfo.DeviceIP
 				if net.ParseIP(s.address) == nil {
-					return fmt.Errorf("Wrong ip format %s: ", s.address)
+					return fmt.Errorf("wrong ip format %s: ", s.address)
 				}
 				printf("Allocated device with ip %s", s.address)
 				return nil
 			}
 		}
 
+		if state == RESERVE {
+			ip, err := p.getIpForReservedDevice(s)
+			if err != nil {
+				return fmt.Errorf("failed to get Ip: %v: ", err)
+			}
+			s.address = ip
+			if net.ParseIP(s.address) == nil {
+				return fmt.Errorf("wrong ip format %s: ", s.address)
+			}
+			printf("Reserved device with ip %s", s.address)
+			return nil
+		}
+
 		// The job_id is not active anymore
 		if state == CANCELLED || state == COMPLETE || state == COMPLETED {
-			return fmt.Errorf("Job state is either cancelled or completed")
+			return fmt.Errorf("job state is either cancelled or completed")
 		}
-		
+
 		select {
 		case <-retry.C:
 		case <-warn.C:
 			printf("Job %s for device % s is in state %s", s.d.JobId, s.d.Name, state)
-		case <-timeout.C:
+		case <-timeout:
 			s.Discard(ctx)
-			return fmt.Errorf("Wait timeout reached, job discarded")
+			return fmt.Errorf("wait timeout reached, job discarded")
 		}
 	}
-
-	return fmt.Errorf("ip address not found")
 }
 
-func (p *TestFlingerProvider) saveJobOutput(ctx context.Context, s *TestFlingerJob) error {
-	var resRes TestFlingerResultResponse
-	err := p.do("GET", "/result/"+s.d.JobId, nil, &resRes)
-	if err != nil {
-		return fmt.Errorf("Error requesting result output for job: %v", err)
-	}
+func (p *TestFlingerProvider) getIpForReservedDevice(s *TestFlingerJob) (string, error) {
+	timeout := time.After(3 * time.Minute)
+	retry := time.NewTicker(10 * time.Second)
+	defer retry.Stop()
 
-	state := resRes.JobState
-	// no output to save if the state is neither completed nor cancelled
-	if state != CANCELLED && state != COMPLETE && state != COMPLETED {
-		return nil
-	}
-
-	// Use the last part of the uuid to identify the file
-	uuidParts := strings.Split(s.d.JobId, "-")
-	outputFile := fmt.Sprintf(".spread-output.%s.log", uuidParts[len(uuidParts)-1])
-	path := filepath.Join(p.project.Path, outputFile)
-
-	// create hte output job file.
-	f, err := os.Create(path)
-	if err != nil {
-		return fmt.Errorf("cannot create result output file: %v", err)
-	}
-	defer func() {
+	for {
+		output, err := p.dop("GET", "/result/"+s.d.JobId+"/output", nil)
 		if err != nil {
-			f.Close()
+			return "", fmt.Errorf("error requesting results output for job: %v", err)
 		}
-	}()
 
-	// Build the output to write the the file
-	var buffer bytes.Buffer
-    buffer.WriteString(resRes.ReserveOutput)
-    buffer.WriteString(resRes.AllocateOutput)
-    buffer.WriteString(resRes.SetupOutput)
-    buffer.WriteString(resRes.ProvisionOutput)
+		// It is supposed that the device status is reserve, so the ip is in the output
+		re := regexp.MustCompile(`ssh .*@([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)`)
+		match := re.FindStringSubmatch(output)
 
-    // write the output into the job file.
-	_, err = f.Write(buffer.Bytes())
-	if err != nil {
-		return fmt.Errorf("cannot write result output message: %v", err)
+		if len(match) > 1 {
+			return match[1], nil
+		}
+
+		select {
+		case <-retry.C:
+		case <-timeout:
+			return "", fmt.Errorf("timeout reached waiting to get the ip")
+		}
 	}
 
-	printf("Job %s result output saved to file %s", s.d.JobId, outputFile)
-	return nil
 }
 
 func TestFlingerQueue(system *System) string {
@@ -394,6 +409,19 @@ func TestFlingerQueue(system *System) string {
 		return system.Queue
 	}
 	return system.Name
+}
+
+func getTestflingerUrl(subpath string) string {
+	url := os.Getenv("TF_ENDPOINT")
+	version := os.Getenv("TF_API_VERSION")
+	if len(url) == 0 {
+		url = "https://testflinger.canonical.com"
+	}
+	if len(version) == 0 {
+		version = "v1"
+	}
+	url += "/" + version + subpath
+	return url
 }
 
 func (p *TestFlingerProvider) do(method, subpath string, params interface{}, result interface{}) error {
@@ -407,15 +435,7 @@ func (p *TestFlingerProvider) do(method, subpath string, params interface{}, res
 		}
 	}
 
-	url := os.Getenv("TF_ENDPOINT")
-	version := os.Getenv("TF_API_VERSION")
-    if len(url) == 0 {
-        url = "https://testflinger.canonical.com"
-    }
-    if len(version) == 0 {
-        version = "v1"
-    }
-    url += "/" + version + subpath
+	url := getTestflingerUrl(subpath)
 
 	// Repeat on 500s. Note that Google's 500s may come in late, as a marshaled error
 	// under a different code. See the INTERNAL handling at the end below.
@@ -433,11 +453,11 @@ func (p *TestFlingerProvider) do(method, subpath string, params interface{}, res
 			time.Sleep(time.Duration(delays[i]) * 250 * time.Millisecond)
 			continue
 		}
-		
+
 		if err != nil {
 			return fmt.Errorf("cannot perform TestFlinger request: %v", err)
 		}
-		
+
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			return fmt.Errorf("cannot read TestFlinger response: %v", err)
@@ -449,6 +469,7 @@ func (p *TestFlingerProvider) do(method, subpath string, params interface{}, res
 			if err != nil && resp.StatusCode == 404 {
 				return errTestFlingerNotFound
 			}
+			// When the result is a string, the data is just copied
 			if err != nil {
 				return err
 			}
@@ -463,6 +484,52 @@ func (p *TestFlingerProvider) do(method, subpath string, params interface{}, res
 	}
 
 	return nil
+}
+
+// This is used when the response is plain text (it is not a json formatted response)
+func (p *TestFlingerProvider) dop(method, subpath string, params interface{}) (string, error) {
+	var data []byte
+	var err error
+
+	if params != nil {
+		data, err = json.Marshal(params)
+		if err != nil {
+			return "", fmt.Errorf("cannot marshal TestFlinger request parameters: %s", err)
+		}
+	}
+
+	url := getTestflingerUrl(subpath)
+
+	// Repeat on 500s. Note that Google's 500s may come in late, as a marshaled error
+	// under a different code. See the INTERNAL handling at the end below.
+	var resp *http.Response
+	var req *http.Request
+	var delays = rand.Perm(10)
+	for i := 0; i < 10; i++ {
+		req, err = http.NewRequest(method, url, bytes.NewBuffer(data))
+		if err != nil {
+			return "", &FatalError{fmt.Errorf("cannot create HTTP request: %v", err)}
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err = p.client.Do(req)
+		if err == nil && 500 <= resp.StatusCode && resp.StatusCode < 600 {
+			time.Sleep(time.Duration(delays[i]) * 250 * time.Millisecond)
+			continue
+		}
+
+		if err != nil {
+			return "", fmt.Errorf("cannot perform TestFlinger request: %v", err)
+		}
+
+		data, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return "", fmt.Errorf("cannot read TestFlinger response: %v", err)
+		}
+
+		return string(data), nil
+	}
+
+	return "", fmt.Errorf("too many retries performing TestFlinger request")
 }
 
 var errTestFlingerNotFound = fmt.Errorf("not found")

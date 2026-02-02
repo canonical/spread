@@ -118,12 +118,14 @@ func (sysmap *SystemsMap) UnmarshalYAML(u func(interface{}) error) error {
 type System struct {
 	Backend string `json:"-"`
 
-	Name     string
-	Image    string
-	Kernel   string
-	Username string
-	Password string
-	Workers  int
+	Name       string
+	Image      string
+	Kernel     string
+	Username   string
+	Password   string
+	SSHKey     string `yaml:"ssh-rsa-key"`
+	SSHKeyPass string `yaml:"ssh-key-pass"`
+	Workers    int
 
 	// Only for Linode and Google so far.
 	Storage Size

@@ -77,6 +77,67 @@ func (s *openstackSuite) TestOpenStackError(c *C) {
 	c.Check(err3.Error(), Equals, `other error`)
 }
 
+func (s *openstackSuite) TestOpenStackTestResolveKey_NoKey(c *C) {
+	b := &spread.Backend{Key: ""}
+	_, err := spread.ResolveKeyForTests(b)
+	c.Check(err, ErrorMatches, "no authentication key provided")
+}
+
+func (s *openstackSuite) TestOpenStackTestResolveKey_NonexistentPathReturnsValue(c *C) {
+	tmpf, err := os.CreateTemp("", "nonexist")
+	c.Assert(err, IsNil)
+	name := tmpf.Name()
+	tmpf.Close()
+	os.Remove(name) // simulate non-existent path
+
+	b := &spread.Backend{Key: name}
+	k, err := spread.ResolveKeyForTests(b)
+	c.Check(err, IsNil)
+	c.Check(k, Equals, name)
+}
+
+func (s *openstackSuite) TestOpenStackTestResolveKey_Directory(c *C) {
+	dir, err := os.MkdirTemp("", "keydir")
+	c.Assert(err, IsNil)
+	defer os.RemoveAll(dir)
+
+	b := &spread.Backend{Key: dir}
+	_, err = spread.ResolveKeyForTests(b)
+	c.Check(err, ErrorMatches, "Key path is a directory")
+}
+
+func (s *openstackSuite) TestOpenStackTestResolveKey_FileWithContent(c *C) {
+	f, err := os.CreateTemp("", "keyfile")
+	c.Assert(err, IsNil)
+	name := f.Name()
+	defer os.Remove(name)
+
+	content := []byte("my-secret-key")
+	c.Assert(os.WriteFile(name, content, 0600), IsNil)
+
+	b := &spread.Backend{Key: name}
+	k, err := spread.ResolveKeyForTests(b)
+	c.Check(err, IsNil)
+	c.Check(k, Equals, string(content))
+}
+
+func (s *openstackSuite) TestOpenStackTestResolveKey_EmptyFile(c *C) {
+	f, err := os.CreateTemp("", "emptykey")
+	c.Assert(err, IsNil)
+	name := f.Name()
+	f.Close()
+	defer os.Remove(name)
+
+	// ensure file is empty
+	stat, err := os.Stat(name)
+	c.Assert(err, IsNil)
+	c.Check(stat.Size(), Equals, int64(0))
+
+	b := &spread.Backend{Key: name}
+	_, err = spread.ResolveKeyForTests(b)
+	c.Check(err, ErrorMatches, "Key file is empty")
+}
+
 type fakeGlanceImageClient struct {
 	res []glance.ImageDetail
 	err error

@@ -46,6 +46,12 @@ func FakeTimeNow(f func() time.Time) (restore func()) {
 	}
 }
 
+// ResolveKeyForTests is a test helper that exposes resolveKey for tests.
+func ResolveKeyForTests(b *Backend) (string, error) {
+	p := &openstackProvider{backend: b}
+	return p.resolveKey()
+}
+
 type LXDServerJSON = lxdServerJSON
 
 func LXDProviderServerJSON(provider Provider, name string) (*LXDServerJSON, error) {

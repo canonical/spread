@@ -367,10 +367,10 @@ func (p *openstackProvider) waitProvision(ctx context.Context, s *openstackServe
 		case <-timeout:
 			server, err := p.computeClient.GetServer(s.d.Id)
 			if err != nil {
-				return fmt.Errorf("timeout waiting for %s to provision", s.d.Id)
+				return fmt.Errorf("timeout waiting for %s to provision", s)
 			}
 			if server.Fault == nil {
-				return fmt.Errorf("timeout waiting for %s to provision, status: %s", s.d.Id, server.Status)
+				return fmt.Errorf("timeout waiting for %s to provision, status: %s", s, server.Status)
 			}
 			return fmt.Errorf("timeout waiting for %s to provision, error: %s", s, server.Fault.Message)
 

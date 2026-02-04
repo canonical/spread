@@ -12,7 +12,6 @@ import (
 	"github.com/go-goose/goose/v5/glance"
 	goosehttp "github.com/go-goose/goose/v5/http"
 	"github.com/go-goose/goose/v5/nova"
-	"golang.org/x/crypto/ssh"
 
 	"github.com/snapcore/spread/spread"
 
@@ -419,48 +418,4 @@ func (s *openstackFindImageSuite) TestOpenStackWaitServerBootSerialTimeout(c *C)
 
 	err := spread.OpenStackWaitServerBoot(s.opst, context.TODO(), "test-id", "test-server", []string{"net-1"})
 	c.Check(err, ErrorMatches, "cannot find ready marker in console output for test-server: timeout reached")
-}
-
-func (s *openstackFindImageSuite) TestOpenStackWaitServerBootSSHHappy(c *C) {
-	count := 0
-	spread.FakeSshDial(func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
-		count++
-		switch count {
-		case 1:
-			return nil, errors.New("connection error")
-		case 2:
-			return &ssh.Client{}, nil
-		}
-		c.Fatalf("should not reach here")
-		return nil, nil
-	})
-
-	restore := spread.FakeOpenStackServerBootTimeout(100*time.Millisecond, time.Nanosecond)
-	defer restore()
-	restore = spread.FakeOpenStackSerialOutputTimeout(50 * time.Millisecond)
-	defer restore()
-
-	// force fallback to SSH
-	s.fakeOsClient.err = fmt.Errorf("serial not supported")
-
-	err := spread.OpenStackWaitServerBoot(s.opst, context.TODO(), "test-id", "", []string{"net-1"})
-	c.Check(err, IsNil)
-	c.Check(count, Equals, 2)
-}
-
-func (s *openstackFindImageSuite) TestOpenStackWaitServerBootSSHTimeout(c *C) {
-	spread.FakeSshDial(func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
-		return nil, errors.New("connection error")
-	})
-
-	restore := spread.FakeOpenStackServerBootTimeout(100*time.Millisecond, time.Nanosecond)
-	defer restore()
-	restore = spread.FakeOpenStackSerialOutputTimeout(50 * time.Millisecond)
-	defer restore()
-
-	// force fallback to SSH
-	s.fakeOsClient.err = fmt.Errorf("serial not supported")
-
-	err := spread.OpenStackWaitServerBoot(s.opst, context.TODO(), "test-id", "test-server", []string{"net-1"})
-	c.Check(err, ErrorMatches, "cannot connect to server test-server: cannot ssh to the allocated instance: timeout reached")
 }

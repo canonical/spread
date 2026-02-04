@@ -69,6 +69,7 @@ type Backend struct {
 	Endpoint string
 	Networks []string
 	Groups   []string
+	Zone     string
 
 	Systems SystemsMap
 

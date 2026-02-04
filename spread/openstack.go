@@ -593,8 +593,8 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		opts.SecurityGroupNames = sgNames
 	}
 
-	if len(p.backend.Location) > 0 {
-		opts.AvailabilityZone = p.backend.Location
+	if p.backend.Zone != "" {
+		opts.AvailabilityZone = p.backend.Zone
 	}
 
 	server, err := p.computeClient.RunServer(opts)

@@ -195,6 +195,27 @@ func (s *openstackFindImageSuite) TestOpenStackFindImageErrors(c *C) {
 	c.Check(err, ErrorMatches, `cannot retrieve images list: boom`)
 }
 
+func (s *openstackFindImageSuite) TestOpenStackFindImageIgnoresInactive(c *C) {
+	s.fakeImageClient.res = []glance.ImageDetail{
+		{Id: uuid(), Name: "ubuntu-22.04", Status: "INACTIVE"},
+		{Id: uuid(), Name: "ubuntu-20.04", Status: "ACTIVE"},
+	}
+
+	_, err := spread.OpenStackFindImage(s.opst, "ubuntu-22.04")
+	c.Check(err, ErrorMatches, `cannot find matching image for "ubuntu-22.04"`)
+}
+
+func (s *openstackFindImageSuite) TestOpenStackFindImage_ExactInactiveTermActive(c *C) {
+	s.fakeImageClient.res = []glance.ImageDetail{
+		{Id: uuid(), Name: "ubuntu-22.04", Status: "INACTIVE"},
+		{Id: uuid(), Name: "auto-sync/ubuntu-22.04-something", Status: "ACTIVE"},
+	}
+
+	idt, err := spread.OpenStackFindImage(s.opst, "ubuntu-22.04")
+	c.Check(err, IsNil)
+	c.Check(idt.Name, Equals, "auto-sync/ubuntu-22.04-something")
+}
+
 func uuid() string {
 	b, err := os.ReadFile("/proc/sys/kernel/random/uuid")
 	if err != nil {
@@ -217,7 +238,8 @@ func makeGlanceImageDetails(imgs []string) []glance.ImageDetail {
 				created = t.Format(time.RFC3339)
 			}
 		}
-		out[i] = glance.ImageDetail{Id: id, Name: name, Created: created}
+		// Tests rely on images being "ACTIVE" so set the status accordingly.
+		out[i] = glance.ImageDetail{Id: id, Name: name, Created: created, Status: "ACTIVE"}
 	}
 	return out
 }

@@ -283,7 +283,7 @@ func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, er
 	// (https://github.com/snapcore/spread/pull/175 needs to be fixed first)
 	images, err := p.getActiveImages()
 	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve images list: %v", &openstackError{err})
+		return nil, err
 	}
 
 	// In openstack there are no "project" specific images and no

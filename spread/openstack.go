@@ -43,6 +43,11 @@ type novaComputeClient interface {
 	DeleteServer(serverId string) error
 }
 
+type neutronClient interface {
+	ListNetworksV2(filter ...*neutron.Filter) ([]neutron.NetworkV2, error)
+	ListSecurityGroupsV2() ([]neutron.SecurityGroupV2, error)
+}
+
 type openstackProvider struct {
 	project *Project
 	backend *Backend
@@ -51,7 +56,7 @@ type openstackProvider struct {
 	region        string
 	osClient      gooseclient.Client
 	computeClient novaComputeClient
-	networkClient *neutron.Client
+	networkClient neutronClient
 	imageClient   glanceImageClient
 
 	mu sync.Mutex

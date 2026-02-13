@@ -398,6 +398,12 @@ var openstackServerBootRetry = 5 * time.Second
 var openstackSerialOutputTimeout = 30 * time.Second
 
 func (p *openstackProvider) getSerialConsoleOutput(s *openstackServer) (string, error) {
+	_, err := s.p.computeClient.GetServer(s.d.Id)
+	if err != nil {
+		// this is when the server is removed
+		return "", fmt.Errorf("failed to retrieve the serial console, server removed: %s", s)
+	}
+
 	url := fmt.Sprintf("servers/%s/action", s.d.Id)
 
 	var req struct {

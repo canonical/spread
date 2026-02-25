@@ -11,7 +11,7 @@ on:
 
 jobs:
   run-tests:
-    runs-on: [self-hosted]
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -37,9 +37,7 @@ jobs:
       - name: Run spread tests
         run: |
           uname -a
-          trap 'rm -f /tmp/key.json' EXIT
-          (umask 177; echo "${{ secrets.SPREAD_GOOGLE_KEY }}" | base64 -d > /tmp/key.json)
-          /usr/bin/spread google:
+          SPREAD_GOOGLE_KEY=$(echo "${{ secrets.SPREAD_GOOGLE_KEY }}" | base64 -d) /usr/bin/spread google:
 
       - name: Discard spread workers
         if: always()

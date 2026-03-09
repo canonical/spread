@@ -117,6 +117,7 @@ const (
 
 	openstackPending = "PENDING"
 	openstackDone    = "DONE"
+	openstackActive  = "ACTIVE"
 )
 
 func (p *openstackProvider) Backend() *Backend {
@@ -258,15 +259,31 @@ func (p *openstackProvider) findNetwork(name string) (*neutron.NetworkV2, error)
 	return nil, &FatalError{fmt.Errorf("cannot find valid network with name %q", name)}
 }
 
+func (p *openstackProvider) getActiveImages() ([]glance.ImageDetail, error) {
+	images, err := p.imageClient.ListImagesDetail()
+	activeImages := []glance.ImageDetail{}
+
+	if err != nil {
+		return nil, fmt.Errorf("cannot retrieve images list: %v", &openstackError{err})
+	}
+
+	for _, image := range images {
+		if strings.ToLower(image.Status) == strings.ToLower(openstackActive) {
+			activeImages = append(activeImages, image)
+		}
+	}
+	return activeImages, nil
+}
+
 func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, error) {
 	var lastImage glance.ImageDetail
 	var lastCreatedDate time.Time
 
 	// TODO: consider using an image cache just like the google backend
 	// (https://github.com/snapcore/spread/pull/175 needs to be fixed first)
-	images, err := p.imageClient.ListImagesDetail()
+	images, err := p.getActiveImages()
 	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve images list: %v", &openstackError{err})
+		return nil, err
 	}
 
 	// In openstack there are no "project" specific images and no

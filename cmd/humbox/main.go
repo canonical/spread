@@ -193,7 +193,7 @@ func handler(resp http.ResponseWriter, req *http.Request) {
 
 	if req.URL.Path == "/" {
 		log.Printf("Request by %s to %s %s", req.RemoteAddr, req.Method, req.URL)
-		resp.Header().Set("Location", "http://github.com/snapcore/spread")
+		resp.Header().Set("Location", "http://github.com/canonical/spread")
 		resp.WriteHeader(http.StatusTemporaryRedirect)
 		return
 	}
@@ -390,7 +390,7 @@ func sendError(resp http.ResponseWriter, err error, args ...interface{}) {
 }
 
 func sendNotFound(resp http.ResponseWriter, req *http.Request) {
-	sendError(resp, errNotFound, `path %s unsupported; see the documentation at github.com/snapcore/spread`, req.URL.Path)
+	sendError(resp, errNotFound, `path %s unsupported; see the documentation at github.com/canonical/spread`, req.URL.Path)
 }
 
 func sendBadMethod(resp http.ResponseWriter, req *http.Request) {

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"github.com/snapcore/spread/spread"
+	"github.com/canonical/spread/spread"
 
 	. "gopkg.in/check.v1"
 )

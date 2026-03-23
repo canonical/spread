@@ -1,4 +1,4 @@
-module github.com/snapcore/spread
+module github.com/canonical/spread
 
 go 1.23.0
 

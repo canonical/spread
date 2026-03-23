@@ -14,7 +14,7 @@ import (
 	"github.com/go-goose/goose/v5/nova"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/snapcore/spread/spread"
+	"github.com/canonical/spread/spread"
 
 	. "gopkg.in/check.v1"
 )

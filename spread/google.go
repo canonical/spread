@@ -16,7 +16,6 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
-	"golang.org/x/oauth2/jwt"
 
 	"github.com/niemeyer/pretty"
 	"regexp"
@@ -777,10 +776,10 @@ func (p *googleProvider) checkKey() error {
 	if err == nil && p.client == nil {
 		ctx := context.Background()
 		if strings.HasPrefix(p.backend.Key, "{") {
-			var cfg *jwt.Config
-			cfg, err = google.JWTConfigFromJSON([]byte(p.backend.Key), googleScope)
+			var creds *google.Credentials
+			creds, err = google.CredentialsFromJSON(ctx, []byte(p.backend.Key), googleScope)
 			if err == nil {
-				p.client = oauth2.NewClient(ctx, cfg.TokenSource(ctx))
+				p.client = oauth2.NewClient(ctx, creds.TokenSource)
 			}
 		} else {
 			os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", p.backend.Key)

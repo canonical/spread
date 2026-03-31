@@ -1,0 +1,6 @@
+summary: Test the filters for systems and backends work.
+
+systems: [ubuntu-*-arm-*]
+
+execute: |
+    echo WORKS

@@ -1,0 +1,8 @@
+summary: Test the filters for systems and backends work.
+
+backends: [lxd]
+
+systems: [-ubuntu-22.04, ubuntu-2*.04]
+
+execute: |
+    echo WORKS

@@ -1,0 +1,8 @@
+summary: Test the filters for systems and backends work.
+
+backends: [google]
+
+systems: [ubuntu-*, -ubuntu-*arm*]
+
+execute: |
+    echo WORKS

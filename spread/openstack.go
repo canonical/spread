@@ -312,18 +312,6 @@ func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, er
 	return nil, &FatalError{fmt.Errorf("cannot find matching image for %q", imageName)}
 }
 
-func (p *openstackProvider) findAvailabilityZone() (*nova.AvailabilityZone, error) {
-	zones, err := p.computeClient.ListAvailabilityZones()
-	if err != nil {
-		return nil, fmt.Errorf("cannot retrieve availability zones: %v", &openstackError{err})
-	}
-
-	if len(zones) == 0 {
-		return nil, &FatalError{errors.New("cannot find any availability zones")}
-	}
-	return &zones[0], nil
-}
-
 func (p *openstackProvider) findSecurityGroupNames(names []string) ([]nova.SecurityGroupName, error) {
 	var secGroupNames []nova.SecurityGroupName
 
@@ -577,11 +565,6 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		return nil, err
 	}
 
-	availabilityZone, err := p.findAvailabilityZone()
-	if err != nil {
-		return nil, err
-	}
-
 	// cloud init script
 	cloudconfig := fmt.Sprintf(openstackCloudInitScript, p.options.Password)
 
@@ -594,13 +577,12 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 	}
 
 	opts := nova.RunServerOpts{
-		Name:             name,
-		FlavorId:         flavor.Id,
-		ImageId:          image.Id,
-		AvailabilityZone: availabilityZone.Name,
-		Networks:         networks,
-		Metadata:         tags,
-		UserData:         []byte(cloudconfig),
+		Name:     name,
+		FlavorId: flavor.Id,
+		ImageId:  image.Id,
+		Networks: networks,
+		Metadata: tags,
+		UserData: []byte(cloudconfig),
 	}
 
 	if len(system.Groups) > 0 {
@@ -609,6 +591,10 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 			return nil, err
 		}
 		opts.SecurityGroupNames = sgNames
+	}
+
+	if p.backend.Zone != "" {
+		opts.AvailabilityZone = p.backend.Zone
 	}
 
 	server, err := p.computeClient.RunServer(opts)

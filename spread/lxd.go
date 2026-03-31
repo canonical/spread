@@ -72,6 +72,10 @@ func (s *lxdServer) Discard(ctx context.Context) error {
 	return nil
 }
 
+func (s *lxdServer) SerialOutput() ([]byte, error) {
+	return nil, nil
+}
+
 func (p *lxdProvider) Backend() *Backend {
 	return p.backend
 }

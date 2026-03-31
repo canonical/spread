@@ -58,6 +58,10 @@ func (s *adhocServer) Discard(ctx context.Context) error {
 	return nil
 }
 
+func (s *adhocServer) SerialOutput() ([]byte, error) {
+	return nil, nil
+}
+
 func (p *adhocProvider) Backend() *Backend {
 	return p.backend
 }

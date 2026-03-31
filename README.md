@@ -5,7 +5,7 @@ Spread
 
 [Why?](#why)  
 [The cascading matrix](#matrix)  
-[Install](#install)
+[Install](#install)  
 [Hello world](#hello-world)  
 [Environments](#environments)  
 [Variants](#variants)  

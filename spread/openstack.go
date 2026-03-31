@@ -18,7 +18,6 @@ import (
 	"github.com/go-goose/goose/v5/neutron"
 	"github.com/go-goose/goose/v5/nova"
 
-	"golang.org/x/crypto/ssh"
 	"golang.org/x/net/context"
 )
 
@@ -154,15 +153,22 @@ func (s *openstackServer) Discard(ctx context.Context) error {
 	return s.p.removeMachine(ctx, s)
 }
 
+// Send the ready marker to ttyS0, the standard serial port for x86 / x86_64 architectures.
+// Send the ready marker to ttyAMA0, the primary UART/serial port used in ARM / ARM64 (PL011).
+// Fallback to /dev/console to ensure visibility on the system's primary output regardless of architecture.
 const openstackCloudInitScript = `
 #cloud-config
 runcmd:
   - echo root:%s | chpasswd
   - sed -i 's/^\s*#\?\s*\(PermitRootLogin\|PasswordAuthentication\)\>.*/\1 yes/' /etc/ssh/sshd_config
+  - sed -i 's/^PermitRootLogin=/#PermitRootLogin=/g' /etc/ssh/sshd_config.d/* || true
+  - sed -i 's/^PasswordAuthentication=/#PasswordAuthentication=/g' /etc/ssh/sshd_config.d/* || true
   - test -d /etc/ssh/sshd_config.d && echo 'PermitRootLogin=yes' > /etc/ssh/sshd_config.d/00-spread.conf
   - test -d /etc/ssh/sshd_config.d && echo 'PasswordAuthentication=yes' >> /etc/ssh/sshd_config.d/00-spread.conf
   - pkill -o -HUP sshd || true
-  - echo '` + openstackReadyMarker + `' > /dev/ttyS0
+  - test -c /dev/ttyS0 && echo '` + openstackReadyMarker + `' 1>/dev/ttyS0 2>/dev/null || true
+  - test -c /dev/ttyAMA0 && echo '` + openstackReadyMarker + `' 1>/dev/ttyAMA0 2>/dev/null || true
+  - test -c /dev/console && echo '` + openstackReadyMarker + `' 1>/dev/console 2>/dev/null || true
 `
 
 const openstackReadyMarker = "MACHINE-IS-READY"
@@ -386,46 +392,18 @@ func (p *openstackProvider) waitProvision(ctx context.Context, s *openstackServe
 	panic("unreachable")
 }
 
-var openstackServerBootTimeout = 2 * time.Minute
+var openstackServerBootTimeout = 5 * time.Minute
 var openstackServerBootRetry = 5 * time.Second
-
-func (p *openstackProvider) waitServerBootSSH(ctx context.Context, s *openstackServer) error {
-	config := &ssh.ClientConfig{
-		User:            "root",
-		Auth:            []ssh.AuthMethod{ssh.Password(p.options.Password)},
-		Timeout:         10 * time.Second,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-	}
-	addr := s.address
-	if !strings.Contains(addr, ":") {
-		addr += ":22"
-	}
-
-	// Iterate until the ssh connection to the host can be established
-	// In openstack the client cannot access to the serial console of the instance
-	timeout := time.After(openstackServerBootTimeout)
-	retry := time.NewTicker(openstackServerBootRetry)
-	defer retry.Stop()
-
-	for {
-		select {
-		case <-timeout:
-			return fmt.Errorf("cannot ssh to the allocated instance: timeout reached")
-		case <-retry.C:
-			_, err := sshDial("tcp", addr, config)
-			if err == nil {
-				debugf("Connection to server %s established", s.d.Name)
-				return nil
-			}
-		case <-ctx.Done():
-			return fmt.Errorf("cannot wait for %s to boot: interrupted", s)
-		}
-	}
-}
 
 var openstackSerialOutputTimeout = 30 * time.Second
 
 func (p *openstackProvider) getSerialConsoleOutput(s *openstackServer) (string, error) {
+	_, err := s.p.computeClient.GetServer(s.d.Id)
+	if err != nil {
+		// this is when the server is removed
+		return "", fmt.Errorf("failed to retrieve the serial console, server removed: %s", s)
+	}
+
 	url := fmt.Sprintf("servers/%s/action", s.d.Id)
 
 	var req struct {
@@ -494,12 +472,6 @@ func (p *openstackProvider) waitServerBoot(ctx context.Context, s *openstackServ
 	if err != nil {
 		if !errors.Is(err, openstackSerialConsoleErr) {
 			return err
-		}
-		// It is important to try ssh connection because serial console could
-		// be disabled in the nova configuration
-		err = p.waitServerBootSSH(ctx, s)
-		if err != nil {
-			return fmt.Errorf("cannot connect to server %s: %v", s, err)
 		}
 	}
 	return nil

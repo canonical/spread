@@ -22,7 +22,43 @@ import (
 	"syscall"
 )
 
-var sshDial = ssh.Dial
+// sshDial is a copy/thin wrapper around the real ssh.Dial() that
+// additionally sets a deadline on the underlying connection.
+//
+// It is needed because a ssh.Dial() can happens right after the
+// reboot command is issued. The net.Dial() itself is successful but
+// then then during the ssh session setup the TCP connection ends
+// because of the reboot. The golang "ssh" package has no concpt of
+// "ssh -o ServerAliveInterval=10" or simialr so the code will
+// just hang in a read forever. This was observed running the
+// spread "cerberus" tests on ubuntu 23.04.
+//
+// Note that half of the function is just a copy of
+// golang.org/x/crypto/ssh/client.go:func Dial()
+var sshDial = func(network, addr string, config *ssh.ClientConfig) (*ssh.Client, error) {
+	conn, err := net.DialTimeout(network, addr, config.Timeout)
+	if err != nil {
+		return nil, err
+	}
+	// Ensure that if the connection goes away during e.g. a reboot
+	// the code does not hang forever.
+	//
+	// See e.g. https://github.com/golang/go/issues/51926
+	if config.Timeout > 0 {
+		if err := conn.SetDeadline(time.Now().Add(config.Timeout)); err != nil {
+			return nil, err
+		}
+		defer func() {
+			conn.SetDeadline(time.Time{})
+		}()
+	}
+	// end of the new code
+	c, chans, reqs, err := ssh.NewClientConn(conn, addr, config)
+	if err != nil {
+		return nil, err
+	}
+	return ssh.NewClient(c, chans, reqs), nil
+}
 
 type Client struct {
 	server Server
@@ -90,7 +126,7 @@ func (c *Client) dialOnReboot(prevBootID string) error {
 		// waitConfig is not well honored by golang, it is
 		// set to 5sec above but in reality it takes ~60sec
 		// before the code times out.
-		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
+		sshc, err := sshDial("tcp", c.addr, &waitConfig)
 		if err == nil {
 			// once successfully connected, check boot_id to
 			// see if the reboot actually happend

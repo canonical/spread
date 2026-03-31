@@ -1,0 +1,12 @@
+summary: test
+
+priority: 10
+
+prepare: |
+    echo works
+
+execute: |
+    echo works
+
+restore: |
+    exit 1

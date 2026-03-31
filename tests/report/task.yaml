@@ -1,0 +1,94 @@
+summary: Test the reports
+
+prepare: |
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
+
+execute: |
+    ! test -e spread_report.xml
+    ! test -e spread_report.json
+
+    # For tests1 these are the expected results for the reports
+    # Total: 5 Passed: 2 Aborted: 1 Failed: 2
+    # tests1/t11 -> Passed
+    # tests1/t12 -> Passed
+    # tests1/t13 -> Failed
+    # tests1/t14 -> Aborted
+    # tests1/t15 -> Failed (also failes debug section)
+
+    spread -v -reuse -resend -report lxd:ubuntu-16.04:tests/tests1/ || true
+
+    jq -r '.testsuites[0].total' spread_report.json | MATCH 5
+    jq -r '.testsuites[0].passed' spread_report.json | MATCH 2
+    jq -r '.testsuites[0].aborted' spread_report.json | MATCH 1
+    jq -r '.testsuites[0].failed' spread_report.json | MATCH 2
+    MATCH 'testsuite name="tests/tests1" passed="2" failed="2" aborted="1" total="5"' < spread_report.xml
+    MATCH 'test name="lxd:ubuntu-16.04:tests/tests1/t14" result="aborted"' < spread_report.xml
+    MATCH 'test name="lxd:ubuntu-16.04:tests/tests1/t13" result="failed"' < spread_report.xml
+    MATCH 'test name="lxd:ubuntu-16.04:tests/tests1/t11" result="passed"' < spread_report.xml
+
+    # For tests2 these are the expected results for the reports
+    # Total: 2 Passed: 0 Aborted: 2 Failed: 0
+    # The test suite fails to prepare so the tests are aborted
+    # tests2/t21 -> Aborted
+    # tests2/t22 -> Aborted
+
+    spread -v -reuse -resend -report lxd:ubuntu-16.04:tests/tests2/ || true
+
+    jq -r '.testsuites[0].total' spread_report.json | MATCH 2
+    jq -r '.testsuites[0].passed' spread_report.json | MATCH 0
+    jq -r '.testsuites[0].aborted' spread_report.json | MATCH 2
+    jq -r '.testsuites[0].failed' spread_report.json | MATCH 0
+    MATCH 'testsuite name="tests/tests2" passed="0" failed="0" aborted="2" total="2"' < spread_report.xml
+    MATCH 'test name="lxd:ubuntu-16.04:tests/tests2/t21" result="aborted' < spread_report.xml
+    MATCH 'test name="lxd:ubuntu-16.04:tests/tests2/t22" result="aborted' < spread_report.xml
+
+    # For tests3 these are the expected results for the reports
+    # Total: 3 Passed: 1 Aborted: 1 Failed: 1
+    # The test suite fails to restore so the tests are not affected
+    # tests3/t31 -> Passed
+    # tests3/t32 -> Failed
+    # tests3/t33 -> Aborted (also fails restore) (it is executed at last)
+
+    spread -v -reuse -resend -report lxd:ubuntu-16.04:tests/tests3/ || true
+
+    jq -r '.testsuites[0].total' spread_report.json | MATCH 3
+    jq -r '.testsuites[0].passed' spread_report.json | MATCH 1
+    jq -r '.testsuites[0].aborted' spread_report.json | MATCH 1
+    jq -r '.testsuites[0].failed' spread_report.json | MATCH 1
+    MATCH 'testsuite name="tests/tests3" passed="1" failed="1" aborted="1" total="3"' < spread_report.xml
+
+    # For tests4 these are the expected results for the reports
+    # Total: 4 Passed: 1 Aborted: 2 Failed: 1
+    # The test 42 (which is the second to be executed) fails during restore,
+    # so the tests 43 and 44 are aborted.
+    # tests4/t41 -> Passed
+    # tests4/t42 -> Failed (fails during restore)
+    # tests4/t42 -> Aborted
+    # tests4/t43 -> Aborted
+
+    spread -v -reuse -resend -report lxd:ubuntu-16.04:tests/tests4/ || true
+
+    jq -r '.testsuites[0].total' spread_report.json | MATCH 4
+    jq -r '.testsuites[0].passed' spread_report.json | MATCH 1
+    jq -r '.testsuites[0].aborted' spread_report.json | MATCH 2
+    jq -r '.testsuites[0].failed' spread_report.json | MATCH 1
+    MATCH 'testsuite name="tests/tests4" passed="1" failed="1" aborted="2" total="4"' < spread_report.xml
+
+    # The order in the report is: failed, aborted and passed
+    jq -r '.testsuites[0].tests[0].failure[0].info' spread_report.json | MATCH restoring
+    jq -r '.testsuites[0].tests[0].failure[0].result' spread_report.json | MATCH failed
+    jq -r '.testsuites[0].tests[1].failure[0].info' spread_report.json | MATCH executing
+    jq -r '.testsuites[0].tests[1].failure[0].result' spread_report.json | MATCH aborted
+
+    # Check the reports are not generated when th option -report is not used
+    rm spread_report.xml spread_report.json
+    spread -v -reuse -resend lxd:ubuntu-16.04:tests/tests4/ || true
+    ! test -e spread_report.xml
+    ! test -e spread_report.json
+
+debug: |
+    cat .spread-reuse.yaml || true
+    cat task.out || true

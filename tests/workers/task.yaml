@@ -1,0 +1,16 @@
+summary: Test the MATCH function.
+
+prepare: |
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
+
+execute: |
+    # Check it is possible to change the number of workers to use
+    spread -workers 1 lxd:ubuntu-16.04:checks/task &> task1.out
+    [ "$(grep -c Allocating task1.out)" -eq 1 ]
+
+    # Check it is possible to run with more than 1 worker
+    spread -workers 2 lxd:ubuntu-16.04:checks/task &> task2.out
+    [ "$(grep -c Allocating task2.out)" -eq 2 ]

@@ -163,7 +163,7 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 
 func isDebArch(s string) bool {
 	switch s {
-	case "amd64", "i386", "armel", "armhf", "arm64", "powerpc", "ppc64el", "s390x":
+	case "amd64", "i386", "armel", "armhf", "arm64", "powerpc", "ppc64el", "riscv64", "s390x":
 		return true
 	}
 	return false
@@ -181,6 +181,8 @@ func debArch() string {
 		return "arm64"
 	case "ppc64le":
 		return "ppc64el"
+	case "riscv64":
+		return "riscv64"
 	case "s390x":
 		return "s390x"
 	case "ppc":

@@ -1,0 +1,16 @@
+summary: Ensure it works.
+
+environment:
+    FAIL_CHECK: $(HOST:echo $FAIL_CHECK)
+
+restore: |
+    rm -f *.txt
+
+execute: |
+    mkdir -p artifacts
+    touch artifacts/one.txt
+    if [ "$FAIL_CHECK" = 1 ]; then
+        echo "Failing as requested."
+        exit 1
+    fi
+    touch artifacts/two.txt

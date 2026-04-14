@@ -804,6 +804,16 @@ backends:
                 image: ubuntu:16.04.1
 ```
 
+To launch a system as a virtual machine instead of a container, set `type: vm`:
+```
+backends:
+    lxd:
+        systems:
+            - ubuntu-22.04-vm:
+                image: ubuntu:22.04
+                type: vm
+```
+
 That's it. Have fun with your self-contained multi-system task runner.
 
 

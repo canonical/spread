@@ -27,7 +27,7 @@ jobs:
           git init
           git remote add origin https://github.com/canonical/spread.git
           # Pin spread to a known stable commit; update only after verification.
-          git fetch --depth=1 origin ae284792596e00d325a1787604fe4ec7e00574aa
+          git fetch --depth=1 origin 9fdce848027b944a50d25ed2271f17c213b44bd5
           git checkout FETCH_HEAD
           go build -o spread-testing ./cmd/spread
           sudo install -m755 spread-testing /usr/bin/spread

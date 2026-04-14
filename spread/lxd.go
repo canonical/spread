@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"io"
 	"os"
 	"os/exec"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"gopkg.in/yaml.v2"
 
 	"golang.org/x/net/context"
 )
@@ -67,7 +68,7 @@ func (s *lxdServer) ReuseData() interface{} {
 func (s *lxdServer) Discard(ctx context.Context) error {
 	output, err := exec.Command("lxc", "delete", "--force", s.d.Name).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("cannot discard lxd container: %v", outputErr(output, err))
+		return fmt.Errorf("cannot discard lxd instance: %v", outputErr(output, err))
 	}
 	return nil
 }
@@ -107,9 +108,9 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		name = p.backend.Location + ":" + name
 	}
 
-	args := []string{"launch", lxdimage, name}
-	if !p.options.Reuse {
-		args = append(args, "--ephemeral")
+	args := []string{"launch", lxdimage, name, "--ephemeral"}
+	if system.Type == "vm" {
+		args = append(args, "--vm")
 	}
 	output, err := exec.Command("lxc", args...).CombinedOutput()
 	if err != nil {
@@ -117,7 +118,7 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		if bytes.Contains(output, []byte("error: not found")) {
 			err = fmt.Errorf("%s not found", lxdimage)
 		}
-		return nil, &FatalError{fmt.Errorf("cannot launch lxd container: %v", err)}
+		return nil, &FatalError{fmt.Errorf("cannot launch lxd instance: %v", err)}
 	}
 
 	s := &lxdServer{
@@ -128,7 +129,7 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 		system: system,
 	}
 
-	printf("Waiting for lxd container %s to have an address...", name)
+	printf("Waiting for lxd instance %s to have an address...", name)
 	timeout := time.After(60 * time.Second)
 	retry := time.NewTicker(1 * time.Second)
 	defer retry.Stop()
@@ -494,7 +495,7 @@ func (p *lxdProvider) tuneSSH(name string) error {
 	for _, args := range cmds {
 		output, err := exec.Command("lxc", append([]string{"exec", name, "--"}, args...)...).CombinedOutput()
 		if err != nil && args[0] != "killall" {
-			return fmt.Errorf("cannot prepare sshd in lxd container %q: %v", name, outputErr(output, err))
+			return fmt.Errorf("cannot prepare sshd in lxd instance %q: %v", name, outputErr(output, err))
 		}
 	}
 	return nil
@@ -510,7 +511,7 @@ func lxdListImpl(name string) ([]byte, error) {
 	output, err := cmd.Output()
 	if err != nil {
 		err = outputErr(stderr.Bytes(), err)
-		return nil, fmt.Errorf("cannot list lxd container: %w", err)
+		return nil, fmt.Errorf("cannot list lxd instance: %w", err)
 	}
 
 	return output, nil

@@ -652,7 +652,12 @@ func Load(path string) (*Project, error) {
 		suite.Tasks = make(map[string]*Task)
 		for _, tname := range tnames {
 			tfilename := filepath.Join(suite.Path, tname, "task.yaml")
-			if fi, _ := os.Stat(filepath.Dir(tfilename)); !fi.IsDir() {
+			// A dangling symlink (e.g. a deleted _common/test directory
+			// left pointing to nothing) still shows up in Readdirnames,
+			// but Stat fails on it. Swallow the error and skip instead of
+			// dereferencing the nil FileInfo.
+			fi, err := os.Stat(filepath.Dir(tfilename))
+			if err != nil || !fi.IsDir() {
 				continue
 			}
 			tdata, err := os.ReadFile(tfilename)

@@ -37,8 +37,20 @@ type Client struct {
 
 func Dial(server Server, username, password string) (*Client, error) {
 	config := &ssh.ClientConfig{
-		User:            username,
-		Auth:            []ssh.AuthMethod{ssh.Password(password)},
+		User: username,
+		Auth: []ssh.AuthMethod{
+			ssh.Password(password),
+			ssh.KeyboardInteractive(func(user, instruction string, questions []string, echos []bool) ([]string, error) {
+				answers := make([]string, len(questions))
+				for i, _ := range questions {
+					if questions[i] == "Password: " {
+						answers[i] = password
+					}
+				}
+
+				return answers, nil
+			}),
+		},
 		Timeout:         10 * time.Second,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}

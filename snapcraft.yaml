@@ -1,5 +1,4 @@
 name: spread
-version: 2020.08.19
 summary: Convenient full-system test (task) distribution
 description: |
     Spread is a plesant way distribute full-system integration tests and
@@ -12,14 +11,26 @@ description: |
 
 confinement: strict
 grade: stable
-base: core20
+base: core24
+license: GPL-3.0-or-later
+adopt-info: spread
 
 apps:
     spread:
         command: bin/spread
-        plugs: [home, network, network-bind]
+        plugs:
+          - home
+          - network
+          - network-bind
 
 parts:
     spread:
         plugin: go
         source: .
+        build-packages:
+          - git
+        build-snaps:
+          - go
+        override-pull: |
+          craftctl default
+          craftctl set version="$(date +"%Y.%m.%d")-g$(git rev-parse --short HEAD)"

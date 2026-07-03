@@ -14,12 +14,13 @@ import (
 	// with go1.6 which is used in the xenial autopkgtests
 	"golang.org/x/net/context"
 
-	"golang.org/x/crypto/ssh"
-	"golang.org/x/term"
 	"net"
 	"regexp"
 	"strconv"
 	"syscall"
+
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/term"
 )
 
 var sshDial = ssh.Dial
@@ -35,13 +36,43 @@ type Client struct {
 	killTimeout time.Duration
 }
 
-func Dial(server Server, username, password string) (*Client, error) {
+func getSSHKeySigner(sshKey string, sshKeyPass string) (ssh.Signer, error) {
+	// Create the Signer for this private key.
+	// It is not supported the
+	var signer ssh.Signer
+	var err error
+
+	if sshKeyPass != "" {
+		signer, err = ssh.ParsePrivateKeyWithPassphrase([]byte(sshKey), []byte(sshKeyPass))
+	} else {
+		signer, err = ssh.ParsePrivateKey([]byte(sshKey))
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse private key: %v", err)
+	}
+	return signer, nil
+}
+
+func Dial(server Server, username, password string, sshKey string, sshKeyPass string) (*Client, error) {
+	auth := ssh.Password(password)
 	config := &ssh.ClientConfig{
 		User:            username,
-		Auth:            []ssh.AuthMethod{ssh.Password(password)},
+		Auth:            []ssh.AuthMethod{auth},
 		Timeout:         10 * time.Second,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
+
+	// When the sshKey is set, it is used for the authentication
+	if sshKey != "" {
+		signer, err := getSSHKeySigner(sshKey, sshKeyPass)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to parse ssh key: %v", err)
+		}
+		config.Auth = []ssh.AuthMethod{ssh.PublicKeys(signer)}
+		config.HostKeyAlgorithms = []string{ssh.KeyAlgoRSA, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSASHA512}
+	}
+
 	addr := server.Address()
 	if !strings.Contains(addr, ":") {
 		addr += ":22"
@@ -86,20 +117,44 @@ func (c *Client) dialOnReboot(prevBootID string) error {
 	waitConfig.Timeout = 5 * time.Second
 
 	for {
-		// Try to connect to the rebooting system, note that
-		// waitConfig is not well honored by golang, it is
-		// set to 5sec above but in reality it takes ~60sec
-		// before the code times out.
-		sshc, err := ssh.Dial("tcp", c.addr, &waitConfig)
-		if err == nil {
-			// once successfully connected, check boot_id to
-			// see if the reboot actually happend
-			c.sshc.Close()
-			c.sshc = sshc
-			curBootID, err := c.getBootID()
-			if err == nil {
-				if curBootID != prevBootID {
-					return nil
+		// Try to establish a TCP connection with timeout
+		conn, err := net.DialTimeout("tcp", c.addr, 10*time.Second)
+		if err != nil {
+			time.Sleep(1 * time.Second)
+			// still rebooting
+		} else {
+			// Set a 10-second deadline to ensure the SSH handshake doesn't block indefinitely.
+			conn.SetDeadline(time.Now().Add(15 * time.Second))
+			// Try to establish an SSH connection over the TCP socket.
+			clientConn, chans, reqs, err := ssh.NewClientConn(conn, c.addr, &waitConfig)
+			if err != nil {
+				// SSH handshake failed — likely still rebooting — close the TCP connection and retry.
+				time.Sleep(500 * time.Millisecond)
+				conn.Close()
+			} else {
+				// Successfully connected via SSH; create an SSH client.
+				sshc := ssh.NewClient(clientConn, chans, reqs)
+
+				// once successfully connected, check boot_id to
+				// see if the reboot actually happened
+				c.sshc.Close()
+				c.sshc = sshc
+
+				// Try to get the boot_id to detect if reboot is complete
+				conn.SetDeadline(time.Now().Add(15 * time.Second))
+				curBootID, err := c.getBootID()
+
+				// Remove the deadline set for the handshake
+				conn.SetDeadline(time.Time{})
+
+				if err == nil {
+					if curBootID != prevBootID {
+						printf("Connected after reboot to %s", c.job)
+						return nil
+					}
+				} else {
+					// ssh still not ready to retrieve bootId
+					time.Sleep(200 * time.Millisecond)
 				}
 			}
 		}
@@ -235,6 +290,8 @@ const (
 	combinedOutput
 	splitOutput
 	shellOutput
+	liveOutput
+	perfOutput
 )
 
 func (c *Client) Run(script string, dir string, env *Environment) error {
@@ -257,6 +314,14 @@ func (c *Client) Trace(script string, dir string, env *Environment) (output []by
 func (c *Client) Shell(script string, dir string, env *Environment) error {
 	_, err := c.run(script, dir, env, shellOutput)
 	return err
+}
+
+func (c *Client) Live(script string, dir string, env *Environment) (output []byte, err error) {
+	return c.run(script, dir, env, liveOutput)
+}
+
+func (c *Client) Perf(script string, dir string, env *Environment) (output []byte, err error) {
+	return c.run(script, dir, env, perfOutput)
 }
 
 type rebootError struct {
@@ -380,7 +445,7 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	}
 
 	// Don't trace environment variables so secrets don't leak.
-	if mode == traceOutput {
+	if mode == traceOutput || mode == perfOutput {
 		buf.WriteString("set -x\n")
 	}
 
@@ -424,6 +489,13 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 		cmd = c.sudo() + "/bin/bash -"
 		session.Stdout = &stdout
 		session.Stderr = &stderr
+	case liveOutput:
+		cmd = c.sudo() + "/bin/bash - 2>&1"
+		session.Stdout = os.Stdout
+	case perfOutput:
+		adddate := "awk '{cmd=\"(date +'%T.%3N')\"; cmd | getline d; print d,$0; close(cmd)}'"
+		cmd = c.sudo() + "/bin/bash - 2>&1 | " + adddate
+		session.Stdout = &stdout
 	case shellOutput:
 		cmd = fmt.Sprintf("{\nf=$(mktemp)\ntrap 'rm '$f EXIT\ncat > $f <<'SCRIPT_END'\n%s\nSCRIPT_END\n%s/bin/bash $f\n}", buf.String(), c.sudo())
 		session.Stdout = os.Stdout
@@ -453,20 +525,31 @@ func (c *Client) runPart(script string, dir string, env *Environment, mode outpu
 	}
 
 	if stdout.Len() > 0 {
-		debugf("Output from running script on %s:\n-----\n%s\n-----", c.job, stdout.Bytes())
+		if mode == perfOutput {
+			logf("Output from running script on %s:\n-----\n%s\n-----", c.job, stdout.Bytes())
+		} else {
+			debugf("Output from running script on %s:\n-----\n%s\n-----", c.job, stdout.Bytes())
+		}
 	}
 	if stderr.Len() > 0 {
-		debugf("Error output from running script on %s:\n-----\n%s\n-----", c.job, stderr.Bytes())
+		if mode == perfOutput {
+			logf("Error output from running script on %s:\n-----\n%s\n-----", c.job, stderr.Bytes())
+		} else {
+			debugf("Error output from running script on %s:\n-----\n%s\n-----", c.job, stderr.Bytes())
+		}
 	}
 
 	if e, ok := err.(*ssh.ExitError); ok && e.ExitStatus() == 213 {
 		lines := bytes.Split(bytes.TrimSpace(stdout.Bytes()), []byte{'\n'})
 		m := commandExp.FindSubmatch(lines[len(lines)-1])
+		if len(m) > 0 && string(m[1]) == "ERROR" {
+			return nil, fmt.Errorf("%s", m[2])
+		}
 		if len(m) > 0 && string(m[1]) == "REBOOT" {
 			return append(previous, stdout.Bytes()...), &rebootError{string(m[2])}
 		}
-		if len(m) > 0 && string(m[1]) == "ERROR" {
-			return nil, fmt.Errorf("%s", m[2])
+		if mode == liveOutput {
+			return append(previous, stdout.Bytes()...), &rebootError{"Reboot"}
 		}
 	}
 
@@ -819,7 +902,7 @@ func (s *localScript) run() (stdout, stderr []byte, err error) {
 	cmd.Dir = s.dir
 	cmd.ExtraFiles = s.extraFiles
 	switch s.mode {
-	case traceOutput, combinedOutput:
+	case traceOutput, combinedOutput, liveOutput:
 		cmd.Stdout = &outbuf
 		cmd.Stderr = &outbuf
 	case splitOutput:
@@ -1036,7 +1119,7 @@ func waitPortUp(ctx context.Context, what fmt.Stringer, address string) error {
 	return nil
 }
 
-func waitServerUp(ctx context.Context, server Server, username, password string) error {
+func waitServerUp(ctx context.Context, server Server, username, password string, sshKeyFile string, sshKeyPass string) error {
 	var timeout = time.After(5 * time.Minute)
 	var relog = time.NewTicker(2 * time.Minute)
 	defer relog.Stop()
@@ -1045,7 +1128,7 @@ func waitServerUp(ctx context.Context, server Server, username, password string)
 
 	for {
 		debugf("Waiting until %s is listening...", server)
-		client, err := Dial(server, username, password)
+		client, err := Dial(server, username, password, sshKeyFile, sshKeyPass)
 		if err == nil {
 			client.Close()
 			break

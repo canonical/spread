@@ -32,9 +32,11 @@ type Options struct {
 	Resend         bool
 	Discard        bool
 	Artifacts      string
+	Residue        string
 	Seed           int64
 	Repeat         int
 	GarbageCollect bool
+	Order          bool
 }
 
 type Runner struct {
@@ -57,6 +59,7 @@ type Runner struct {
 	servers  []Server
 	pending  []*Job
 	sequence map[*Job]int
+	last     int
 	stats    stats
 
 	suiteWorkers map[[3]string]int
@@ -69,6 +72,7 @@ func Start(project *Project, options *Options) (*Runner, error) {
 		providers: make(map[string]Provider),
 		reserved:  make(map[string]bool),
 		sequence:  make(map[*Job]int),
+		last:      0,
 
 		suiteWorkers: make(map[[3]string]int),
 	}
@@ -230,6 +234,10 @@ func (r *Runner) loop() (err error) {
 				// logic will have a better chance of producing the same
 				// ordering on each of the workers.
 				order := rand.New(rand.NewSource(seed + int64(i))).Perm(len(r.pending))
+				if r.options.Order {
+					order = makeRange(len(r.pending))
+				}
+
 				go r.worker(backend, system, order)
 			}
 		}
@@ -247,6 +255,14 @@ func (r *Runner) loop() (err error) {
 			return nil
 		}
 	}
+}
+
+func makeRange(max int) []int {
+	a := make([]int, max)
+	for i := range a {
+		a[i] = i
+	}
+	return a
 }
 
 func (r *Runner) prepareContent() (err error) {
@@ -447,9 +463,9 @@ func (r *Runner) run(client *Client, job *Job, verb string, context interface{},
 	defer client.ResetJob()
 	if verb == executing {
 		r.mu.Lock()
-		if r.sequence[job] == 0 {
-			r.sequence[job] = len(r.sequence) + 1
-		}
+		r.sequence[job] = r.last + 1
+		r.last = r.last + 1
+
 		printft(start, startTime, "%s %s (%s) (%d/%d)...", strings.Title(verb), contextStr, server.Label(), r.sequence[job], len(r.pending))
 		r.mu.Unlock()
 	} else {
@@ -684,9 +700,11 @@ func (r *Runner) job(backend *Backend, system *System, suite *Suite, last *Job, 
 
 	// Find the current top priority for this backend and system.
 	var priority int64 = math.MinInt64
-	for _, job := range r.pending {
-		if job != nil && job.Priority > priority && job.Backend == backend && job.System == system {
-			priority = job.Priority
+	if ! r.options.Order {
+		for _, job := range r.pending {
+			if job != nil && job.Priority > priority && job.Backend == backend && job.System == system {
+				priority = job.Priority
+			}
 		}
 	}
 

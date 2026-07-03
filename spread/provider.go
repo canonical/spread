@@ -22,6 +22,7 @@ type Server interface {
 	Provider() Provider
 	Address() string
 	Discard(ctx context.Context) error
+	SerialOutput() ([]byte, error)
 	ReuseData() interface{}
 	System() *System
 	Label() string

@@ -363,6 +363,10 @@ func (s *linodeServer) Discard(ctx context.Context) error {
 	return err
 }
 
+func (s *linodeServer) SerialOutput() ([]byte, error) {
+	return nil, nil
+}
+
 type linodeListResult struct {
 	Data []linodeServerData `json:"DATA"`
 }

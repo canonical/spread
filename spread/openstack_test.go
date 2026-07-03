@@ -376,7 +376,7 @@ func (s *openstackFindImageSuite) TestOpenStackWaitProvisionTimeout(c *C) {
 	defer restore()
 
 	err := spread.OpenStackWaitProvision(s.opst, context.TODO(), "", "test-server")
-	c.Check(err, ErrorMatches, "timeout waiting for test-server to provision")
+	c.Check(err, ErrorMatches, "timeout waiting for test-server to provision, status: BUILD")
 }
 
 func (s *openstackFindImageSuite) TestOpenStackWaitServerBootSerialHappy(c *C) {

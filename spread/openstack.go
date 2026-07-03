@@ -365,7 +365,14 @@ func (p *openstackProvider) waitProvision(ctx context.Context, s *openstackServe
 	for {
 		select {
 		case <-timeout:
-			return fmt.Errorf("timeout waiting for %s to provision", s)
+			server, err := p.computeClient.GetServer(s.d.Id)
+			if err != nil {
+				return fmt.Errorf("timeout waiting for %s to provision", s)
+			}
+			if server.Fault == nil {
+				return fmt.Errorf("timeout waiting for %s to provision, status: %s", s, server.Status)
+			}
+			return fmt.Errorf("timeout waiting for %s to provision, error: %s", s, server.Fault.Message)
 
 		case <-retry.C:
 			server, err := p.computeClient.GetServer(s.d.Id)
@@ -677,12 +684,32 @@ func (p *openstackProvider) list() ([]*openstackServer, error) {
 	return instances, nil
 }
 
+var openstackRemoveServerTimeout = 3 * time.Minute
+var openstackRemoveRetry = 5 * time.Second
+
 func (p *openstackProvider) removeMachine(ctx context.Context, s *openstackServer) error {
 	err := p.computeClient.DeleteServer(s.d.Id)
 	if err != nil {
 		return fmt.Errorf("cannot remove openstack instance: %v", &openstackError{err})
 	}
-	return err
+	timeout := time.After(openstackRemoveServerTimeout)
+	retry := time.NewTicker(openstackRemoveRetry)
+	defer retry.Stop()
+
+	for {
+		server, err := p.computeClient.GetServer(s.d.Id)
+		if err != nil || server.Status == nova.StatusDeleted {
+			// this is when the server was already removed
+			return nil
+		}
+
+		select {
+		case <-retry.C:
+		case <-timeout:
+			printf("cannot remove the openstack server %s (%s): timeout reached with server status %s", server.Id, s.d.Name, server.Status)
+			return nil
+		}
+	}
 }
 
 func (p *openstackProvider) GarbageCollect() error {

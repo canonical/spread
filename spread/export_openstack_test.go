@@ -102,3 +102,9 @@ func OpenStackWaitServerBoot(p Provider, ctx context.Context, serverID, serverNa
 func NewOpenStackError(gooseError error) error {
 	return &openstackError{gooseError}
 }
+
+// ResolveKeyForTests is a test helper that exposes resolveKey for tests.
+func ResolveKeyForTests(b *Backend) (string, error) {
+	p := &openstackProvider{backend: b}
+	return p.resolveKey()
+}

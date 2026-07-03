@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -750,6 +751,43 @@ func (p *openstackProvider) checkCredentials() error {
 	return err
 }
 
+func (p *openstackProvider) resolveKey() (string, error) {
+	key := p.backend.Key
+
+	if key == "" {
+		return "", fmt.Errorf("no authentication key provided")
+	}
+
+	// Check if the input is a valid path that exists
+	info, err := os.Stat(key)
+
+	// If it doesn't exist or there's an error, treat key as the value
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return key, nil
+		}
+		return "", fmt.Errorf("unexpected error checking key path")
+	}
+
+	// Ensure it's a file and not a directory
+	if info.IsDir() {
+		return "", fmt.Errorf("Key path is a directory")
+	}
+
+	// Read the file content
+	content, err := os.ReadFile(key)
+	if err != nil {
+		return "", fmt.Errorf("failed to read key file")
+	}
+
+	// Fail if the content is empty
+	if len(content) == 0 {
+		return "", errors.New("Key file is empty")
+	}
+
+	return string(content), nil
+}
+
 func (p *openstackProvider) authenticate() error {
 	// Only identity API v3 is currently supported
 	identityAPIVersion, err := getIdentityAPIVersion(p.backend.Endpoint)
@@ -768,11 +806,16 @@ func (p *openstackProvider) authenticate() error {
 	}
 	osproj, region = loc[0], loc[1]
 
+	key, err := p.resolveKey()
+	if err != nil {
+		return fmt.Errorf("cannot resolve authentication key: %v", err)
+	}
+
 	// Authenticate using the project credentials.
 	creds := &identity.Credentials{
 		URL:        p.backend.Endpoint, // The authentication URL
 		User:       p.backend.Account,  // The username to authenticate as
-		Secrets:    p.backend.Key,      // The authentication secret
+		Secrets:    key,                // The authentication secret
 		Region:     region,             // The OS region
 		TenantName: osproj,             // The OS project name
 		Version:    identityAPIVersion, // The identity API version

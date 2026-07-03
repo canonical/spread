@@ -1,0 +1,4 @@
+summary: Ensure it works.
+
+execute: |
+    echo "WORKS"

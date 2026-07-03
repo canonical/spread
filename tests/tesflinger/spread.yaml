@@ -1,0 +1,67 @@
+project: spread
+
+backends:
+    testflinger:
+        halt-timeout: 1m
+        wait-timeout: 1h
+        warn-timeout: 5m
+        kill-timeout: 2h
+        systems:
+            - ubuntu-core-22-rpi4:
+                queue: rpi4b
+                image: https://url/pi.img.xz
+                workers: 1
+                username: ubuntu
+                password: ubuntu
+
+            - ubuntu-core-22-64:
+                queue: x64
+                image: jammy
+                workers: 1
+                username: ubuntu
+                password: ubuntu
+
+
+environment:
+    GOPATH: /gopath
+    GOPKG: github.com/snapcore/spread
+    PATH: $GOPATH/bin:$PATH
+    DELTA_REF: 08dbc8b
+    DELTA_PREFIX: spread-$DELTA_REF/
+
+path: /home/test
+
+rename:
+    - s,^,$DELTA_PREFIX,S
+
+warn-timeout: 5s
+
+repack: |
+    trap "rm -rf spread-* added" EXIT
+    tar x <&3
+    touch $DELTA_PREFIX/added
+    tar c $DELTA_PREFIX >&4
+
+prepare: |
+    if [ -f spread.yaml ]; then
+        echo "Rename did not work."
+        exit 1
+    fi
+    if [ ! -f $DELTA_PREFIX/spread.yaml ]; then
+        echo "Renamed content not found."
+        exit 1
+    fi
+    if [ ! -f $DELTA_PREFIX/added ]; then
+        echo "Dynamically added file not found."
+        exit 1
+    fi
+
+    # Make sure suite works after renaming back.
+    find $DELTA_PREFIX -mindepth 1 -maxdepth 1 -exec mv {} $SPREAD_PATH \;
+    rmdir $DELTA_PREFIX
+
+suites:
+    checks/: 
+        summary: Verification tasks.
+
+# vim:ts=4:sw=4:et

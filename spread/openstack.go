@@ -601,6 +601,7 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		Networks:         networks,
 		Metadata:         tags,
 		UserData:         []byte(cloudconfig),
+		ConfigDrive:      true, // needed because of CVE-2024-6174
 	}
 
 	if len(system.Groups) > 0 {

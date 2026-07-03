@@ -1,0 +1,19 @@
+summary: Ensure skip condition works.
+
+environment:
+    skip/T1: true
+    exec/T1: true
+    skip/T2: false
+    exec/T2: true
+    skip/T3: false
+    exec/T3: false
+    skip/T4: true
+    exec/T4: false
+
+skip:
+  - reason: This is the skip reason
+    if: |
+      [ "$skip" = "true" ]
+
+execute: |
+    [ "$exec" = "true" ]

@@ -316,6 +316,11 @@ func (e *Environment) Replace(oldkey, newkey, value string) {
 	e.vals[newkey] = value
 }
 
+type Skip struct {
+	Reason string `yaml:"reason"`
+	If     string `yaml:"if"`
+}
+
 type Suite struct {
 	Summary  string
 	Systems  []string
@@ -340,6 +345,7 @@ type Suite struct {
 
 	Priority OptionalInt
 	Manual   bool
+	Skip     []Skip
 }
 
 func (s *Suite) String() string { return "suite " + s.Name }
@@ -371,6 +377,7 @@ type Task struct {
 
 	Priority OptionalInt
 	Manual   bool
+	Skip     []Skip
 }
 
 func (t *Task) String() string { return t.Name }
@@ -387,7 +394,8 @@ type Job struct {
 	Environment *Environment
 	Sample      int
 
-	Priority int64
+	Priority   int64
+	SkipReason string
 }
 
 func (job *Job) String() string {
@@ -625,6 +633,13 @@ func Load(path string) (*Project, error) {
 		suite.PrepareEach = strings.TrimSpace(suite.PrepareEach)
 		suite.RestoreEach = strings.TrimSpace(suite.RestoreEach)
 		suite.DebugEach = strings.TrimSpace(suite.DebugEach)
+		for i := range suite.Skip {
+			suite.Skip[i].Reason = strings.TrimSpace(suite.Skip[i].Reason)
+			suite.Skip[i].If = strings.TrimSpace(suite.Skip[i].If)
+			if suite.Skip[i].If == "" || suite.Skip[i].Reason == "" {
+				return nil, fmt.Errorf("%s is missing either the if or reason for the skip", suite)
+			}
+		}
 
 		project.Suites[suite.Name] = suite
 
@@ -677,6 +692,13 @@ func Load(path string) (*Project, error) {
 			task.Prepare = strings.TrimSpace(task.Prepare)
 			task.Restore = strings.TrimSpace(task.Restore)
 			task.Debug = strings.TrimSpace(task.Debug)
+			for _, skip := range task.Skip {
+				skip.Reason = strings.TrimSpace(skip.Reason)
+				skip.If = strings.TrimSpace(skip.If)
+				if skip.If == "" || skip.Reason == "" {
+					return nil, fmt.Errorf("%s is missing either the if or reason for the skip", task)
+				}
+			}
 			if !validTask.MatchString(task.Name) {
 				return nil, fmt.Errorf("invalid task name: %q", task.Name)
 			}

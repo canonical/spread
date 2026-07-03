@@ -1,0 +1,18 @@
+project: spread
+
+backends:
+    lxd:
+        systems:
+            - ubuntu-22.04
+
+path: /home/test
+
+suites:
+    checks/:
+        summary: Verification tasks.
+        environment: 
+            MY_TEST_VAR: '$(HOST: echo "${MY_TEST_VAR:-}")'
+        skip:
+          - reason: Skip all tests for checks suite
+            if: |
+                [ "$MY_TEST_VAR" = 1 ]

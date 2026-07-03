@@ -1,0 +1,44 @@
+summary: Test the skip condition feature
+
+prepare: |
+    if [ ! -f .spread-reuse.yaml ]; then
+        touch /run/spread-reuse.yaml
+        ln -s /run/spread-reuse.yaml .spread-reuse.yaml
+    fi
+
+execute: |
+    # Check when the skip condition matches with a single skip condition
+    spread -reuse -resend lxd:ubuntu-22.04:checks/single-skip &> task1.out || true
+    grep 'Successful tasks: 1' task1.out
+    grep 'Failed tasks: 1' task1.out
+    grep 'Skipped tasks: 2' task1.out
+    test "$(grep -c 'Skipping ' task1.out)" = 2
+    grep 'single-skip:T1 - This is the skip reason' task1.out
+    grep 'single-skip:T4 - This is the skip reason' task1.out
+
+    # Check when the skip condition matches with multiple skip conditions
+    spread -reuse -resend lxd:ubuntu-22.04:checks/multi-skip &> task2.out || true
+    grep 'Successful tasks: 1' task2.out
+    grep 'Skipped tasks: 2' task2.out
+    test "$(grep -c 'Skipping ' task2.out)" = 2
+    grep 'multi-skip:T1 - This is the first skip reason' task2.out
+    grep 'multi-skip:T2 - This is the second skip reason' task2.out
+    
+    # Check when the skip condition is set at suite level
+    MY_TEST_VAR=1 spread -reuse -resend lxd:ubuntu-22.04:checks/single-skip &> task3.out || true
+    grep 'Successful tasks: 0' task3.out
+    grep 'Skipped tasks: 4' task3.out
+    grep 'Skipped suites: 1' task3.out
+    test "$(grep -c 'Skipping ' task3.out)" = 1
+    grep 'checks/ - Skip all tests for checks suite' task3.out
+    grep 'single-skip:T1 - Skip all tests for checks suite' task3.out
+    grep 'single-skip:T2 - Skip all tests for checks suite' task3.out
+    grep 'single-skip:T3 - Skip all tests for checks suite' task3.out
+    grep 'single-skip:T4 - Skip all tests for checks suite' task3.out
+
+debug: |
+    cat task1.out || true
+    echo
+    cat task2.out || true
+    echo
+    cat task3.out || true

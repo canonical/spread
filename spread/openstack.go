@@ -43,6 +43,11 @@ type novaComputeClient interface {
 	DeleteServer(serverId string) error
 }
 
+type neutronClient interface {
+	ListNetworksV2(filter ...*neutron.Filter) ([]neutron.NetworkV2, error)
+	ListSecurityGroupsV2() ([]neutron.SecurityGroupV2, error)
+}
+
 type openstackProvider struct {
 	project *Project
 	backend *Backend
@@ -51,7 +56,7 @@ type openstackProvider struct {
 	region        string
 	osClient      gooseclient.Client
 	computeClient novaComputeClient
-	networkClient *neutron.Client
+	networkClient neutronClient
 	imageClient   glanceImageClient
 
 	mu sync.Mutex
@@ -593,6 +598,12 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		"password": p.options.Password,
 	}
 
+	// halt-timeout is added to the server to determine the time when it
+	// has to be garbage collected
+	if p.backend.HaltTimeout.Duration != 0 {
+		tags["halt-timeout"] = p.backend.HaltTimeout.Duration.String()
+	}
+
 	opts := nova.RunServerOpts{
 		Name:             name,
 		FlavorId:         flavor.Id,
@@ -602,6 +613,35 @@ func (p *openstackProvider) createMachine(ctx context.Context, system *System) (
 		Metadata:         tags,
 		UserData:         []byte(cloudconfig),
 	}
+
+	// When the storage size is defined, then we use the volume generated
+	// with the source image. Otherwise we boot in an ephemeral disk the
+	// image using the size described in the flavor
+	storage := image.MinimumDisk
+	if system.Storage != 0 {
+		storage = int(system.Storage / gb)
+	}
+	// We use 20 GB as default value for the storage size
+	if storage == 0 {
+		storage = 20
+	}
+
+	// By default volumes are deleted on termination
+	deleteOnTermination := false
+	if p.backend.VolumeAutoDelete == nil {
+		deleteOnTermination = true
+	} else {
+		deleteOnTermination = *p.backend.VolumeAutoDelete
+	}
+
+	opts.BlockDeviceMappings = []nova.BlockDeviceMapping{{
+		BootIndex:           0,
+		SourceType:          "image",
+		DestinationType:     "volume",
+		VolumeSize:          storage,
+		UUID:                image.Id,
+		DeleteOnTermination: deleteOnTermination,
+	}}
 
 	if len(system.Groups) > 0 {
 		sgNames, err := p.findSecurityGroupNames(system.Groups)

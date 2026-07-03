@@ -65,10 +65,11 @@ type Backend struct {
 	Storage  Size
 
 	// Only for OpenStack so far
-	Account  string
-	Endpoint string
-	Networks []string
-	Groups   []string
+	Account          string
+	Endpoint         string
+	Networks         []string
+	Groups           []string
+	VolumeAutoDelete *bool `yaml:"volume-auto-delete"`
 
 	Systems SystemsMap
 

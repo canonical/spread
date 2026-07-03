@@ -9,7 +9,9 @@ import (
 )
 
 var (
-	OpenStackName = openstackName
+	OpenStackName          = openstackName
+	OpenstackDefaultFlavor = openstackDefaultFlavor
+	OpenstackReadyMarker   = openstackReadyMarker
 )
 
 func FakeOpenStackImageClient(p Provider, imageClient glanceImageClient) (restore func()) {
@@ -37,6 +39,11 @@ func FakeOpenStackGooseClient(p Provider, gooseClient gooseclient.Client) (resto
 	return func() {
 		opst.osClient = oldOsClient
 	}
+}
+
+func FakeOpenStackNeutronClient(p Provider, nc neutronClient) {
+	osp := p.(*openstackProvider)
+	osp.networkClient = nc
 }
 
 func FakeOpenStackProvisionTimeout(timeout, retry time.Duration) (restore func()) {

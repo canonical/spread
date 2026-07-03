@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-goose/goose/v5/glance"
 	goosehttp "github.com/go-goose/goose/v5/http"
+	"github.com/go-goose/goose/v5/neutron"
 	"github.com/go-goose/goose/v5/nova"
 	"golang.org/x/crypto/ssh"
 
@@ -119,6 +120,25 @@ func (cc *fakeNovaComputeClient) DeleteServer(serverId string) error {
 	return cc.deleteServer(serverId)
 }
 
+type fakeNeutronClient struct {
+	listNetworksV2       func(filter ...*neutron.Filter) ([]neutron.NetworkV2, error)
+	listSecurityGroupsV2 func() ([]neutron.SecurityGroupV2, error)
+}
+
+func (f *fakeNeutronClient) ListNetworksV2(filter ...*neutron.Filter) ([]neutron.NetworkV2, error) {
+	if f.listNetworksV2 != nil {
+		return f.listNetworksV2()
+	}
+	return nil, nil
+}
+
+func (f *fakeNeutronClient) ListSecurityGroupsV2() ([]neutron.SecurityGroupV2, error) {
+	if f.listSecurityGroupsV2 != nil {
+		return f.listSecurityGroupsV2()
+	}
+	return nil, nil
+}
+
 type fakeOsClientRequest struct {
 	method      string
 	svcType     string
@@ -163,6 +183,7 @@ type openstackFindImageSuite struct {
 	fakeImageClient   *fakeGlanceImageClient
 	fakeComputeClient *fakeNovaComputeClient
 	fakeOsClient      *fakeOsClient
+	fakeNeutronClient *fakeNeutronClient
 }
 
 var _ = Suite(&openstackFindImageSuite{})
@@ -173,10 +194,12 @@ func (s *openstackFindImageSuite) SetUpTest(c *C) {
 	s.fakeImageClient = &fakeGlanceImageClient{}
 	s.fakeComputeClient = &fakeNovaComputeClient{}
 	s.fakeOsClient = &fakeOsClient{}
+	s.fakeNeutronClient = &fakeNeutronClient{}
 
 	spread.FakeOpenStackImageClient(s.opst, s.fakeImageClient)
 	spread.FakeOpenStackComputeClient(s.opst, s.fakeComputeClient)
 	spread.FakeOpenStackGooseClient(s.opst, s.fakeOsClient)
+	spread.FakeOpenStackNeutronClient(s.opst, s.fakeNeutronClient)
 }
 
 func (s *openstackFindImageSuite) TestOpenStackFindImageNotFound(c *C) {
@@ -463,4 +486,96 @@ func (s *openstackFindImageSuite) TestOpenStackWaitServerBootSSHTimeout(c *C) {
 
 	err := spread.OpenStackWaitServerBoot(s.opst, context.TODO(), "test-id", "test-server", []string{"net-1"})
 	c.Check(err, ErrorMatches, "cannot connect to server test-server: cannot ssh to the allocated instance: timeout reached")
+}
+
+func (s *openstackFindImageSuite) TestOpenStackCreateMachineVolumeAndOpts(c *C) {
+	// flavors
+	s.fakeComputeClient.listFlavors = func() ([]nova.Entity, error) {
+		return []nova.Entity{{Id: "f1", Name: spread.OpenstackDefaultFlavor}}, nil
+	}
+
+	// availability zones returned
+	s.fakeComputeClient.listAvailabilityZones = func() ([]nova.AvailabilityZone, error) {
+		return []nova.AvailabilityZone{{Name: "zone-1"}}, nil
+	}
+
+	// image with minimal disk
+	imgID := "i1"
+	s.fakeImageClient.res = []glance.ImageDetail{
+		{Id: imgID, Name: "ubuntu-20.04", Status: "ACTIVE", MinimumDisk: 1},
+	}
+
+	// network
+	s.fakeNeutronClient.listNetworksV2 = func(filter ...*neutron.Filter) ([]neutron.NetworkV2, error) {
+		return []neutron.NetworkV2{{Id: "net-id1", Name: "net-1"}}, nil
+	}
+
+	s.fakeNeutronClient.listSecurityGroupsV2 = func() ([]neutron.SecurityGroupV2, error) {
+		return []neutron.SecurityGroupV2{{Id: "sg1", Name: "default"}}, nil
+	}
+
+	// capture the RunServer opts
+	var capturedOpts nova.RunServerOpts
+	s.fakeComputeClient.runServer = func(opts nova.RunServerOpts) (*nova.Entity, error) {
+		capturedOpts = opts
+		return &nova.Entity{Id: "srv1"}, nil
+	}
+
+	// getServer: BUILD then ACTIVE with addresses
+	call := 0
+	s.fakeComputeClient.getServer = func(id string) (*nova.ServerDetail, error) {
+		call++
+		if call == 1 {
+			return &nova.ServerDetail{Id: id, Status: nova.StatusBuild}, nil
+		}
+		return &nova.ServerDetail{
+			Id:     id,
+			Status: nova.StatusActive,
+			Addresses: map[string][]nova.IPAddress{
+				"net-1": {
+					{Address: "1.2.3.4", Version: 4},
+				},
+			},
+		}, nil
+	}
+
+	// ensure serial console returns ready immediately
+	s.fakeOsClient.response = func() interface{} {
+		return map[string]string{"output": spread.OpenstackReadyMarker}
+	}
+
+	// Request a storage of 50 GB (in bytes) and a security group
+	sys := &spread.System{
+		Name:     "test",
+		Image:    "ubuntu-20.04",
+		Networks: []string{"net-1"},
+		Storage:  50 * 1024 * 1024 * 1024,
+		Groups:   []string{"default"},
+	}
+
+	srv, err := s.opst.Allocate(context.TODO(), sys)
+	c.Assert(err, IsNil)
+	c.Assert(srv, NotNil)
+
+	// Verify block device mapping attached with expected volume size and properties.
+	c.Assert(len(capturedOpts.BlockDeviceMappings), Equals, 1)
+	bdm := capturedOpts.BlockDeviceMappings[0]
+	c.Check(bdm.UUID, Equals, imgID)
+	c.Check(bdm.VolumeSize, Equals, 50)
+	c.Check(bdm.DestinationType, Equals, "volume")
+	c.Check(bdm.SourceType, Equals, "image")
+	c.Check(bdm.BootIndex, Equals, 0)
+	// Default behaviour when VolumeAutoDelete is nil is to delete on termination
+	c.Check(bdm.DeleteOnTermination, Equals, true)
+
+	// Check other RunServer options
+	c.Check(capturedOpts.FlavorId, Equals, "f1")
+	c.Check(capturedOpts.ImageId, Equals, imgID)
+	c.Check(len(capturedOpts.Networks), Equals, 1)
+	c.Check(capturedOpts.Networks[0].NetworkId, Equals, "net-id1")
+	c.Check(capturedOpts.AvailabilityZone, Equals, "zone-1")
+
+	// Metadata contains expected keys
+	c.Check(capturedOpts.Metadata["spread"], Equals, "true")
+	c.Check(capturedOpts.Metadata["reuse"], Equals, "false")
 }

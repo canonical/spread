@@ -135,6 +135,9 @@ type System struct {
 	// Only for Google so far.
 	SecureBoot bool `yaml:"secure-boot"`
 
+	// Only for LXD so far. Valid values are "container" (default) and "vm".
+	Type string
+
 	// Supported are {"uefi",""}, only for qemu so far.
 	Bios string
 	// Request a specific CPU family, e.g. "Intel Skylake" The

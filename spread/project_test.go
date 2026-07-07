@@ -146,6 +146,34 @@ func (s *projectSuite) TestLoad(c *C) {
 	}
 }
 
+func (s *projectSuite) TestLoadLXDSystemType(c *C) {
+	spreadYaml := `
+		project: mock-prj
+		path: /some/path
+		backends:
+			lxd:
+				systems:
+					- ubuntu-25.10:
+						type: vm
+					- ubuntu-24.04:
+		suites:
+			tests/:
+				summary: mock tests
+	`
+
+	tmpdir := c.MkDir()
+	err := os.MkdirAll(filepath.Join(tmpdir, "tests"), 0755)
+	c.Assert(err, IsNil)
+	err = os.WriteFile(filepath.Join(tmpdir, "spread.yaml"), testutil.Reindent(spreadYaml), 0644)
+	c.Assert(err, IsNil)
+
+	prj, err := spread.Load(tmpdir)
+	c.Assert(err, IsNil)
+	c.Check(prj.Backends["lxd"].Systems["ubuntu-25.10"].Type, Equals, "vm")
+	c.Check(prj.Backends["lxd"].Systems["ubuntu-24.04"].Type, Equals, "")
+}
+
+
 func (s *projectSuite) TestOptionalInt(c *C) {
 	optInts := struct {
 		Priority spread.OptionalInt `yaml:"priority"`

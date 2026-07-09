@@ -111,6 +111,17 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 	if !p.options.Reuse {
 		args = append(args, "--ephemeral")
 	}
+	instanceType := p.lxdInstanceType(system)
+	if instanceType != "" {
+		args = append(args, "-t", instanceType)
+	}
+	vmRequested := p.backend.Vm || system.Vm
+	if vmRequested {
+		args = append(args, "--vm")
+	}
+	if system.Storage != Size(0) {
+		args = append(args, "-d", fmt.Sprintf("root,size=%d", system.Storage))
+	}
 	output, err := exec.Command("lxc", args...).CombinedOutput()
 	if err != nil {
 		err = outputErr(output, err)
@@ -129,7 +140,13 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 	}
 
 	printf("Waiting for lxd container %s to have an address...", name)
-	timeout := time.After(60 * time.Second)
+	maxTimeout := 30 * time.Second
+	if vmRequested {
+		// VM may take considerably longer to start
+		// TODO: should this be configurable?
+		maxTimeout = 180 * time.Second
+	}
+	timeout := time.After(maxTimeout)
 	retry := time.NewTicker(1 * time.Second)
 	defer retry.Stop()
 	for {
@@ -143,6 +160,34 @@ func (p *lxdProvider) Allocate(ctx context.Context, system *System) (Server, err
 			return nil, err
 		}
 
+		select {
+		case <-retry.C:
+		case <-timeout:
+			s.Discard(ctx)
+			return nil, err
+		}
+	}
+	printf("Waiting for cloud-init in lxd instance %s to complete...", name)
+	timeout = time.After(60 * time.Second)
+	retry = time.NewTicker(1 * time.Second)
+	defer retry.Stop()
+	for {
+		err := p.cloudInitDone(name, 10)
+		if err != nil {
+			_, is_timeout := err.(*lxdCloudInitTimeoutError)
+			_, is_not_present := err.(*lxdCloudInitNotPresentError)
+			_, is_lxd_agent_not_ready := err.(*lxdAgentNotAvailableError)
+			if is_not_present {
+				printf(err.Error())
+				break
+			}
+			if !is_timeout && !is_lxd_agent_not_ready {
+				s.Discard(ctx)
+				return nil, err
+			}
+		} else {
+			break
+		}
 		select {
 		case <-retry.C:
 		case <-timeout:
@@ -220,6 +265,7 @@ func (p *lxdProvider) lxdImage(system *System) (string, error) {
 }
 
 type lxdImageInfo struct {
+	Type       string `yaml:"Type"`
 	Properties struct {
 		OS           string
 		Label        string
@@ -330,6 +376,19 @@ NextImage:
 			return "", fmt.Errorf("cannot obtain info about lxd image %s: %v", fingerprint, err)
 		}
 
+		switch info.Type {
+		case "container":
+			if system.Vm {
+				continue
+			}
+		case "virtual-machine":
+			if !system.Vm {
+				continue
+			}
+		default:
+			logf("unknown image type %q: %q", fingerprint, info.Type)
+		}
+
 		props := info.Properties
 		aliases := strings.Split(props.Aliases, ",")
 
@@ -357,6 +416,17 @@ NextImage:
 	}
 
 	return "", errNoImage
+}
+
+func (p *lxdProvider) lxdInstanceType(system *System) string {
+	instanceType := ""
+	if system.Plan != "" {
+		instanceType = system.Plan
+	} else if p.backend.Plan != "" {
+		instanceType = p.backend.Plan
+	}
+
+	return instanceType
 }
 
 func lxdName(system *System) (string, error) {
@@ -476,6 +546,64 @@ func (p *lxdProvider) serverJSON(name string) (*lxdServerJSON, error) {
 		}
 	}
 	return nil, &lxdNoServerError{name}
+}
+
+type lxdCloudInitTimeoutError struct {
+	name string
+}
+
+func (e *lxdCloudInitTimeoutError) Error() string {
+	return fmt.Sprintf("cloud-init not ready yet %q", e.name)
+}
+
+type lxdCloudInitNotPresentError struct {
+	name string
+}
+
+func (e *lxdCloudInitNotPresentError) Error() string {
+	return fmt.Sprintf("cloud-init not present in %q, assuming ready state",
+		e.name)
+}
+
+type lxdAgentNotAvailableError struct {
+	name string
+}
+
+func (e *lxdAgentNotAvailableError) Error() string {
+	return fmt.Sprintf(
+		"instance not ready yet %q: Failed to connect to lxd-agent.", e.name)
+}
+
+func (p *lxdProvider) cloudInitDone(name string, timeout int) error {
+	output, err := exec.Command("lxc", "exec", name, "--", "sh", "-c",
+		fmt.Sprintf("timeout %ds cloud-init status --long --wait",
+			timeout)).CombinedOutput()
+	if err != nil {
+		switch exitCode := err.(*exec.ExitError).ExitCode(); exitCode {
+		case 124:
+			return &lxdCloudInitTimeoutError{name}
+		case 127:
+			return &lxdCloudInitNotPresentError{name}
+		case 255:
+			if bytes.HasPrefix(output,
+				[]byte("Error: LXD VM agent isn't currently running")) {
+				return &lxdAgentNotAvailableError{name}
+			}
+		default:
+			if bytes.HasPrefix(output,
+				[]byte("Error: Failed to connect to lxd-agent")) {
+				return &lxdAgentNotAvailableError{name}
+			} else if bytes.HasPrefix(output,
+				[]byte("Error: Instance is not running")) {
+				return &lxdAgentNotAvailableError{name}
+			}
+
+			return fmt.Errorf("cloud-init failed %q: (%d) %v",
+				name, exitCode, outputErr(output, err))
+		}
+	}
+	logf("cloud-init done: %q: %q", name, output)
+	return nil
 }
 
 func (p *lxdProvider) tuneSSH(name string) error {

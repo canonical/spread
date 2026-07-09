@@ -390,11 +390,18 @@ var openstackServerBootTimeout = 2 * time.Minute
 var openstackServerBootRetry = 5 * time.Second
 
 func (p *openstackProvider) waitServerBootSSH(ctx context.Context, s *openstackServer) error {
+	algos := allAlgorithms()
 	config := &ssh.ClientConfig{
-		User:            "root",
-		Auth:            []ssh.AuthMethod{ssh.Password(p.options.Password)},
-		Timeout:         10 * time.Second,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Config: ssh.Config{
+			KeyExchanges: algos.KeyExchanges,
+			Ciphers:      algos.Ciphers,
+			MACs:         algos.MACs,
+		},
+		User:              "root",
+		Auth:              []ssh.AuthMethod{ssh.Password(p.options.Password)},
+		HostKeyCallback:   ssh.InsecureIgnoreHostKey(),
+		HostKeyAlgorithms: algos.HostKeys,
+		Timeout:           10 * time.Second,
 	}
 	addr := s.address
 	if !strings.Contains(addr, ":") {

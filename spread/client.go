@@ -35,12 +35,34 @@ type Client struct {
 	killTimeout time.Duration
 }
 
+func allAlgorithms() ssh.Algorithms {
+	algos := ssh.SupportedAlgorithms()
+	insecure := ssh.InsecureAlgorithms()
+
+	// Old systems may require old, insecure crypto, to connect.
+	// Prefer a secure algorithms by placing them earlier in the list.
+	algos.KeyExchanges = append(algos.KeyExchanges, insecure.KeyExchanges...)
+	algos.Ciphers = append(algos.Ciphers, insecure.Ciphers...)
+	algos.MACs = append(algos.MACs, insecure.MACs...)
+	algos.HostKeys = append(algos.HostKeys, insecure.HostKeys...)
+	algos.PublicKeyAuths = append(algos.PublicKeyAuths, insecure.PublicKeyAuths...)
+
+	return algos
+}
+
 func Dial(server Server, username, password string) (*Client, error) {
+	algos := allAlgorithms()
 	config := &ssh.ClientConfig{
-		User:            username,
-		Auth:            []ssh.AuthMethod{ssh.Password(password)},
-		Timeout:         10 * time.Second,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Config: ssh.Config{
+			KeyExchanges: algos.KeyExchanges,
+			Ciphers:      algos.Ciphers,
+			MACs:         algos.MACs,
+		},
+		User:              username,
+		Auth:              []ssh.AuthMethod{ssh.Password(password)},
+		HostKeyCallback:   ssh.InsecureIgnoreHostKey(),
+		HostKeyAlgorithms: algos.HostKeys,
+		Timeout:           10 * time.Second,
 	}
 	addr := server.Address()
 	if !strings.Contains(addr, ":") {

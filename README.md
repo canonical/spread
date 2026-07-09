@@ -670,6 +670,10 @@ suffix. Matching multiple components at once is also possible separating them
 with a colon; they don't have to be consecutive as long as the ordering is
 correct.
 
+With the `-explicit-order` option, the tasks are selected for execution in
+order corresponding to the command line arguments that matched them. Note that
+this automatically limits spread to use only one worker per system.
+
 For example, assuming the two jobs above, these parameters would all match
 at least one of them:
 

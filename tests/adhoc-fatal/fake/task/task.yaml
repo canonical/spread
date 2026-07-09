@@ -1,0 +1,6 @@
+summary: fake task
+details: |
+  This task will never execute because the allocation
+  of the ad-hoc system always fail.
+execute: |
+  echo "Should not be reached"

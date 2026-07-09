@@ -1,0 +1,15 @@
+project: spread
+backends:
+    adhoc:
+        allocate: |
+            FATAL "I cannot do that, Dave"
+        systems:
+            - ubuntu-16.04:
+
+path: /home/adhoc
+restore:
+suites:
+    fake/:
+        summary: Fake test suite
+
+# vim:ts=4:sw=4:et

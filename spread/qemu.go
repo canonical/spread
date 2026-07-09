@@ -169,6 +169,9 @@ func (p *qemuProvider) Allocate(ctx context.Context, system *System) (Server, er
 	if err != nil {
 		return nil, err
 	}
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
 	printf("Serial and monitor for %s available at ports %d and %d.", system, port+100, port+200)
 
 	err = cmd.Start()

@@ -185,6 +185,30 @@ func (p *googleProvider) validLabel(label string) bool {
 	return len(label) < 64 && googleLabelExp.MatchString(label)
 }
 
+// googleInvalidLabelExp matches runs of characters that are not legal in a
+// Google label value (lowercase letters, digits, underscore, dash).
+var googleInvalidLabelExp = regexp.MustCompile(`[^a-z0-9_-]+`)
+
+// googleLabelSanitize coerces an arbitrary string (typically $USER) into a
+// value that satisfies Google's label-value rules: "can only contain
+// lowercase letters, numeric characters, underscores and dashes", at most
+// 63 characters. Runs of other characters collapse to a single dash;
+// leading/trailing dashes and underscores are trimmed. Returns "spread" if
+// the input is empty or would otherwise reduce to an empty string, so the
+// owner label is always present and always valid.
+func googleLabelSanitize(s string) string {
+	s = strings.ToLower(s)
+	s = googleInvalidLabelExp.ReplaceAllString(s, "-")
+	s = strings.Trim(s, "-_")
+	if len(s) > 63 {
+		s = strings.TrimRight(s[:63], "-_")
+	}
+	if s == "" {
+		return "spread"
+	}
+	return s
+}
+
 type googleInstanceInterfaces struct {
 	NetworkInterfaces []struct {
 		Network       string
@@ -403,7 +427,7 @@ func (p *googleProvider) createMachine(ctx context.Context, system *System) (*go
 
 	labels := googleParams{
 		"spread": "true",
-		"owner":  strings.ToLower(username()),
+		"owner":  googleLabelSanitize(username()),
 		"reuse":  strconv.FormatBool(p.options.Reuse),
 	}
 	if p.validLabel(p.options.Password) {

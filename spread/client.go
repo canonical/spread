@@ -121,9 +121,7 @@ func (c *Client) dialOnReboot(prevBootID string) error {
 			printf("Reboot on %s is taking a while...", c.job)
 		default:
 		}
-		select {
-		case <-retry.C:
-		}
+		<-retry.C
 	}
 
 	return nil

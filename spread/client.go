@@ -791,7 +791,7 @@ func (s *localScript) run() (stdout, stderr []byte, err error) {
 	buf.WriteString("NOMATCH() { { set +xu; } 2> /dev/null; local stdin=$(cat); if echo $stdin | grep -q -E \"$@\"; then echo \"NOMATCH pattern='$@' found in:\n$stdin\">&2; return 1; fi }\n")
 	buf.WriteString("export DEBIAN_FRONTEND=noninteractive\n")
 	buf.WriteString("export DEBIAN_PRIORITY=critical\n")
-	buf.WriteString("export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin\n")
+	buf.WriteString("export PATH=$PATH:/snap/bin\n")
 
 	for _, k := range s.env.Keys() {
 		v := s.env.Get(k)

@@ -129,7 +129,7 @@ func qemuCmd(system *System, path string, mem, port int) (*exec.Cmd, error) {
 		"-enable-kvm",
 		"-snapshot",
 		"-m", strconv.Itoa(mem),
-		"-net", "nic",
+		"-net", "nic,model=virtio",
 		"-net", fwd,
 		"-serial", serial,
 		"-monitor", monitor,

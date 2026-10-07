@@ -28,7 +28,9 @@ require (
 	golang.org/x/text v0.23.0 // indirect
 )
 
-// Stopgap pin: local fork adding Keystone v3 application-credential
-// auth (branch appcred-auth-support), pending upstream PR to
-// go-goose/goose. Remove once a release tag with that support ships.
-replace github.com/go-goose/goose/v5 => ../goose
+// Stopgap pin: fork adding Keystone v3 application-credential auth
+// (github.com/simonepelosi/goose, branch appcred-auth-support),
+// pending upstream PR to go-goose/goose. Points at a commit, not a
+// branch, so this resolves deterministically in CI; remove once a
+// release tag with that support ships upstream.
+replace github.com/go-goose/goose/v5 => github.com/simonepelosi/goose/v5 v5.1.9-0.20261007083115-a988b3aa7d48

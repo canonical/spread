@@ -947,6 +947,31 @@ backends:
                     - group_external
 ```
 
+By default `account`/`key` are a plain OpenStack username/password, sent as
+Keystone v3 password authentication scoped to the project named in
+`location`. Set `auth-type: application-credential` to authenticate with an
+[OpenStack application credential][openstack-app-creds] instead: in that
+mode `account`/`key` are the credential's ID/secret rather than a
+username/password, and the project in `location` is only used to pick the
+allocation region - the credential is already scoped to a single project at
+creation time, so no explicit scope is ever sent.
+
+```
+backends:
+    openstack:
+        endpoint: https://my-keystone-server:5000/v3
+        auth-type: application-credential
+        account: '$(HOST: echo "$OS_APPLICATION_CREDENTIAL_ID")'
+        key: '$(HOST: echo "$OS_APPLICATION_CREDENTIAL_SECRET")'
+        location: my-project/my-region
+        plan: cpu2-ram4-disk10
+        systems:
+            - ubuntu-20.04:
+                  image: ubuntu-focal-daily-amd64
+```
+
+[openstack-app-creds]: https://docs.openstack.org/keystone/latest/user/application_credentials.html
+
 Images are located by first attempting to match the provided value exactly
 against the image name. If exact match exists the most recent image with
 a partially matching name will be selected.

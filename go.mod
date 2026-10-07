@@ -26,3 +26,8 @@ require (
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 )
+
+// Stopgap pin: local fork adding Keystone v3 application-credential
+// auth (branch appcred-auth-support), pending upstream PR to
+// go-goose/goose. Remove once a release tag with that support ships.
+replace github.com/go-goose/goose/v5 => ../goose

@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-goose/goose/v5/glance"
 	goosehttp "github.com/go-goose/goose/v5/http"
+	"github.com/go-goose/goose/v5/identity"
 	"github.com/go-goose/goose/v5/nova"
 	"golang.org/x/crypto/ssh"
 
@@ -44,6 +45,70 @@ func (s *openstackSuite) TestOpenStackName(c *C) {
 
 	name := spread.OpenStackName()
 	c.Check(name, Equals, "aug221159-987654")
+}
+
+func (s *openstackSuite) TestOpenStackCredentialsPassword(c *C) {
+	b := &spread.Backend{
+		Name:     "openstack",
+		Account:  "joe-user",
+		Key:      "secret",
+		Endpoint: "https://keystone.example.com:5000/v3",
+	}
+	creds, mode, err := spread.OpenStackCredentials(b, "my-project", "RegionOne", 3)
+	c.Assert(err, IsNil)
+	c.Assert(mode, Equals, identity.AuthUserPassV3)
+	c.Assert(creds.URL, Equals, "https://keystone.example.com:5000/v3")
+	c.Assert(creds.User, Equals, "joe-user")
+	c.Assert(creds.Secrets, Equals, "secret")
+	c.Assert(creds.Region, Equals, "RegionOne")
+	c.Assert(creds.TenantName, Equals, "my-project")
+	c.Assert(creds.Version, Equals, 3)
+	c.Assert(creds.ApplicationCredentialID, Equals, "")
+	c.Assert(creds.ApplicationCredentialSecret, Equals, "")
+}
+
+func (s *openstackSuite) TestOpenStackCredentialsExplicitPassword(c *C) {
+	b := &spread.Backend{
+		Name:     "openstack",
+		AuthType: "password",
+		Account:  "joe-user",
+		Key:      "secret",
+		Endpoint: "https://keystone.example.com:5000/v3",
+	}
+	_, mode, err := spread.OpenStackCredentials(b, "my-project", "RegionOne", 3)
+	c.Assert(err, IsNil)
+	c.Assert(mode, Equals, identity.AuthUserPassV3)
+}
+
+func (s *openstackSuite) TestOpenStackCredentialsApplicationCredential(c *C) {
+	b := &spread.Backend{
+		Name:     "openstack",
+		AuthType: "application-credential",
+		Account:  "cred-id",
+		Key:      "cred-secret",
+		Endpoint: "https://keystone.example.com:5000/v3",
+	}
+	creds, mode, err := spread.OpenStackCredentials(b, "my-project", "RegionOne", 3)
+	c.Assert(err, IsNil)
+	c.Assert(mode, Equals, identity.AuthApplicationCredentialV3)
+	c.Assert(creds.URL, Equals, "https://keystone.example.com:5000/v3")
+	c.Assert(creds.ApplicationCredentialID, Equals, "cred-id")
+	c.Assert(creds.ApplicationCredentialSecret, Equals, "cred-secret")
+	c.Assert(creds.Region, Equals, "RegionOne")
+	c.Assert(creds.Version, Equals, 3)
+	// An application credential is already project-scoped at
+	// creation time; Keystone rejects an explicit scope alongside
+	// it, so no User/Secrets/TenantName must ever be set here, even
+	// though a project name was passed in.
+	c.Assert(creds.User, Equals, "")
+	c.Assert(creds.Secrets, Equals, "")
+	c.Assert(creds.TenantName, Equals, "")
+}
+
+func (s *openstackSuite) TestOpenStackCredentialsUnsupportedAuthType(c *C) {
+	b := &spread.Backend{Name: "openstack", AuthType: "bogus"}
+	_, _, err := spread.OpenStackCredentials(b, "my-project", "RegionOne", 3)
+	c.Assert(err, ErrorMatches, `backend "openstack" has unsupported auth-type "bogus"`)
 }
 
 var opstErr1 = errors.New(`caused by: requesting token failed

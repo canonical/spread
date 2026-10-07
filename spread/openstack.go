@@ -327,7 +327,7 @@ func (p *openstackProvider) findAvailabilityZone() (*nova.AvailabilityZone, erro
 func (p *openstackProvider) findSecurityGroupNames(names []string) ([]nova.SecurityGroupName, error) {
 	var secGroupNames []nova.SecurityGroupName
 
-	secGroups, err := p.networkClient.ListSecurityGroupsV2()
+	secGroups, err := p.networkClient.ListSecurityGroupsV2(neutron.ListSecurityGroupsV2Query{})
 	if err != nil {
 		return nil, fmt.Errorf("cannot retrieve security groups: %v", &openstackError{err})
 	}

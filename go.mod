@@ -20,9 +20,10 @@ require golang.org/x/term v0.30.0
 
 require (
 	cloud.google.com/go/compute/metadata v0.3.0 // indirect
-	github.com/juju/collections v0.0.0-20220203020748-febd7cad8a7a // indirect
-	github.com/kr/pretty v0.2.1 // indirect
+	github.com/juju/collections v1.0.4 // indirect
+	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
+	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 )

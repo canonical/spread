@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"regexp"
 	"time"
@@ -13,6 +15,7 @@ import (
 	goosehttp "github.com/go-goose/goose/v5/http"
 	"github.com/go-goose/goose/v5/identity"
 	"github.com/go-goose/goose/v5/nova"
+	"github.com/go-goose/goose/v5/testservices/identityservice"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/canonical/spread/spread"
@@ -109,6 +112,101 @@ func (s *openstackSuite) TestOpenStackCredentialsUnsupportedAuthType(c *C) {
 	b := &spread.Backend{Name: "openstack", AuthType: "bogus"}
 	_, _, err := spread.OpenStackCredentials(b, "my-project", "RegionOne", 3)
 	c.Assert(err, ErrorMatches, `backend "openstack" has unsupported auth-type "bogus"`)
+}
+
+// newFakeKeystone builds a fake Keystone v3 identity service (serving
+// both version discovery and application-credential auth) advertising
+// the compute/object-store endpoints goose's client requires to be
+// present for the authenticated region.
+func newFakeKeystone() (*http.ServeMux, *identityservice.V3AppCred) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v3", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"version": map[string]interface{}{
+				"media-types": []map[string]string{
+					{"type": "application/vnd.openstack.identity-v3+json"},
+				},
+			},
+		})
+	})
+	fakeKeystone := identityservice.NewV3AppCred()
+	fakeKeystone.SetupHTTP(mux)
+	fakeKeystone.AddService(identityservice.Service{V3: identityservice.V3Service{
+		Name: "nova",
+		Type: "compute",
+		Endpoints: identityservice.NewV3Endpoints(
+			"", "", "http://nova.example.com", "RegionOne",
+		),
+	}})
+	fakeKeystone.AddService(identityservice.Service{V3: identityservice.V3Service{
+		Name: "swift",
+		Type: "object-store",
+		Endpoints: identityservice.NewV3Endpoints(
+			"", "", "http://swift.example.com", "RegionOne",
+		),
+	}})
+	return mux, fakeKeystone
+}
+
+// TestOpenStackApplicationCredentialAuthEndToEnd exercises the full
+// authenticate() path - version discovery plus the real Keystone v3
+// request/response wire format via goose's identity.AuthApplicationCredentialV3
+// - against a fake Keystone that only accepts application-credential
+// auth, proving the backend can actually log in with one end to end
+// rather than just building the right Credentials struct.
+func (s *openstackSuite) TestOpenStackApplicationCredentialAuthEndToEnd(c *C) {
+	mux, fakeKeystone := newFakeKeystone()
+	fakeKeystone.AddCredential(
+		"cred-id", "cred-secret", "token-value",
+		"user-id", "project-id", "project-name",
+	)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	prj := &spread.Project{}
+	b := &spread.Backend{
+		Name:     "openstack",
+		AuthType: "application-credential",
+		Endpoint: server.URL + "/v3",
+		Account:  "cred-id",
+		Key:      "cred-secret",
+		Location: "unused-project/RegionOne",
+	}
+	opts := &spread.Options{}
+	p := spread.OpenStack(prj, b, opts)
+
+	err := spread.OpenStackCheckCredentials(p)
+	c.Assert(err, IsNil)
+}
+
+// A wrong secret must fail authenticate() itself, not silently
+// succeed and only fail later on some unrelated call (the bug fixed
+// alongside application-credential support: authenticate() used to
+// shadow and discard this exact error).
+func (s *openstackSuite) TestOpenStackApplicationCredentialAuthEndToEndWrongSecret(c *C) {
+	mux, fakeKeystone := newFakeKeystone()
+	fakeKeystone.AddCredential(
+		"cred-id", "cred-secret", "token-value",
+		"user-id", "project-id", "project-name",
+	)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	prj := &spread.Project{}
+	b := &spread.Backend{
+		Name:     "openstack",
+		AuthType: "application-credential",
+		Endpoint: server.URL + "/v3",
+		Account:  "cred-id",
+		Key:      "wrong-secret",
+		Location: "unused-project/RegionOne",
+	}
+	opts := &spread.Options{}
+	p := spread.OpenStack(prj, b, opts)
+
+	err := spread.OpenStackCheckCredentials(p)
+	c.Assert(err, ErrorMatches, "(?s).*cannot authenticate.*")
 }
 
 var opstErr1 = errors.New(`caused by: requesting token failed

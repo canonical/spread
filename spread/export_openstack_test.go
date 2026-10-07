@@ -20,6 +20,13 @@ func OpenStackCredentials(
 	return openstackCredentials(backend, osproj, region, identityAPIVersion)
 }
 
+// OpenStackCheckCredentials exposes checkCredentials (and so, on a
+// provider that hasn't authenticated yet, the full authenticate()
+// path) for testing.
+func OpenStackCheckCredentials(p Provider) error {
+	return p.(*openstackProvider).checkCredentials()
+}
+
 func FakeOpenStackImageClient(p Provider, imageClient glanceImageClient) (restore func()) {
 	opst := p.(*openstackProvider)
 	oldGlanceImageClient := opst.imageClient

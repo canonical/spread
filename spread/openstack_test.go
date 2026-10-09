@@ -50,6 +50,15 @@ func (s *openstackSuite) TestOpenStackName(c *C) {
 	c.Check(name, Equals, "aug221159-987654")
 }
 
+func (s *openstackSuite) TestToTermsArchitectures(c *C) {
+	c.Check(spread.ToTerms("ubuntu-resolute-26.04-amd64-server"), DeepEquals, []string{"ubuntu", "resolute", "26.04", "amd64", "server"})
+	c.Check(spread.ToTerms("ubuntu-resolute-26.04-amd64v3-server"), DeepEquals, []string{"ubuntu", "resolute", "26.04", "amd64v3", "server"})
+	c.Check(spread.ToTerms("ubuntu-bionic-18.04-ppc64el-server"), DeepEquals, []string{"ubuntu", "bionic", "18.04", "ppc64el", "server"})
+	c.Check(spread.ToTerms("ubuntu-jammy-22.04-riscv64-server"), DeepEquals, []string{"ubuntu", "jammy", "22.04", "riscv64", "server"})
+	c.Check(spread.ToTerms("ubuntu-focal-20.04-s390x-server"), DeepEquals, []string{"ubuntu", "focal", "20.04", "s390x", "server"})
+	c.Check(spread.ToTerms("ubuntu-bionic-18.04-i386-server"), DeepEquals, []string{"ubuntu", "bionic", "18.04", "i386", "server"})
+}
+
 func (s *openstackSuite) TestOpenStackCredentialsPassword(c *C) {
 	b := &spread.Backend{
 		Name:     "openstack",
@@ -459,6 +468,30 @@ var openstackFindImageComplexTests = []openstackFindImageComplexTest{{
 	imageName:         "ubuntu-18.04-server",
 	availableImages:   fakeOpenStackImageList,
 	expectedImageName: "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+}, {
+	// arch token matching: amd64 does not pick newer amd64v3
+	imageName: "ubuntu-bionic-18.04-amd64",
+	availableImages: []string{
+		"auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+		"auto-sync/ubuntu-bionic-18.04-amd64v3-server-20230601-disk1.img",
+	},
+	expectedImageName: "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+}, {
+	// arch token matching: explicit amd64v3 picks amd64v3
+	imageName: "ubuntu-bionic-18.04-amd64v3",
+	availableImages: []string{
+		"auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+		"auto-sync/ubuntu-bionic-18.04-amd64v3-server-20230601-disk1.img",
+	},
+	expectedImageName: "auto-sync/ubuntu-bionic-18.04-amd64v3-server-20230601-disk1.img",
+}, {
+	// arch token matching: ppc64el
+	imageName: "ubuntu-bionic-18.04-ppc64el",
+	availableImages: []string{
+		"auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+		"auto-sync/ubuntu-bionic-18.04-ppc64el-server-20230530-disk1.img",
+	},
+	expectedImageName: "auto-sync/ubuntu-bionic-18.04-ppc64el-server-20230530-disk1.img",
 }}
 
 func (s *openstackFindImageSuite) TestOpenStackFindImageComplex(c *C) {

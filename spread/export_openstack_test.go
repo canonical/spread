@@ -11,6 +11,7 @@ import (
 
 var (
 	OpenStackName = openstackName
+	ToTerms       = toTerms
 )
 
 // OpenStackCredentials exposes openstackCredentials for testing.

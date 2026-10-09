@@ -10,6 +10,7 @@ import (
 
 var (
 	OpenStackName = openstackName
+	ToTerms       = toTerms
 )
 
 func FakeOpenStackImageClient(p Provider, imageClient glanceImageClient) (restore func()) {

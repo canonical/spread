@@ -327,7 +327,7 @@ func (p *openstackProvider) findAvailabilityZone() (*nova.AvailabilityZone, erro
 func (p *openstackProvider) findSecurityGroupNames(names []string) ([]nova.SecurityGroupName, error) {
 	var secGroupNames []nova.SecurityGroupName
 
-	secGroups, err := p.networkClient.ListSecurityGroupsV2()
+	secGroups, err := p.networkClient.ListSecurityGroupsV2(neutron.ListSecurityGroupsV2Query{})
 	if err != nil {
 		return nil, fmt.Errorf("cannot retrieve security groups: %v", &openstackError{err})
 	}
@@ -750,6 +750,55 @@ func (p *openstackProvider) checkCredentials() error {
 	return err
 }
 
+// openstackAuthTypePassword and openstackAuthTypeApplicationCredential
+// are the supported values of Backend.AuthType for the openstack
+// backend. An empty AuthType means openstackAuthTypePassword, for
+// backwards compatibility with configs predating this field.
+const (
+	openstackAuthTypePassword              = "password"
+	openstackAuthTypeApplicationCredential = "application-credential"
+)
+
+// openstackCredentials builds the goose identity.Credentials and
+// picks the matching identity.AuthMode for backend, given the
+// project/region already split out of backend.Location and the
+// already-detected Keystone identityAPIVersion.
+//
+// Password auth (the default) scopes the request to osproj, same as
+// always. Application-credential auth never sets a project scope:
+// an application credential is already scoped to a single project
+// at creation time in OpenStack, and Keystone rejects a request
+// that both uses one and asks for an explicit scope. Account/Key
+// carry the application credential's ID/secret in that mode instead
+// of a username/password.
+func openstackCredentials(
+	backend *Backend, osproj, region string, identityAPIVersion int,
+) (*identity.Credentials, identity.AuthMode, error) {
+	switch backend.AuthType {
+	case "", openstackAuthTypePassword:
+		return &identity.Credentials{
+			URL:        backend.Endpoint, // The authentication URL
+			User:       backend.Account,  // The username to authenticate as
+			Secrets:    backend.Key,      // The authentication secret
+			Region:     region,           // The OS region
+			TenantName: osproj,           // The OS project name
+			Version:    identityAPIVersion,
+		}, identity.AuthUserPassV3, nil
+	case openstackAuthTypeApplicationCredential:
+		return &identity.Credentials{
+			URL:                         backend.Endpoint,
+			ApplicationCredentialID:     backend.Account,
+			ApplicationCredentialSecret: backend.Key,
+			Region:                      region,
+			Version:                     identityAPIVersion,
+		}, identity.AuthApplicationCredentialV3, nil
+	default:
+		return nil, 0, fmt.Errorf(
+			"%s has unsupported auth-type %q", backend, backend.AuthType,
+		)
+	}
+}
+
 func (p *openstackProvider) authenticate() error {
 	// Only identity API v3 is currently supported
 	identityAPIVersion, err := getIdentityAPIVersion(p.backend.Endpoint)
@@ -769,17 +818,15 @@ func (p *openstackProvider) authenticate() error {
 	osproj, region = loc[0], loc[1]
 
 	// Authenticate using the project credentials.
-	creds := &identity.Credentials{
-		URL:        p.backend.Endpoint, // The authentication URL
-		User:       p.backend.Account,  // The username to authenticate as
-		Secrets:    p.backend.Key,      // The authentication secret
-		Region:     region,             // The OS region
-		TenantName: osproj,             // The OS project name
-		Version:    identityAPIVersion, // The identity API version
+	creds, authMode, err := openstackCredentials(
+		p.backend, osproj, region, identityAPIVersion,
+	)
+	if err != nil {
+		return err
 	}
-	authClient := gooseclient.NewClient(creds, identity.AuthUserPassV3, nil)
+	authClient := gooseclient.NewClient(creds, authMode, nil)
 	if err := authClient.Authenticate(); err != nil {
-		err = fmt.Errorf("cannot authenticate: %v", &openstackError{err})
+		return fmt.Errorf("cannot authenticate: %v", &openstackError{err})
 	}
 
 	p.region = creds.Region

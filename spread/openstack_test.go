@@ -5,13 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"regexp"
 	"time"
 
 	"github.com/go-goose/goose/v5/glance"
 	goosehttp "github.com/go-goose/goose/v5/http"
+	"github.com/go-goose/goose/v5/identity"
 	"github.com/go-goose/goose/v5/nova"
+	"github.com/go-goose/goose/v5/testservices/identityservice"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/canonical/spread/spread"
@@ -44,6 +48,174 @@ func (s *openstackSuite) TestOpenStackName(c *C) {
 
 	name := spread.OpenStackName()
 	c.Check(name, Equals, "aug221159-987654")
+}
+
+func (s *openstackSuite) TestToTermsArchitectures(c *C) {
+	c.Check(spread.ToTerms("ubuntu-resolute-26.04-amd64-server"), DeepEquals, []string{"ubuntu", "resolute", "26.04", "amd64", "server"})
+	c.Check(spread.ToTerms("ubuntu-resolute-26.04-amd64v3-server"), DeepEquals, []string{"ubuntu", "resolute", "26.04", "amd64v3", "server"})
+	c.Check(spread.ToTerms("ubuntu-bionic-18.04-ppc64el-server"), DeepEquals, []string{"ubuntu", "bionic", "18.04", "ppc64el", "server"})
+	c.Check(spread.ToTerms("ubuntu-jammy-22.04-riscv64-server"), DeepEquals, []string{"ubuntu", "jammy", "22.04", "riscv64", "server"})
+	c.Check(spread.ToTerms("ubuntu-focal-20.04-s390x-server"), DeepEquals, []string{"ubuntu", "focal", "20.04", "s390x", "server"})
+	c.Check(spread.ToTerms("ubuntu-bionic-18.04-i386-server"), DeepEquals, []string{"ubuntu", "bionic", "18.04", "i386", "server"})
+}
+
+func (s *openstackSuite) TestOpenStackCredentialsPassword(c *C) {
+	b := &spread.Backend{
+		Name:     "openstack",
+		Account:  "joe-user",
+		Key:      "secret",
+		Endpoint: "https://keystone.example.com:5000/v3",
+	}
+	creds, mode, err := spread.OpenStackCredentials(b, "my-project", "RegionOne", 3)
+	c.Assert(err, IsNil)
+	c.Assert(mode, Equals, identity.AuthUserPassV3)
+	c.Assert(creds.URL, Equals, "https://keystone.example.com:5000/v3")
+	c.Assert(creds.User, Equals, "joe-user")
+	c.Assert(creds.Secrets, Equals, "secret")
+	c.Assert(creds.Region, Equals, "RegionOne")
+	c.Assert(creds.TenantName, Equals, "my-project")
+	c.Assert(creds.Version, Equals, 3)
+	c.Assert(creds.ApplicationCredentialID, Equals, "")
+	c.Assert(creds.ApplicationCredentialSecret, Equals, "")
+}
+
+func (s *openstackSuite) TestOpenStackCredentialsExplicitPassword(c *C) {
+	b := &spread.Backend{
+		Name:     "openstack",
+		AuthType: "password",
+		Account:  "joe-user",
+		Key:      "secret",
+		Endpoint: "https://keystone.example.com:5000/v3",
+	}
+	_, mode, err := spread.OpenStackCredentials(b, "my-project", "RegionOne", 3)
+	c.Assert(err, IsNil)
+	c.Assert(mode, Equals, identity.AuthUserPassV3)
+}
+
+func (s *openstackSuite) TestOpenStackCredentialsApplicationCredential(c *C) {
+	b := &spread.Backend{
+		Name:     "openstack",
+		AuthType: "application-credential",
+		Account:  "cred-id",
+		Key:      "cred-secret",
+		Endpoint: "https://keystone.example.com:5000/v3",
+	}
+	creds, mode, err := spread.OpenStackCredentials(b, "my-project", "RegionOne", 3)
+	c.Assert(err, IsNil)
+	c.Assert(mode, Equals, identity.AuthApplicationCredentialV3)
+	c.Assert(creds.URL, Equals, "https://keystone.example.com:5000/v3")
+	c.Assert(creds.ApplicationCredentialID, Equals, "cred-id")
+	c.Assert(creds.ApplicationCredentialSecret, Equals, "cred-secret")
+	c.Assert(creds.Region, Equals, "RegionOne")
+	c.Assert(creds.Version, Equals, 3)
+	// An application credential is already project-scoped at
+	// creation time; Keystone rejects an explicit scope alongside
+	// it, so no User/Secrets/TenantName must ever be set here, even
+	// though a project name was passed in.
+	c.Assert(creds.User, Equals, "")
+	c.Assert(creds.Secrets, Equals, "")
+	c.Assert(creds.TenantName, Equals, "")
+}
+
+func (s *openstackSuite) TestOpenStackCredentialsUnsupportedAuthType(c *C) {
+	b := &spread.Backend{Name: "openstack", AuthType: "bogus"}
+	_, _, err := spread.OpenStackCredentials(b, "my-project", "RegionOne", 3)
+	c.Assert(err, ErrorMatches, `backend "openstack" has unsupported auth-type "bogus"`)
+}
+
+// newFakeKeystone builds a fake Keystone v3 identity service (serving
+// both version discovery and application-credential auth) advertising
+// the compute/object-store endpoints goose's client requires to be
+// present for the authenticated region.
+func newFakeKeystone() (*http.ServeMux, *identityservice.V3AppCred) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v3", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"version": map[string]interface{}{
+				"media-types": []map[string]string{
+					{"type": "application/vnd.openstack.identity-v3+json"},
+				},
+			},
+		})
+	})
+	fakeKeystone := identityservice.NewV3AppCred()
+	fakeKeystone.SetupHTTP(mux)
+	fakeKeystone.AddService(identityservice.Service{V3: identityservice.V3Service{
+		Name: "nova",
+		Type: "compute",
+		Endpoints: identityservice.NewV3Endpoints(
+			"", "", "http://nova.example.com", "RegionOne",
+		),
+	}})
+	fakeKeystone.AddService(identityservice.Service{V3: identityservice.V3Service{
+		Name: "swift",
+		Type: "object-store",
+		Endpoints: identityservice.NewV3Endpoints(
+			"", "", "http://swift.example.com", "RegionOne",
+		),
+	}})
+	return mux, fakeKeystone
+}
+
+// TestOpenStackApplicationCredentialAuthEndToEnd exercises the full
+// authenticate() path - version discovery plus the real Keystone v3
+// request/response wire format via goose's identity.AuthApplicationCredentialV3
+// - against a fake Keystone that only accepts application-credential
+// auth, proving the backend can actually log in with one end to end
+// rather than just building the right Credentials struct.
+func (s *openstackSuite) TestOpenStackApplicationCredentialAuthEndToEnd(c *C) {
+	mux, fakeKeystone := newFakeKeystone()
+	fakeKeystone.AddCredential(
+		"cred-id", "cred-secret", "token-value",
+		"user-id", "project-id", "project-name",
+	)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	prj := &spread.Project{}
+	b := &spread.Backend{
+		Name:     "openstack",
+		AuthType: "application-credential",
+		Endpoint: server.URL + "/v3",
+		Account:  "cred-id",
+		Key:      "cred-secret",
+		Location: "unused-project/RegionOne",
+	}
+	opts := &spread.Options{}
+	p := spread.OpenStack(prj, b, opts)
+
+	err := spread.OpenStackCheckCredentials(p)
+	c.Assert(err, IsNil)
+}
+
+// A wrong secret must fail authenticate() itself, not silently
+// succeed and only fail later on some unrelated call (the bug fixed
+// alongside application-credential support: authenticate() used to
+// shadow and discard this exact error).
+func (s *openstackSuite) TestOpenStackApplicationCredentialAuthEndToEndWrongSecret(c *C) {
+	mux, fakeKeystone := newFakeKeystone()
+	fakeKeystone.AddCredential(
+		"cred-id", "cred-secret", "token-value",
+		"user-id", "project-id", "project-name",
+	)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	prj := &spread.Project{}
+	b := &spread.Backend{
+		Name:     "openstack",
+		AuthType: "application-credential",
+		Endpoint: server.URL + "/v3",
+		Account:  "cred-id",
+		Key:      "wrong-secret",
+		Location: "unused-project/RegionOne",
+	}
+	opts := &spread.Options{}
+	p := spread.OpenStack(prj, b, opts)
+
+	err := spread.OpenStackCheckCredentials(p)
+	c.Assert(err, ErrorMatches, "(?s).*cannot authenticate.*")
 }
 
 var opstErr1 = errors.New(`caused by: requesting token failed
@@ -296,6 +468,30 @@ var openstackFindImageComplexTests = []openstackFindImageComplexTest{{
 	imageName:         "ubuntu-18.04-server",
 	availableImages:   fakeOpenStackImageList,
 	expectedImageName: "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+}, {
+	// arch token matching: amd64 does not pick newer amd64v3
+	imageName: "ubuntu-bionic-18.04-amd64",
+	availableImages: []string{
+		"auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+		"auto-sync/ubuntu-bionic-18.04-amd64v3-server-20230601-disk1.img",
+	},
+	expectedImageName: "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+}, {
+	// arch token matching: explicit amd64v3 picks amd64v3
+	imageName: "ubuntu-bionic-18.04-amd64v3",
+	availableImages: []string{
+		"auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+		"auto-sync/ubuntu-bionic-18.04-amd64v3-server-20230601-disk1.img",
+	},
+	expectedImageName: "auto-sync/ubuntu-bionic-18.04-amd64v3-server-20230601-disk1.img",
+}, {
+	// arch token matching: ppc64el
+	imageName: "ubuntu-bionic-18.04-ppc64el",
+	availableImages: []string{
+		"auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+		"auto-sync/ubuntu-bionic-18.04-ppc64el-server-20230530-disk1.img",
+	},
+	expectedImageName: "auto-sync/ubuntu-bionic-18.04-ppc64el-server-20230530-disk1.img",
 }}
 
 func (s *openstackFindImageSuite) TestOpenStackFindImageComplex(c *C) {

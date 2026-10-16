@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -258,10 +259,69 @@ func (p *openstackProvider) findNetwork(name string) (*neutron.NetworkV2, error)
 	return nil, &FatalError{fmt.Errorf("cannot find valid network with name %q", name)}
 }
 
-func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, error) {
-	var lastImage glance.ImageDetail
-	var lastCreatedDate time.Time
+// kernelIDArchitectures lists the architectures whose images may boot
+// through a separate kernel image. When an image for one of them is
+// requested, an image with a kernel_id outranks one without it.
+var kernelIDArchitectures = map[string]bool{
+	"riscv64": true,
+}
 
+// imageRank orders the images that match a lookup.
+type imageRank struct {
+	// kernelID is set for an image with a kernel_id, but only when the
+	// lookup prefers such images (see kernelIDArchitectures).
+	kernelID bool
+	created  time.Time
+}
+
+// rankImage returns the rank of image. Its kernel_id only counts when
+// preferKernelID is set.
+func rankImage(image *glance.ImageDetail, preferKernelID bool) imageRank {
+	// A kernel_id is a string, anything else is considered unset.
+	kernelID, _ := image.Metadata.KernelId.(string)
+
+	// When the creation date is not set or it cannot be parsed, the
+	// image is considered the oldest one.
+	created, err := time.Parse(time.RFC3339, image.Created)
+	if err != nil {
+		created = time.Time{}
+	}
+
+	return imageRank{
+		kernelID: preferKernelID && kernelID != "",
+		created:  created,
+	}
+}
+
+// betterThan reports whether r ranks above other: an image with a
+// kernel_id comes first, then the newest image.
+func (r imageRank) betterThan(other imageRank) bool {
+	if r.kernelID != other.kernelID {
+		return r.kernelID
+	}
+	return r.created.After(other.created)
+}
+
+// bestImage returns the highest ranked image accepted by match, or nil
+// if there is none. Between equally ranked images the first one wins.
+func bestImage(images []glance.ImageDetail, preferKernelID bool, match func(*glance.ImageDetail) bool) *glance.ImageDetail {
+	var best *glance.ImageDetail
+	var bestRank imageRank
+	for i := range images {
+		image := &images[i]
+		if !match(image) {
+			continue
+		}
+		rank := rankImage(image, preferKernelID)
+		if best == nil || rank.betterThan(bestRank) {
+			debugf("Better match found: %#v", image)
+			best, bestRank = image, rank
+		}
+	}
+	return best
+}
+
+func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, error) {
 	// TODO: consider using an image cache just like the google backend
 	// (https://github.com/canonical/spread/pull/175 needs to be fixed first)
 	images, err := p.imageClient.ListImagesDetail()
@@ -273,40 +333,32 @@ func (p *openstackProvider) findImage(imageName string) (*glance.ImageDetail, er
 	// concept of a "family" so the lookup is similar but a bit
 	// simpler than in the google backend. Google checks for a)
 	// exact match, b) family match, c) term match, only (a), (c)
-	// are done here as there is no (b) in openstack. If multiple
-	// term matches are found the newest image is selected.
+	// are done here as there is no (b) in openstack. Image names are
+	// not unique in openstack, so if multiple images match the newest
+	// is selected. The exception are the architectures listed in
+	// kernelIDArchitectures, which select an image with a kernel_id
+	// even if a newer image without it exists.
 	searchTerms := toTerms(imageName)
+	preferKernelID := slices.ContainsFunc(searchTerms, func(term string) bool {
+		return kernelIDArchitectures[term]
+	})
+
 	// First consider exact matches on name.
-	for _, image := range images {
-		// First consider exact matches on name.
-		if image.Name == imageName {
-			// return the image when it matchs exactly with the provided name
-			debugf("Name match: %#v matches %#v", imageName, image)
-			return &image, nil
-		}
-
-		// Otherwise use term matching.
-		imageTerms := toTerms(image.Name)
-		if containsTerms(imageTerms, searchTerms) {
-			debugf("Terms match: %#v matches %#v", imageName, image)
-			// Check if the creation date for the current image is after the previous selected one
-			currCreatedDate, err := time.Parse(time.RFC3339, image.Created)
-			// When the creation date is not set or it cannot be parsed, it is considered as created just now
-			if err != nil {
-				currCreatedDate = time.Time{}
-			}
-
-			// Save the image when either it is the first match or it is newer than the previous match
-			if lastImage.Id == "" || currCreatedDate.After(lastCreatedDate) {
-				debugf("Newer terms match found: %#v", image)
-				lastImage = image
-				lastCreatedDate = currCreatedDate
-			}
-		}
+	image := bestImage(images, preferKernelID, func(candidate *glance.ImageDetail) bool {
+		return candidate.Name == imageName
+	})
+	if image != nil {
+		debugf("Name match: %#v matches %#v", imageName, image)
+		return image, nil
 	}
 
-	if lastImage.Id != "" {
-		return &lastImage, nil
+	// Otherwise use term matching.
+	image = bestImage(images, preferKernelID, func(candidate *glance.ImageDetail) bool {
+		return containsTerms(toTerms(candidate.Name), searchTerms)
+	})
+	if image != nil {
+		debugf("Terms match: %#v matches %#v", imageName, image)
+		return image, nil
 	}
 
 	return nil, &FatalError{fmt.Errorf("cannot find matching image for %q", imageName)}

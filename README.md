@@ -973,8 +973,13 @@ backends:
 [openstack-app-creds]: https://docs.openstack.org/keystone/latest/user/application_credentials.html
 
 Images are located by first attempting to match the provided value exactly
-against the image name. If exact match exists the most recent image with
-a partially matching name will be selected.
+against the image name. If no image has that name, the individual tokens of
+the provided value are matched against the image names instead. Image names
+are not unique in OpenStack, so several images may match, even by exact name.
+In that case the most recent one is selected, unless the provided value
+contains the `riscv64` token: then the most recent image with its `kernel_id`
+property set is selected, even if a more recent image without it exists (if
+no image has it, the most recent one is selected as usual).
 
 When machines complete their jobs they will be removed. If anything happens
 that prevents the immediate removal, they will remain in the account and

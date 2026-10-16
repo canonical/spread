@@ -67,6 +67,7 @@ type Backend struct {
 	// Only for OpenStack so far
 	Account  string
 	Endpoint string
+	AuthType string `yaml:"auth-type"`
 	Networks []string
 	Groups   []string
 
@@ -542,6 +543,18 @@ func Load(path string) (*Project, error) {
 		case "google", "openstack", "linode", "lxd", "qemu", "adhoc", "humbox":
 		default:
 			return nil, fmt.Errorf("%s has unsupported type %q", backend, backend.Type)
+		}
+
+		if backend.Type == "openstack" {
+			switch backend.AuthType {
+			case "", openstackAuthTypePassword,
+				openstackAuthTypeApplicationCredential:
+			default:
+				return nil, fmt.Errorf(
+					"%s has unsupported auth-type %q",
+					backend, backend.AuthType,
+				)
+			}
 		}
 
 		if backend.Type != "adhoc" && (backend.Allocate != "" || backend.Discard != "") {

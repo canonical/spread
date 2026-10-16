@@ -6,11 +6,27 @@ import (
 
 	gooseclient "github.com/go-goose/goose/v5/client"
 	"github.com/go-goose/goose/v5/glance"
+	"github.com/go-goose/goose/v5/identity"
 )
 
 var (
 	OpenStackName = openstackName
+	ToTerms       = toTerms
 )
+
+// OpenStackCredentials exposes openstackCredentials for testing.
+func OpenStackCredentials(
+	backend *Backend, osproj, region string, identityAPIVersion int,
+) (*identity.Credentials, identity.AuthMode, error) {
+	return openstackCredentials(backend, osproj, region, identityAPIVersion)
+}
+
+// OpenStackCheckCredentials exposes checkCredentials (and so, on a
+// provider that hasn't authenticated yet, the full authenticate()
+// path) for testing.
+func OpenStackCheckCredentials(p Provider) error {
+	return p.(*openstackProvider).checkCredentials()
+}
 
 func FakeOpenStackImageClient(p Provider, imageClient glanceImageClient) (restore func()) {
 	opst := p.(*openstackProvider)

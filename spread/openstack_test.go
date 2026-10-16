@@ -5,13 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"regexp"
+	"slices"
 	"time"
 
 	"github.com/go-goose/goose/v5/glance"
 	goosehttp "github.com/go-goose/goose/v5/http"
+	"github.com/go-goose/goose/v5/identity"
 	"github.com/go-goose/goose/v5/nova"
+	"github.com/go-goose/goose/v5/testservices/identityservice"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/canonical/spread/spread"
@@ -44,6 +49,174 @@ func (s *openstackSuite) TestOpenStackName(c *C) {
 
 	name := spread.OpenStackName()
 	c.Check(name, Equals, "aug221159-987654")
+}
+
+func (s *openstackSuite) TestToTermsArchitectures(c *C) {
+	c.Check(spread.ToTerms("ubuntu-resolute-26.04-amd64-server"), DeepEquals, []string{"ubuntu", "resolute", "26.04", "amd64", "server"})
+	c.Check(spread.ToTerms("ubuntu-resolute-26.04-amd64v3-server"), DeepEquals, []string{"ubuntu", "resolute", "26.04", "amd64v3", "server"})
+	c.Check(spread.ToTerms("ubuntu-bionic-18.04-ppc64el-server"), DeepEquals, []string{"ubuntu", "bionic", "18.04", "ppc64el", "server"})
+	c.Check(spread.ToTerms("ubuntu-jammy-22.04-riscv64-server"), DeepEquals, []string{"ubuntu", "jammy", "22.04", "riscv64", "server"})
+	c.Check(spread.ToTerms("ubuntu-focal-20.04-s390x-server"), DeepEquals, []string{"ubuntu", "focal", "20.04", "s390x", "server"})
+	c.Check(spread.ToTerms("ubuntu-bionic-18.04-i386-server"), DeepEquals, []string{"ubuntu", "bionic", "18.04", "i386", "server"})
+}
+
+func (s *openstackSuite) TestOpenStackCredentialsPassword(c *C) {
+	b := &spread.Backend{
+		Name:     "openstack",
+		Account:  "joe-user",
+		Key:      "secret",
+		Endpoint: "https://keystone.example.com:5000/v3",
+	}
+	creds, mode, err := spread.OpenStackCredentials(b, "my-project", "RegionOne", 3)
+	c.Assert(err, IsNil)
+	c.Assert(mode, Equals, identity.AuthUserPassV3)
+	c.Assert(creds.URL, Equals, "https://keystone.example.com:5000/v3")
+	c.Assert(creds.User, Equals, "joe-user")
+	c.Assert(creds.Secrets, Equals, "secret")
+	c.Assert(creds.Region, Equals, "RegionOne")
+	c.Assert(creds.TenantName, Equals, "my-project")
+	c.Assert(creds.Version, Equals, 3)
+	c.Assert(creds.ApplicationCredentialID, Equals, "")
+	c.Assert(creds.ApplicationCredentialSecret, Equals, "")
+}
+
+func (s *openstackSuite) TestOpenStackCredentialsExplicitPassword(c *C) {
+	b := &spread.Backend{
+		Name:     "openstack",
+		AuthType: "password",
+		Account:  "joe-user",
+		Key:      "secret",
+		Endpoint: "https://keystone.example.com:5000/v3",
+	}
+	_, mode, err := spread.OpenStackCredentials(b, "my-project", "RegionOne", 3)
+	c.Assert(err, IsNil)
+	c.Assert(mode, Equals, identity.AuthUserPassV3)
+}
+
+func (s *openstackSuite) TestOpenStackCredentialsApplicationCredential(c *C) {
+	b := &spread.Backend{
+		Name:     "openstack",
+		AuthType: "application-credential",
+		Account:  "cred-id",
+		Key:      "cred-secret",
+		Endpoint: "https://keystone.example.com:5000/v3",
+	}
+	creds, mode, err := spread.OpenStackCredentials(b, "my-project", "RegionOne", 3)
+	c.Assert(err, IsNil)
+	c.Assert(mode, Equals, identity.AuthApplicationCredentialV3)
+	c.Assert(creds.URL, Equals, "https://keystone.example.com:5000/v3")
+	c.Assert(creds.ApplicationCredentialID, Equals, "cred-id")
+	c.Assert(creds.ApplicationCredentialSecret, Equals, "cred-secret")
+	c.Assert(creds.Region, Equals, "RegionOne")
+	c.Assert(creds.Version, Equals, 3)
+	// An application credential is already project-scoped at
+	// creation time; Keystone rejects an explicit scope alongside
+	// it, so no User/Secrets/TenantName must ever be set here, even
+	// though a project name was passed in.
+	c.Assert(creds.User, Equals, "")
+	c.Assert(creds.Secrets, Equals, "")
+	c.Assert(creds.TenantName, Equals, "")
+}
+
+func (s *openstackSuite) TestOpenStackCredentialsUnsupportedAuthType(c *C) {
+	b := &spread.Backend{Name: "openstack", AuthType: "bogus"}
+	_, _, err := spread.OpenStackCredentials(b, "my-project", "RegionOne", 3)
+	c.Assert(err, ErrorMatches, `backend "openstack" has unsupported auth-type "bogus"`)
+}
+
+// newFakeKeystone builds a fake Keystone v3 identity service (serving
+// both version discovery and application-credential auth) advertising
+// the compute/object-store endpoints goose's client requires to be
+// present for the authenticated region.
+func newFakeKeystone() (*http.ServeMux, *identityservice.V3AppCred) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v3", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"version": map[string]interface{}{
+				"media-types": []map[string]string{
+					{"type": "application/vnd.openstack.identity-v3+json"},
+				},
+			},
+		})
+	})
+	fakeKeystone := identityservice.NewV3AppCred()
+	fakeKeystone.SetupHTTP(mux)
+	fakeKeystone.AddService(identityservice.Service{V3: identityservice.V3Service{
+		Name: "nova",
+		Type: "compute",
+		Endpoints: identityservice.NewV3Endpoints(
+			"", "", "http://nova.example.com", "RegionOne",
+		),
+	}})
+	fakeKeystone.AddService(identityservice.Service{V3: identityservice.V3Service{
+		Name: "swift",
+		Type: "object-store",
+		Endpoints: identityservice.NewV3Endpoints(
+			"", "", "http://swift.example.com", "RegionOne",
+		),
+	}})
+	return mux, fakeKeystone
+}
+
+// TestOpenStackApplicationCredentialAuthEndToEnd exercises the full
+// authenticate() path - version discovery plus the real Keystone v3
+// request/response wire format via goose's identity.AuthApplicationCredentialV3
+// - against a fake Keystone that only accepts application-credential
+// auth, proving the backend can actually log in with one end to end
+// rather than just building the right Credentials struct.
+func (s *openstackSuite) TestOpenStackApplicationCredentialAuthEndToEnd(c *C) {
+	mux, fakeKeystone := newFakeKeystone()
+	fakeKeystone.AddCredential(
+		"cred-id", "cred-secret", "token-value",
+		"user-id", "project-id", "project-name",
+	)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	prj := &spread.Project{}
+	b := &spread.Backend{
+		Name:     "openstack",
+		AuthType: "application-credential",
+		Endpoint: server.URL + "/v3",
+		Account:  "cred-id",
+		Key:      "cred-secret",
+		Location: "unused-project/RegionOne",
+	}
+	opts := &spread.Options{}
+	p := spread.OpenStack(prj, b, opts)
+
+	err := spread.OpenStackCheckCredentials(p)
+	c.Assert(err, IsNil)
+}
+
+// A wrong secret must fail authenticate() itself, not silently
+// succeed and only fail later on some unrelated call (the bug fixed
+// alongside application-credential support: authenticate() used to
+// shadow and discard this exact error).
+func (s *openstackSuite) TestOpenStackApplicationCredentialAuthEndToEndWrongSecret(c *C) {
+	mux, fakeKeystone := newFakeKeystone()
+	fakeKeystone.AddCredential(
+		"cred-id", "cred-secret", "token-value",
+		"user-id", "project-id", "project-name",
+	)
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	prj := &spread.Project{}
+	b := &spread.Backend{
+		Name:     "openstack",
+		AuthType: "application-credential",
+		Endpoint: server.URL + "/v3",
+		Account:  "cred-id",
+		Key:      "wrong-secret",
+		Location: "unused-project/RegionOne",
+	}
+	opts := &spread.Options{}
+	p := spread.OpenStack(prj, b, opts)
+
+	err := spread.OpenStackCheckCredentials(p)
+	c.Assert(err, ErrorMatches, "(?s).*cannot authenticate.*")
 }
 
 var opstErr1 = errors.New(`caused by: requesting token failed
@@ -296,6 +469,30 @@ var openstackFindImageComplexTests = []openstackFindImageComplexTest{{
 	imageName:         "ubuntu-18.04-server",
 	availableImages:   fakeOpenStackImageList,
 	expectedImageName: "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+}, {
+	// arch token matching: amd64 does not pick newer amd64v3
+	imageName: "ubuntu-bionic-18.04-amd64",
+	availableImages: []string{
+		"auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+		"auto-sync/ubuntu-bionic-18.04-amd64v3-server-20230601-disk1.img",
+	},
+	expectedImageName: "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+}, {
+	// arch token matching: explicit amd64v3 picks amd64v3
+	imageName: "ubuntu-bionic-18.04-amd64v3",
+	availableImages: []string{
+		"auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+		"auto-sync/ubuntu-bionic-18.04-amd64v3-server-20230601-disk1.img",
+	},
+	expectedImageName: "auto-sync/ubuntu-bionic-18.04-amd64v3-server-20230601-disk1.img",
+}, {
+	// arch token matching: ppc64el
+	imageName: "ubuntu-bionic-18.04-ppc64el",
+	availableImages: []string{
+		"auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+		"auto-sync/ubuntu-bionic-18.04-ppc64el-server-20230530-disk1.img",
+	},
+	expectedImageName: "auto-sync/ubuntu-bionic-18.04-ppc64el-server-20230530-disk1.img",
 }}
 
 func (s *openstackFindImageSuite) TestOpenStackFindImageComplex(c *C) {
@@ -309,6 +506,130 @@ func (s *openstackFindImageSuite) TestOpenStackFindImageComplex(c *C) {
 
 			c.Check(err, ErrorMatches, `cannot find matching image for `+tc.imageName, Commentf("%s", tc))
 		}
+	}
+}
+
+// fakeGlanceImage describes an image for the duplicates tests.
+type fakeGlanceImage struct {
+	id       string
+	name     string
+	created  string
+	kernelID interface{}
+}
+
+func glanceImageDetails(imgs []fakeGlanceImage) []glance.ImageDetail {
+	out := make([]glance.ImageDetail, len(imgs))
+	for i, img := range imgs {
+		out[i] = glance.ImageDetail{
+			Id:       img.id,
+			Name:     img.name,
+			Created:  img.created,
+			Metadata: glance.ImageMetadata{KernelId: img.kernelID},
+		}
+	}
+	return out
+}
+
+// duplicateImages returns three images sharing name, with the ids "old",
+// "mid" and "new" and increasing creation dates, and the given kernel_ids
+// (oldest first).
+func duplicateImages(name string, oldKernelID, midKernelID, newKernelID interface{}) []fakeGlanceImage {
+	return []fakeGlanceImage{
+		{id: "old", name: name, created: "2023-01-01T00:00:00Z", kernelID: oldKernelID},
+		{id: "mid", name: name, created: "2023-03-01T00:00:00Z", kernelID: midKernelID},
+		{id: "new", name: name, created: "2023-06-01T00:00:00Z", kernelID: newKernelID},
+	}
+}
+
+// forEachOrdering calls fn with every ordering of items.
+func forEachOrdering[T any](items []T, fn func([]T)) {
+	var permute func(k int)
+	permute = func(k int) {
+		if k == len(items) {
+			fn(items)
+			return
+		}
+		for i := k; i < len(items); i++ {
+			items[k], items[i] = items[i], items[k]
+			permute(k + 1)
+			items[k], items[i] = items[i], items[k]
+		}
+	}
+	permute(0)
+}
+
+const (
+	fakeAmd64ImageName   = "auto-sync/ubuntu-noble-24.04-amd64-server-disk1.img"
+	fakeRiscv64ImageName = "auto-sync/ubuntu-noble-24.04-riscv64-server-disk1.img"
+)
+
+type openstackFindImageDuplicatesTest struct {
+	comment    string
+	imageName  string
+	images     []fakeGlanceImage
+	expectedId string
+}
+
+var openstackFindImageDuplicatesTests = []openstackFindImageDuplicatesTest{{
+	comment:   "same name: the newest wins, an exact name beats a newer terms match",
+	imageName: fakeAmd64ImageName,
+	images: append(duplicateImages(fakeAmd64ImageName, nil, nil, nil), fakeGlanceImage{
+		id:      "terms",
+		name:    "auto-sync/ubuntu-noble-24.04-amd64-server-20230901-disk1.img",
+		created: "2023-09-01T00:00:00Z",
+	}),
+	expectedId: "new",
+}, {
+	comment:    "other architectures ignore the kernel_id",
+	imageName:  fakeAmd64ImageName,
+	images:     duplicateImages(fakeAmd64ImageName, "kernel-1", nil, nil),
+	expectedId: "new",
+}, {
+	comment:    "riscv64 prefers the only image with a kernel_id",
+	imageName:  fakeRiscv64ImageName,
+	images:     duplicateImages(fakeRiscv64ImageName, "kernel-1", nil, nil),
+	expectedId: "old",
+}, {
+	comment:    "riscv64 picks the newest of the images with a kernel_id",
+	imageName:  fakeRiscv64ImageName,
+	images:     duplicateImages(fakeRiscv64ImageName, "kernel-1", "kernel-2", nil),
+	expectedId: "mid",
+}, {
+	comment:    "riscv64 picks the newest when no image has a kernel_id",
+	imageName:  fakeRiscv64ImageName,
+	images:     duplicateImages(fakeRiscv64ImageName, nil, nil, nil),
+	expectedId: "new",
+}, {
+	comment:    "riscv64 considers an empty kernel_id unset",
+	imageName:  fakeRiscv64ImageName,
+	images:     duplicateImages(fakeRiscv64ImageName, "", nil, nil),
+	expectedId: "new",
+}, {
+	comment:   "riscv64 terms matches prefer a kernel_id as well",
+	imageName: "ubuntu-24.04-riscv64-server",
+	images: []fakeGlanceImage{
+		{id: "old", name: "auto-sync/ubuntu-noble-24.04-riscv64-server-20230101-disk1.img", created: "2023-01-01T00:00:00Z", kernelID: "kernel-1"},
+		{id: "new", name: "auto-sync/ubuntu-noble-24.04-riscv64-server-20230601-disk1.img", created: "2023-06-01T00:00:00Z"},
+	},
+	expectedId: "old",
+}}
+
+func (s *openstackFindImageSuite) TestOpenStackFindImageDuplicates(c *C) {
+	for _, tc := range openstackFindImageDuplicatesTests {
+		// The result must not depend on the order the images are listed in.
+		forEachOrdering(slices.Clone(tc.images), func(images []fakeGlanceImage) {
+			s.fakeImageClient.res = glanceImageDetails(images)
+
+			ids := make([]string, len(images))
+			for i, img := range images {
+				ids[i] = img.id
+			}
+			comment := Commentf("%s, images listed as %v", tc.comment, ids)
+
+			idt, err := spread.OpenStackFindImage(s.opst, tc.imageName)
+			c.Assert(err, IsNil, comment)
+			c.Check(idt.Id, Equals, tc.expectedId, comment)
+		})
 	}
 }
 

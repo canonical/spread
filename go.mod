@@ -5,7 +5,7 @@ go 1.23.0
 toolchain go1.24.3
 
 require (
-	github.com/go-goose/goose/v5 v5.0.0-20230421180421-abaee9096e3a
+	github.com/go-goose/goose/v5 v5.2.0
 	github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e
 	golang.org/x/crypto v0.36.0
 	golang.org/x/net v0.38.0
@@ -27,10 +27,3 @@ require (
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 )
-
-// Stopgap pin: fork adding Keystone v3 application-credential auth
-// (github.com/simonepelosi/goose, branch appcred-auth-support),
-// pending upstream PR to go-goose/goose. Points at a commit, not a
-// branch, so this resolves deterministically in CI; remove once a
-// release tag with that support ships upstream.
-replace github.com/go-goose/goose/v5 => github.com/simonepelosi/goose/v5 v5.1.9-0.20261007083115-a988b3aa7d48

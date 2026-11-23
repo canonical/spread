@@ -95,9 +95,8 @@ jobs:
 
       - name: Run LXD backend smoke test
         run: |
-          sudo usermod -aG lxd "$USER"
-          cd snap-tests
-          /snap/bin/spread -v lxd:tests/smoke
+          cd tests/lxd
+          /snap/bin/spread -v lxd:ubuntu-24.04:checks/main
 
       - name: Remove spread snap
         if: always()

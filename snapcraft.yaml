@@ -46,6 +46,8 @@ parts:
         source-depth: 1
         source-branch: stable-5.21
         plugin: nil
+        build-snaps:
+          - go
         override-build: |
-          mkdir "${CRAFT_PART_INSTALL}/bin"
+          mkdir -p "${CRAFT_PART_INSTALL}/bin"
           go build -o "${CRAFT_PART_INSTALL}/bin/lxc" ./lxc

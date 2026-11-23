@@ -46,3 +46,60 @@ jobs:
           for r in .spread-reuse.*.yaml; do
             spread -discard -reuse-pid="$(echo "$r" | grep -o -E '[0-9]+')"
           done
+
+  snap-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build snap
+        id: snap
+        uses: canonical/action-build@v1
+      - name: Upload snap artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: snap
+          path: ${{ steps.snap.outputs.snap }}
+
+  snap-test:
+    needs:
+      - snap-build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download snap artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: snap
+
+      - name: Install LXD
+        run: |
+          sudo snap install lxd
+          sudo lxd init --auto
+          sudo lxd waitready --timeout 60
+
+      - name: Install spread snap
+        run: |
+          sudo snap install --dangerous ./*.snap
+          sudo snap connect spread:lxd lxd:lxd
+
+      - name: Verify bundled lxc client is executable
+        run: |
+          snap run --shell spread -c 'lxc --version'
+
+      - name: Run LXD backend smoke test
+        run: |
+          sudo usermod -aG lxd "$USER"
+          cd snap-tests
+          /snap/bin/spread -v lxd:tests/smoke
+
+      - name: Remove spread snap
+        if: always()
+        run: |
+          sudo snap remove --purge spread || true

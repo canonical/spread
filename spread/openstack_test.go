@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"time"
 
 	"github.com/go-goose/goose/v5/glance"
@@ -44,6 +45,15 @@ func (s *openstackSuite) TestOpenStackName(c *C) {
 
 	name := spread.OpenStackName()
 	c.Check(name, Equals, "aug221159-987654")
+}
+
+func (s *openstackSuite) TestToTermsArchitectures(c *C) {
+	c.Check(spread.ToTerms("ubuntu-resolute-26.04-amd64-server"), DeepEquals, []string{"ubuntu", "resolute", "26.04", "amd64", "server"})
+	c.Check(spread.ToTerms("ubuntu-resolute-26.04-amd64v3-server"), DeepEquals, []string{"ubuntu", "resolute", "26.04", "amd64v3", "server"})
+	c.Check(spread.ToTerms("ubuntu-bionic-18.04-ppc64el-server"), DeepEquals, []string{"ubuntu", "bionic", "18.04", "ppc64el", "server"})
+	c.Check(spread.ToTerms("ubuntu-jammy-22.04-riscv64-server"), DeepEquals, []string{"ubuntu", "jammy", "22.04", "riscv64", "server"})
+	c.Check(spread.ToTerms("ubuntu-focal-20.04-s390x-server"), DeepEquals, []string{"ubuntu", "focal", "20.04", "s390x", "server"})
+	c.Check(spread.ToTerms("ubuntu-bionic-18.04-i386-server"), DeepEquals, []string{"ubuntu", "bionic", "18.04", "i386", "server"})
 }
 
 var opstErr1 = errors.New(`caused by: requesting token failed
@@ -296,6 +306,30 @@ var openstackFindImageComplexTests = []openstackFindImageComplexTest{{
 	imageName:         "ubuntu-18.04-server",
 	availableImages:   fakeOpenStackImageList,
 	expectedImageName: "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+}, {
+	// arch token matching: amd64 does not pick newer amd64v3
+	imageName: "ubuntu-bionic-18.04-amd64",
+	availableImages: []string{
+		"auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+		"auto-sync/ubuntu-bionic-18.04-amd64v3-server-20230601-disk1.img",
+	},
+	expectedImageName: "auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+}, {
+	// arch token matching: explicit amd64v3 picks amd64v3
+	imageName: "ubuntu-bionic-18.04-amd64v3",
+	availableImages: []string{
+		"auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+		"auto-sync/ubuntu-bionic-18.04-amd64v3-server-20230601-disk1.img",
+	},
+	expectedImageName: "auto-sync/ubuntu-bionic-18.04-amd64v3-server-20230601-disk1.img",
+}, {
+	// arch token matching: ppc64el
+	imageName: "ubuntu-bionic-18.04-ppc64el",
+	availableImages: []string{
+		"auto-sync/ubuntu-bionic-18.04-amd64-server-20230530-disk1.img",
+		"auto-sync/ubuntu-bionic-18.04-ppc64el-server-20230530-disk1.img",
+	},
+	expectedImageName: "auto-sync/ubuntu-bionic-18.04-ppc64el-server-20230530-disk1.img",
 }}
 
 func (s *openstackFindImageSuite) TestOpenStackFindImageComplex(c *C) {
@@ -309,6 +343,130 @@ func (s *openstackFindImageSuite) TestOpenStackFindImageComplex(c *C) {
 
 			c.Check(err, ErrorMatches, `cannot find matching image for `+tc.imageName, Commentf("%s", tc))
 		}
+	}
+}
+
+// fakeGlanceImage describes an image for the duplicates tests.
+type fakeGlanceImage struct {
+	id       string
+	name     string
+	created  string
+	kernelID interface{}
+}
+
+func glanceImageDetails(imgs []fakeGlanceImage) []glance.ImageDetail {
+	out := make([]glance.ImageDetail, len(imgs))
+	for i, img := range imgs {
+		out[i] = glance.ImageDetail{
+			Id:       img.id,
+			Name:     img.name,
+			Created:  img.created,
+			Metadata: glance.ImageMetadata{KernelId: img.kernelID},
+		}
+	}
+	return out
+}
+
+// duplicateImages returns three images sharing name, with the ids "old",
+// "mid" and "new" and increasing creation dates, and the given kernel_ids
+// (oldest first).
+func duplicateImages(name string, oldKernelID, midKernelID, newKernelID interface{}) []fakeGlanceImage {
+	return []fakeGlanceImage{
+		{id: "old", name: name, created: "2023-01-01T00:00:00Z", kernelID: oldKernelID},
+		{id: "mid", name: name, created: "2023-03-01T00:00:00Z", kernelID: midKernelID},
+		{id: "new", name: name, created: "2023-06-01T00:00:00Z", kernelID: newKernelID},
+	}
+}
+
+// forEachOrdering calls fn with every ordering of items.
+func forEachOrdering[T any](items []T, fn func([]T)) {
+	var permute func(k int)
+	permute = func(k int) {
+		if k == len(items) {
+			fn(items)
+			return
+		}
+		for i := k; i < len(items); i++ {
+			items[k], items[i] = items[i], items[k]
+			permute(k + 1)
+			items[k], items[i] = items[i], items[k]
+		}
+	}
+	permute(0)
+}
+
+const (
+	fakeAmd64ImageName   = "auto-sync/ubuntu-noble-24.04-amd64-server-disk1.img"
+	fakeRiscv64ImageName = "auto-sync/ubuntu-noble-24.04-riscv64-server-disk1.img"
+)
+
+type openstackFindImageDuplicatesTest struct {
+	comment    string
+	imageName  string
+	images     []fakeGlanceImage
+	expectedId string
+}
+
+var openstackFindImageDuplicatesTests = []openstackFindImageDuplicatesTest{{
+	comment:   "same name: the newest wins, an exact name beats a newer terms match",
+	imageName: fakeAmd64ImageName,
+	images: append(duplicateImages(fakeAmd64ImageName, nil, nil, nil), fakeGlanceImage{
+		id:      "terms",
+		name:    "auto-sync/ubuntu-noble-24.04-amd64-server-20230901-disk1.img",
+		created: "2023-09-01T00:00:00Z",
+	}),
+	expectedId: "new",
+}, {
+	comment:    "other architectures ignore the kernel_id",
+	imageName:  fakeAmd64ImageName,
+	images:     duplicateImages(fakeAmd64ImageName, "kernel-1", nil, nil),
+	expectedId: "new",
+}, {
+	comment:    "riscv64 prefers the only image with a kernel_id",
+	imageName:  fakeRiscv64ImageName,
+	images:     duplicateImages(fakeRiscv64ImageName, "kernel-1", nil, nil),
+	expectedId: "old",
+}, {
+	comment:    "riscv64 picks the newest of the images with a kernel_id",
+	imageName:  fakeRiscv64ImageName,
+	images:     duplicateImages(fakeRiscv64ImageName, "kernel-1", "kernel-2", nil),
+	expectedId: "mid",
+}, {
+	comment:    "riscv64 picks the newest when no image has a kernel_id",
+	imageName:  fakeRiscv64ImageName,
+	images:     duplicateImages(fakeRiscv64ImageName, nil, nil, nil),
+	expectedId: "new",
+}, {
+	comment:    "riscv64 considers an empty kernel_id unset",
+	imageName:  fakeRiscv64ImageName,
+	images:     duplicateImages(fakeRiscv64ImageName, "", nil, nil),
+	expectedId: "new",
+}, {
+	comment:   "riscv64 terms matches prefer a kernel_id as well",
+	imageName: "ubuntu-24.04-riscv64-server",
+	images: []fakeGlanceImage{
+		{id: "old", name: "auto-sync/ubuntu-noble-24.04-riscv64-server-20230101-disk1.img", created: "2023-01-01T00:00:00Z", kernelID: "kernel-1"},
+		{id: "new", name: "auto-sync/ubuntu-noble-24.04-riscv64-server-20230601-disk1.img", created: "2023-06-01T00:00:00Z"},
+	},
+	expectedId: "old",
+}}
+
+func (s *openstackFindImageSuite) TestOpenStackFindImageDuplicates(c *C) {
+	for _, tc := range openstackFindImageDuplicatesTests {
+		// The result must not depend on the order the images are listed in.
+		forEachOrdering(slices.Clone(tc.images), func(images []fakeGlanceImage) {
+			s.fakeImageClient.res = glanceImageDetails(images)
+
+			ids := make([]string, len(images))
+			for i, img := range images {
+				ids[i] = img.id
+			}
+			comment := Commentf("%s, images listed as %v", tc.comment, ids)
+
+			idt, err := spread.OpenStackFindImage(s.opst, tc.imageName)
+			c.Assert(err, IsNil, comment)
+			c.Check(idt.Id, Equals, tc.expectedId, comment)
+		})
 	}
 }
 

@@ -230,7 +230,7 @@ type googleImage struct {
 	Terms   []string
 }
 
-var termExp = regexp.MustCompile("[a-z]+|[0-9](?:[0-9.]*[0-9])?")
+var termExp = regexp.MustCompile(`amd64v3|ppc64el|riscv64|amd64|arm64|armhf|armel|s390x|i386|[a-z]+|[0-9](?:[0-9.]*[0-9])?`)
 
 func toTerms(s string) []string {
 	return termExp.FindAllString(strings.ToLower(s), -1)
